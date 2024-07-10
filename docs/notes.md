@@ -1,0 +1,13 @@
+- make packages and blocks iterable, package is iterable of blocks, block is iterable of options or arrays or lists
+- use https://docs.python.org/3/reference/datamodel.html#slots?
+- follow https://docs.python.org/3/reference/datamodel.html?emulating-container-types=#emulating-container-types?
+- immutable blocks?
+- for list based input, how does flopy deal with columns which become optional/required depending on an options block setting
+    - mf6.coordinates.modelcoordinates has an mflist input shape resolver which can dynamically compute the shape of expected data based on available package options
+    - mf6.data.mfdatastorage.resolve_typelist() determines column types for list based input
+    - core of the issue: tabular data shape varies depending on options
+    - delegate functions accepting a model, package or options block and returning a shape?
+    - also: how to deal with jagged tables? will mf6 dispense with these entirely?
+- prefer composition over inheritance
+- use mixins (e.g. PlotMixin) instead of e.g. plot() functions on all data types
+- references should only point downwards, not upwards, while maintaining inversion of control

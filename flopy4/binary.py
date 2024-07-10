@@ -1,5 +1,5 @@
-from flopy.utils.binaryfile import BinaryHeader
 import numpy as np
+from flopy.utils.binaryfile import BinaryHeader
 
 
 # todo: clean this up to not need model information beyond grid_type,

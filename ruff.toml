@@ -1,0 +1,21 @@
+line-length = 79
+target-version = "py38"
+include = [
+    "flopy4/**/*.py",
+    "test/**/*.py",
+    "docs/**/*.py",
+]
+extend-include = [
+    "docs/**/*.ipynb"
+]
+
+[lint]
+select = [
+    "D409", # pydocstyle - section-underline-matches-section-length
+    "E",    # pycodestyle error
+    "F",    # Pyflakes
+    "I001", # isort - unsorted-imports
+]
+ignore = [
+    "F821", # undefined name TODO FIXME
+]

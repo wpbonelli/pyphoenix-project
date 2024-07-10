@@ -1,0 +1,7 @@
+build/
+docs/examples/*.ipynb
+venv/
+.DS_Store
+.ruff_cache
+*.egg-info
+**/__pycache__/

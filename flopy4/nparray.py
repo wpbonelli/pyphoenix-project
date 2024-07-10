@@ -1,0 +1,345 @@
+from io import StringIO
+from pathlib import Path
+
+import numpy as np
+from flopy.utils.flopy_io import line_strip, multi_line_strip
+
+from flopy4.constants import CommonNames, How
+from flopy4.mfarray import MFArray
+
+
+def f_to_array(f):
+    """
+    Read a MODFLOW 6 array from an open file
+    into a flat NumPy array representation.
+    """
+
+    astr = []
+    while True:
+        pos = f.tell()
+        line = f.readline()
+        line = line_strip(line)
+        if line in (
+                CommonNames.empty,
+                CommonNames.internal,
+                CommonNames.external,
+                CommonNames.constant
+        ):
+            f.seek(pos, 0)
+            break
+        elif CommonNames.internal in line or CommonNames.external in line \
+                or CommonNames.constant in line:
+            f.seek(pos, 0)
+            break
+        astr.append(line)
+
+    astr = StringIO(" ".join(astr))
+    array = np.genfromtxt(astr).ravel()
+    return array
+
+
+class NumpyArrayMixin:
+    """
+    Provides NumPy interoperability for `MFArray` implementations.
+    This mixin makes an `MFArray` behave like a NumPy `ndarray`.
+
+    Resources
+    ---------
+    - https://numpy.org/doc/stable/user/basics.interoperability.html
+    - https://numpy.org/doc/stable/user/basics.ufuncs.html#ufuncs-basics
+
+    """
+    def __init__(self):
+        self._flat = None
+        self._layered = None
+
+    def __iadd__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa += other
+            return self
+
+        self._flat += other
+        return self
+
+    def __imul__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa *= other
+            return self
+
+        self._flat *= other
+        return self
+
+    def __isub__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa -= other
+            return self
+
+        self._flat -= other
+        return self
+
+    def __itruediv__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa /= other
+            return self
+
+        self._flat /= other
+        return self
+
+    def __ifloordiv__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa /= other
+            return self
+
+        self._flat /= other
+        return self
+
+    def __ipow__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa /= other
+            return self
+
+        self._flat **= other
+        return self
+
+    def __add__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa += other
+            return self
+
+        self._flat += other
+        return self
+
+    def __mul__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa *= other
+            return self
+
+        self._flat *= other
+        return self
+
+    def __sub__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa -= other
+            return self
+
+        self._flat -= other
+        return self
+
+    def __truediv__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa /= other
+            return self
+
+        self._flat /= other
+        return self
+
+    def __floordiv__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa /= other
+            return self
+
+        self._flat /= other
+        return self
+
+    def __pow__(self, other):
+        if self._layered:
+            for mfa in self._flat:
+                mfa /= other
+            return self
+
+        self._flat **= other
+        return self
+
+    def __iter__(self):
+        for i in self.raw_values.ravel():
+            yield i
+
+    def min(self):
+        return np.nanmin(self.values)
+
+    def mean(self):
+        return np.nanmean(self.values)
+
+    def median(self):
+        return np.nanmedian(self.values)
+
+    def max(self):
+        return np.nanmax(self.values)
+
+    def std(self):
+        return np.nanstd(self.values)
+
+    def sum(self):
+        return np.nansum(self.values)
+
+
+class NumPyBackedArray(NumpyArrayMixin, MFArray):
+    """
+    A MODFLOW 6 array backed by a 1-dimensional NumPy array,
+    which is reshaped as needed for various views. Supports 
+    array indexing as well as standard NumPy array ufuncs.
+    """
+
+    def __init__(self, array, shape, how, factor=None, layered=False):
+        super().__init__()
+        self._flat = array
+        self._shape = shape
+        self._how = how
+        self._factor = factor
+        self._layered = layered
+
+    def __getitem__(self, item):
+        """
+
+        Parameters
+        ----------
+        item
+
+        Returns
+        -------
+
+        """
+        return self.raw_values[item]
+
+    def __setitem__(self, key, value):
+        """
+
+        Parameters
+        ----------
+        key
+        value
+
+        Returns
+        -------
+
+        """
+        values = self.raw_values
+        values[key] = value
+        if self._layered:
+            for ix, mfa in enumerate(self._flat):
+                mfa[:] = values[ix]
+            return
+
+        values = values.ravel()
+        if self._how == How.constant:
+            if not np.allclose(values, values[0]):
+                self._how = How.internal
+                self._flat = values
+            else:
+                self._flat = values[0]
+        else:
+            self._flat = values
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        raw = self.raw_values
+        if len(inputs) == 1:
+            result = raw.__array_ufunc__(ufunc, method, raw, **kwargs)
+        else:
+            result = raw.__array_ufunc__(
+                ufunc, method, raw, *inputs[1:], kwargs
+            )
+        if not isinstance(result, np.ndarray):
+            raise NotImplementedError(f"{str(ufunc)} has not been implemented")
+
+        if result.shape != self._shape:
+            raise AssertionError(
+                f"{str(ufunc)} is not supported for inplace operations on "
+                f"MFArray objects"
+            )
+
+        tmp = [None for _ in self._shape]
+        self.__setitem__(slice(*tmp), result)
+        return self
+
+    @classmethod
+    def load(cls, f, cwd, shape, layered=False):
+        """
+
+        Parameters
+        ----------
+        f
+
+        Returns
+        -------
+            MFArray
+        """
+        if layered:
+            nlay = shape[0]
+            lay_shape = shape[1:]
+            objs = []
+            for _ in range(nlay):
+                mfa = cls._load(f, cwd, lay_shape)
+                objs.append(mfa)
+
+            mfa = NumPyBackedArray(
+                np.array(objs, dtype=object),
+                shape,
+                how=None,
+                factor=None,
+                layered=True
+            )
+
+        else:
+            mfa = cls._load(f, cwd, shape, layered=layered)
+
+        return mfa
+
+    @classmethod
+    def _load(cls, f, cwd, shape, layered=False):
+        """
+
+        Parameters
+        ----------
+        f
+        cwd
+        shape
+        layered
+
+        Returns
+        -------
+
+        """
+        control_line = multi_line_strip(f).split()
+
+        if CommonNames.iprn.lower() in control_line:
+            idx = control_line.index(CommonNames.iprn.lower())
+            control_line.pop(idx + 1)
+            control_line.pop(idx)
+
+        how = How.from_string(control_line[0])
+        clpos = 1
+
+        if how == How.internal:
+            array = f_to_array(f)
+
+        elif how == How.constant:
+            array = float(control_line[clpos])
+            clpos += 1
+
+        elif how == how.external:
+            ext_path = Path(control_line[clpos])
+            fpath = cwd / ext_path
+            with open(fpath) as foo:
+                array = f_to_array(foo)
+            clpos += 1
+
+        else:
+            raise NotImplementedError()
+
+        factor = None
+        if len(control_line) > 2:
+            factor = float(control_line[clpos + 1])
+
+        mfa = NumPyBackedArray(array, shape, how, factor=factor)
+        return mfa
