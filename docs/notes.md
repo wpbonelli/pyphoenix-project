@@ -10,4 +10,42 @@
     - also: how to deal with jagged tables? will mf6 dispense with these entirely?
 - prefer composition over inheritance
 - use mixins (e.g. PlotMixin) instead of e.g. plot() functions on all data types
-- references should only point downwards, not upwards, while maintaining inversion of control
+- references should only point downwards (sim -> model -> pkg ...)
+    - not upwards, as in current flopy (e.g. packages know which model is their parent) 
+- maintain inversion of control
+    - high-level objects (sim, model, pkg) don't need to know how data are represented within blocks, could be
+        - numpy
+        - pandas
+        - xarray
+        - etc
+- writing/reading input files can be considered a form of serialization/deserialization
+- MF6 input file format as a DSL (mini-language) for configuring hydrologic simulations
+    - framework-specific modeling language
+        - https://en.wikipedia.org/wiki/Modeling_language
+        - https://gsd.uwaterloo.ca/sites/default/files/models06.pdf
+    - modeler "completes" the framework by specifying:
+        - simulation components (models and packages) via input files
+        - component options (blocks/settings) via blocks/settings in input files
+    - input file (1 per component instance) as metamodel: specifies a model (simulation)
+        - bespoke format
+    - DFN (1 per component class) as meta-metamodel: specifies a metamodel (input file)
+        - formal grammar: defines the modeling language subset each component supports
+        - different bespoke format
+    - programs implement some combination of abilities (parser/generator/interpreter) for DFNs and/or input files
+        - dfn2f90.py
+            - DFNs: read and execute (generate interfaces for) but not write
+            - input files: none
+        - flopy
+            - DFNs: read and execute (generate interfaces for) but not write
+            - input files: read and write and (indirectly, by invoking MF6) execute
+        - MF6
+            - DFNs: none
+            - input files: read and execute but not write input files
+        - modflowapi 
+            - DFNs: none
+            - input files: execute (directly, by binding to MF6) but can't read or write input files
+    - flopy has the broadest scope! needs to understand both DFN language and input file languauge, and speak the latter
+        - could also learn to speak DFN... programmatically define new packages? overkill?
+    - future MF6 may support other configuration languages (e.g. YAML, TOML, NetCDF) for model input
+        - makes sense to adopt same language for input specification?
+        - removes the need for programs to parse/generate novel languages
