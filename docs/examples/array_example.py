@@ -12,7 +12,7 @@
 #     name: python3
 # ---
 
-# This example demonstrates the `NumpyBackedArray` class.
+# This example demonstrates the `MFArray` class.
 
 # +
 from pathlib import Path
@@ -20,7 +20,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from flopy4.nparray import NumPyBackedArray
+from flopy4.array import MFArray
+
 # -
 
 # non-layered data
@@ -34,33 +35,33 @@ shape = (1000, 100)
 # Open and load a NumPy array representation
 
 fhandle = open(internal)
-imfa = NumPyBackedArray.load(fhandle, pth, shape)
+imfa = MFArray.load(fhandle, pth, shape)
 
 # Get values
 
-ivals = imfa.values
+ivals = imfa.value
 plt.imshow(ivals[0:100])
-plt.colorbar();
+plt.colorbar()
 
 print(imfa.how)
 print(imfa.factor)
 
-imfa._flat
+imfa._value
 
 # adjust values
 
 imfa[0:8] = 5000
-ivals2 = imfa.values
+ivals2 = imfa.value
 plt.imshow(ivals2[0:100])
-plt.colorbar();
+plt.colorbar()
 
 fhandle = open(constant)
-cmfa = NumPyBackedArray.load(fhandle, pth, shape)
-cvals = cmfa.values
+cmfa = MFArray.load(fhandle, pth, shape)
+cvals = cmfa.value
 plt.imshow(cvals[0:100])
-plt.colorbar();
+plt.colorbar()
 
-print(cmfa._flat)
+print(cmfa._value)
 
 cmfa.how
 
@@ -68,31 +69,31 @@ cmfa.how
 
 cmfa[0:10] *= 5
 plt.imshow(cmfa[0:100])
-plt.colorbar();
+plt.colorbar()
 
 cmfa.how
 
-cvals2 = cmfa.values
-cmfa._flat
+cvals2 = cmfa.value
+cmfa._value
 
 # External
 
 fhandle = open(external)
-emfa = NumPyBackedArray.load(fhandle, pth, shape)
-evals = emfa.values
+emfa = MFArray.load(fhandle, pth, shape)
+evals = emfa.value
 evals
 
 plt.imshow(emfa[0:100])
-plt.colorbar();
+plt.colorbar()
 
 emfa.how, emfa.factor
 
 emfa **= 6
-evals2 = emfa.values
+evals2 = emfa.value
 evals2
 
 plt.imshow(emfa[0:100])
-plt.colorbar();
+plt.colorbar()
 
 # #### Layered data
 # layered data
@@ -103,12 +104,12 @@ mlayered = pth / "mixed_layered.txt"  # (internal, constant, external)
 
 fhandle = open(ilayered)
 shape = (3, 1000, 100)
-ilmfa = NumPyBackedArray.load(fhandle, pth, shape, layered=True)
-vals = ilmfa.values
+ilmfa = MFArray.load(fhandle, pth, shape, layered=True)
+vals = ilmfa.value
 
-ilmfa._flat  # internal storage
+ilmfa._value  # internal storage
 
-vals = ilmfa.values
+vals = ilmfa.value
 vals
 
 # +
@@ -117,10 +118,10 @@ vmin, vmax = np.min(vals), np.max(vals)
 for ix, v in enumerate(vals):
     im = axs[ix].imshow(v[0:100], vmin=vmin, vmax=vmax)
     axs[ix].set_title(f"layer {ix + 1}")
-    
+
 fig.subplots_adjust(right=0.8)
 cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-fig.colorbar(im, cax=cbar_ax);
+fig.colorbar(im, cax=cbar_ax)
 # -
 
 ilmfa.how
@@ -130,35 +131,35 @@ ilmfa.factor
 # Adjust array values using ufuncs
 
 ilmfa[0, 0:10, 0:60] += 350
-ilmfa[1, 10:20, 20:80] += 350  
+ilmfa[1, 10:20, 20:80] += 350
 ilmfa[2, 20:30, 40:] += 350
 
 # +
-vals = ilmfa.values
+vals = ilmfa.value
 fig, axs = plt.subplots(ncols=3, figsize=(12, 4))
 vmin, vmax = np.min(vals), np.max(vals)
 for ix, v in enumerate(vals):
     im = axs[ix].imshow(v[0:100], vmin=vmin, vmax=vmax)
     axs[ix].set_title(f"layer {ix + 1}")
-    
+
 fig.subplots_adjust(right=0.8)
 cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-fig.colorbar(im, cax=cbar_ax);
+fig.colorbar(im, cax=cbar_ax)
 # -
 
 # Layered constants
 
 fhandle = open(clayered)
 shape = (3, 1000, 100)
-clmfa = NumPyBackedArray.load(fhandle, pth, shape, layered=True)
+clmfa = MFArray.load(fhandle, pth, shape, layered=True)
 
-clmfa._flat
+clmfa._value
 
-for obj in clmfa._flat:
+for obj in clmfa._value:
     print(obj._flat)
 clmfa.how
 
-vals = clmfa.values
+vals = clmfa.value
 
 # +
 fig, axs = plt.subplots(ncols=3, figsize=(12, 4))
@@ -166,10 +167,10 @@ vmin, vmax = np.min(vals), np.max(vals)
 for ix, v in enumerate(vals):
     im = axs[ix].imshow(v[0:100], vmin=vmin, vmax=vmax)
     axs[ix].set_title(f"layer {ix + 1}")
-    
+
 fig.subplots_adjust(right=0.8)
 cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-fig.colorbar(im, cax=cbar_ax);
+fig.colorbar(im, cax=cbar_ax)
 # -
 
 # Adjust a slice of the layered array
@@ -180,12 +181,12 @@ clmfa[2] += 2
 
 clmfa.how
 
-# verify that the constants haven't 
+# verify that the constants haven't
 # been converted to array internally
-for obj in clmfa._flat[1:]:
+for obj in clmfa._value[1:]:
     print(obj._flat)
 
-vals = clmfa.values
+vals = clmfa.value
 
 # +
 fig, axs = plt.subplots(ncols=3, figsize=(12, 4))
@@ -193,23 +194,23 @@ vmin, vmax = np.min(vals), np.max(vals)
 for ix, v in enumerate(vals):
     im = axs[ix].imshow(v[0:100], vmin=vmin, vmax=vmax)
     axs[ix].set_title(f"layer {ix + 1}")
-    
+
 fig.subplots_adjust(right=0.8)
 cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-fig.colorbar(im, cax=cbar_ax);
+fig.colorbar(im, cax=cbar_ax)
 # -
 
 # Mixed data source Layered
 
 fhandle = open(mlayered)
 shape = (3, 1000, 100)
-mlmfa = NumPyBackedArray.load(fhandle, pth, shape, layered=True)
+mlmfa = MFArray.load(fhandle, pth, shape, layered=True)
 
 mlmfa.how
 
-mlmfa._flat
+mlmfa._value
 
-vals = mlmfa.values
+vals = mlmfa.value
 vals = np.where(vals <= 0, vals.mean(), vals)
 mlmfa[:] = vals
 
@@ -219,20 +220,23 @@ vmin, vmax = np.min(vals), np.max(vals)
 for ix, v in enumerate(vals):
     im = axs[ix].imshow(v[0:100], vmin=vmin, vmax=vmax)
     axs[ix].set_title(f"layer {ix + 1}")
-    
+
 fig.subplots_adjust(right=0.8)
 cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-fig.colorbar(im, cax=cbar_ax);
+fig.colorbar(im, cax=cbar_ax)
 # -
 
-# ### Using numpy mathematical functions with NumPyBackedArray
+# ### Using numpy mathematical functions
 #
-# Numpy support has been added to NumPyBackedArray though the __array_ufunc__ mixin method. This method allows us to send NumPyBackedArray to numpy standard functions like `np.log()`, `np.sin()`, `np.pow()`, etc ...
+# Numpy support has been added to `MFArray` though the
+# `__array_ufunc__`` mixin method. This method permits
+# sending `MFArray` to standard NumPy functions, like
+# `np.log()`, `np.sin()`, `np.pow()`, etc ...
 
 mlmfa = np.log(mlmfa)
 mlmfa
 
-vals = mlmfa.values
+vals = mlmfa.value
 vals
 
 # +
@@ -241,16 +245,15 @@ vmin, vmax = np.min(vals), np.max(vals)
 for ix, v in enumerate(vals):
     im = axs[ix].imshow(v[0:100], vmin=vmin, vmax=vmax)
     axs[ix].set_title(f"layer {ix + 1}")
-    
+
 fig.subplots_adjust(right=0.8)
 cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-fig.colorbar(im, cax=cbar_ax);
+fig.colorbar(im, cax=cbar_ax)
 # -
 
-# We can also get statistical information about the data, like `sum()`, `mean()`, `max()`, `min()`, `median`, `std()`
+# We can also get statistical information about the data,
+# like `sum()`, `mean()`, `max()`, `min()`, `median`, `std()`
 
 mlmfa.sum()
 
 mlmfa.min(), mlmfa.mean(), mlmfa.max()
-
-

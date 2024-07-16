@@ -11,7 +11,8 @@ class BinaryException(Exception):
     def __init__(self, *args):
         super.__init__(*args)
 
-class BinaryArray():
+
+class BinaryArray:
     def __init__(self):
         self._pos = 0
 
@@ -270,7 +271,7 @@ class BinaryArray():
         fd.close()
 
 
-class BinaryList():
+class BinaryList:
     def __init__(self):
         pass
 

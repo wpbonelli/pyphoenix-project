@@ -1,44 +1,16 @@
+from enum import Enum
 from io import StringIO
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from flopy.utils.flopy_io import line_strip, multi_line_strip
 
-from flopy4.constants import CommonNames, How
-from flopy4.mfarray import MFArray
+from flopy4.constants import CommonNames
+from flopy4.parameter import MFParameter
 
 
-def f_to_array(f):
-    """
-    Read a MODFLOW 6 array from an open file
-    into a flat NumPy array representation.
-    """
-
-    astr = []
-    while True:
-        pos = f.tell()
-        line = f.readline()
-        line = line_strip(line)
-        if line in (
-                CommonNames.empty,
-                CommonNames.internal,
-                CommonNames.external,
-                CommonNames.constant
-        ):
-            f.seek(pos, 0)
-            break
-        elif CommonNames.internal in line or CommonNames.external in line \
-                or CommonNames.constant in line:
-            f.seek(pos, 0)
-            break
-        astr.append(line)
-
-    astr = StringIO(" ".join(astr))
-    array = np.genfromtxt(astr).ravel()
-    return array
-
-
-class NumpyArrayMixin:
+class NumPyArrayMixin:
     """
     Provides NumPy interoperability for `MFArray` implementations.
     This mixin makes an `MFArray` behave like a NumPy `ndarray`.
@@ -49,9 +21,6 @@ class NumpyArrayMixin:
     - https://numpy.org/doc/stable/user/basics.ufuncs.html#ufuncs-basics
 
     """
-    def __init__(self):
-        self._flat = None
-        self._layered = None
 
     def __iadd__(self, other):
         if self._layered:
@@ -184,16 +153,46 @@ class NumpyArrayMixin:
         return np.nansum(self.values)
 
 
-class NumPyBackedArray(NumpyArrayMixin, MFArray):
+class MFArrayType(Enum):
+    """
+    How a MODFLOW 6 input array is represented in an input file.
+
+    """
+
+    internal = "INTERNAL"
+    constant = "CONSTANT"
+    external = "OPEN/CLOSE"
+
+    @classmethod
+    def to_string(cls, how):
+        return cls(how).value
+
+    @classmethod
+    def from_string(cls, string):
+        for e in MFArrayType:
+            if string.upper() == e.value:
+                return e
+
+
+class MFArray(MFParameter, NumPyArrayMixin):
     """
     A MODFLOW 6 array backed by a 1-dimensional NumPy array,
-    which is reshaped as needed for various views. Supports 
+    which is reshaped as needed for various views. Supports
     array indexing as well as standard NumPy array ufuncs.
     """
 
-    def __init__(self, array, shape, how, factor=None, layered=False):
-        super().__init__()
-        self._flat = array
+    def __init__(
+        self,
+        array,
+        shape,
+        description=None,
+        optional=True,
+        how=MFArrayType.internal,
+        factor=None,
+        layered=False,
+    ):
+        MFParameter().__init__(description, optional)
+        self._value = array
         self._shape = shape
         self._how = how
         self._factor = factor
@@ -210,7 +209,7 @@ class NumPyBackedArray(NumpyArrayMixin, MFArray):
         -------
 
         """
-        return self.raw_values[item]
+        return self.raw[item]
 
     def __setitem__(self, key, value):
         """
@@ -224,25 +223,25 @@ class NumPyBackedArray(NumpyArrayMixin, MFArray):
         -------
 
         """
-        values = self.raw_values
+        values = self.raw
         values[key] = value
         if self._layered:
-            for ix, mfa in enumerate(self._flat):
+            for ix, mfa in enumerate(self._value):
                 mfa[:] = values[ix]
             return
 
         values = values.ravel()
-        if self._how == How.constant:
+        if self._how == MFArrayType.constant:
             if not np.allclose(values, values[0]):
-                self._how = How.internal
-                self._flat = values
+                self._how = MFArrayType.internal
+                self._value = values
             else:
-                self._flat = values[0]
+                self._value = values[0]
         else:
-            self._flat = values
+            self._value = values
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-        raw = self.raw_values
+        raw = self.raw
         if len(inputs) == 1:
             result = raw.__array_ufunc__(ufunc, method, raw, **kwargs)
         else:
@@ -261,6 +260,67 @@ class NumPyBackedArray(NumpyArrayMixin, MFArray):
         tmp = [None for _ in self._shape]
         self.__setitem__(slice(*tmp), result)
         return self
+
+    @property
+    def value(self) -> np.ndarray:
+        """
+        Return the array.
+        """
+        if self._layered:
+            arr = []
+            for mfa in self._value:
+                arr.append(mfa.values)
+            return np.array(arr)
+
+        if self._how == MFArrayType.constant:
+            return np.ones(self._shape) * self._value * self.factor
+        else:
+            return self._value.reshape(self._shape) * self.factor
+
+    @property
+    def raw(self):
+        """
+        Return the array without multiplying by `self.factor`.
+        """
+        if self._layered:
+            arr = []
+            for mfa in self._value:
+                arr.append(mfa.raw_values)
+            return np.array(arr)
+
+        if self._how == MFArrayType.constant:
+            return np.ones(self._shape) * self._value
+        else:
+            return self._value.reshape(self._shape)
+
+    @property
+    def factor(self) -> Optional[float]:
+        """
+        Optional factor by which to multiply array elements.
+        """
+        if self._layered:
+            factor = [mfa.factor for mfa in self._value]
+            return factor
+
+        factor = self._factor
+        if self._factor is None:
+            factor = 1.0
+        return factor
+
+    @property
+    def how(self):
+        """
+        How the array is to be written to the input file.
+        """
+        if self._layered:
+            how = [mfa.how for mfa in self._value]
+            return how
+
+        return self._how
+
+    def write(self, f):
+        # todo
+        pass
 
     @classmethod
     def load(cls, f, cwd, shape, layered=False):
@@ -282,12 +342,12 @@ class NumPyBackedArray(NumpyArrayMixin, MFArray):
                 mfa = cls._load(f, cwd, lay_shape)
                 objs.append(mfa)
 
-            mfa = NumPyBackedArray(
+            mfa = MFArray(
                 np.array(objs, dtype=object),
                 shape,
                 how=None,
                 factor=None,
-                layered=True
+                layered=True,
             )
 
         else:
@@ -317,13 +377,13 @@ class NumPyBackedArray(NumpyArrayMixin, MFArray):
             control_line.pop(idx + 1)
             control_line.pop(idx)
 
-        how = How.from_string(control_line[0])
+        how = MFArrayType.from_string(control_line[0])
         clpos = 1
 
-        if how == How.internal:
-            array = f_to_array(f)
+        if how == MFArrayType.internal:
+            array = cls.read_array(f)
 
-        elif how == How.constant:
+        elif how == MFArrayType.constant:
             array = float(control_line[clpos])
             clpos += 1
 
@@ -331,7 +391,7 @@ class NumPyBackedArray(NumpyArrayMixin, MFArray):
             ext_path = Path(control_line[clpos])
             fpath = cwd / ext_path
             with open(fpath) as foo:
-                array = f_to_array(foo)
+                array = cls.read_array(foo)
             clpos += 1
 
         else:
@@ -341,5 +401,38 @@ class NumPyBackedArray(NumpyArrayMixin, MFArray):
         if len(control_line) > 2:
             factor = float(control_line[clpos + 1])
 
-        mfa = NumPyBackedArray(array, shape, how, factor=factor)
+        mfa = cls(array, shape, how, factor=factor)
         return mfa
+
+    @staticmethod
+    def read_array(f):
+        """
+        Read a MODFLOW 6 array from an open file
+        into a flat NumPy array representation.
+        """
+
+        astr = []
+        while True:
+            pos = f.tell()
+            line = f.readline()
+            line = line_strip(line)
+            if line in (
+                CommonNames.empty,
+                CommonNames.internal,
+                CommonNames.external,
+                CommonNames.constant,
+            ):
+                f.seek(pos, 0)
+                break
+            elif (
+                CommonNames.internal in line
+                or CommonNames.external in line
+                or CommonNames.constant in line
+            ):
+                f.seek(pos, 0)
+                break
+            astr.append(line)
+
+        astr = StringIO(" ".join(astr))
+        array = np.genfromtxt(astr).ravel()
+        return array

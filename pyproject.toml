@@ -38,7 +38,8 @@ requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.20.3",
     "pandas>=2.0.0",
-    "flopy>=3.7.0"
+    "flopy>=3.7.0",
+    "Jinja2>=3.0"
 ]
 dynamic = ["version"]
 
@@ -91,4 +92,5 @@ select = [
 ]
 ignore = [
     "F821", # undefined name TODO FIXME
+    "E722"  # do not use bare `except`
 ]
