@@ -6,23 +6,23 @@ from flopy4.utils import strip
 
 
 class MFScalar(MFParameter):
-    @abstractmethod  # https://stackoverflow.com/a/44800925/6514033
-    def __init__(self, name=None, description=None, optional=False):
-        super().__init__(name, description, optional)
-    
+    @abstractmethod
+    def __init__(
+        self, name=None, longname=None, description=None, optional=False
+    ):
+        super().__init__(name, longname, description, optional)
+
 
 class MFKeyword(MFScalar):
-    def __init__(self, name=None, description=None, optional=False):
-        super().__init__(name, description, optional)
+    def __init__(
+        self, name=None, longname=None, description=None, optional=False
+    ):
+        super().__init__(name, longname, description, optional)
         self._value = False
 
     @property
     def value(self):
         return self._value
-
-    @value.setter
-    def value(self, value):
-        self._value = value
 
     @classmethod
     def load(cls, f, metadata=None):
@@ -34,90 +34,78 @@ class MFKeyword(MFScalar):
             raise ValueError("Keyword may not contain spaces")
 
         scalar = cls(name=line, **metadata)
-        scalar.value = True
+        scalar._value = True
         return scalar
-    
+
     def write(self, f):
         if self.value:
-            f.write(self.name.upper() + "\n")
+            f.write(f"{self.name.upper()}\n")
 
 
 class MFInteger(MFScalar):
-    def __init__(self, name=None, description=None, optional=False):
-        super().__init__(name, description, optional)
+    def __init__(
+        self, name=None, longname=None, description=None, optional=False
+    ):
+        super().__init__(name, longname, description, optional)
         self._value = 0
 
     @property
     def value(self):
         return self._value
 
-    @value.setter
-    def value(self, value):
-        self._value = value
-
     @classmethod
     def load(cls, f):
         line = strip(f.readline()).lower()
         words = line.split()
 
         if len(words) != 2:
-            raise ValueError(
-                "Expected space-separated: "
-                "1) keyword, "
-                "2) value")
+            raise ValueError("Expected space-separated: 1) keyword, 2) value")
 
         scalar = cls(name=words[0])
-        scalar.value = int(words[1])
+        scalar._value = int(words[1])
         return scalar
-    
+
     def write(self, f):
-        f.write(f"{self.name.upper()} {self.value} \n")
+        f.write(f"{self.name.upper()} {self.value}\n")
 
 
 class MFDouble(MFScalar):
-    def __init__(self, name=None, description=None, optional=False):
-        super().__init__(name, description, optional)
+    def __init__(
+        self, name=None, longname=None, description=None, optional=False
+    ):
+        super().__init__(name, longname, description, optional)
         self._value = 0.0
 
     @property
     def value(self):
         return self._value
 
-    @value.setter
-    def value(self, value):
-        self._value = value
-
     @classmethod
     def load(cls, f):
         line = strip(f.readline()).lower()
         words = line.split()
 
         if len(words) != 2:
-            raise ValueError(
-                "Expected space-separated: "
-                "1) keyword, "
-                "2) value")
+            raise ValueError("Expected space-separated: 1) keyword, 2) value")
 
         scalar = cls(name=words[0])
-        scalar.value = float(words[1])
+        scalar._value = float(words[1])
         return scalar
 
     def write(self, f):
-        f.write(f"{self.name.upper()} {self.value} \n")
+        f.write(f"{self.name.upper()} {self.value}\n")
 
 
 class MFString(MFScalar):
-    def __init__(self, name=None, description=None, optional=False):
-        super().__init__(name, description, optional)
+    def __init__(
+        self, name=None, longname=None, description=None, optional=False
+    ):
+        super().__init__(name, longname, description, optional)
         self._value = None
-    
+
     @property
     def value(self):
         return self._value
-
-    @value.setter
-    def value(self, value):
-        self._value = value
 
     @classmethod
     def load(cls, f):
@@ -125,31 +113,26 @@ class MFString(MFScalar):
         words = line.split()
 
         if len(words) != 2:
-            raise ValueError(
-                "Expected space-separated: "
-                "1) keyword, "
-                "2) value")
+            raise ValueError("Expected space-separated: 1) keyword, 2) value")
 
         scalar = cls(name=words[0])
-        scalar.value = words[1]
+        scalar._value = words[1]
         return scalar
 
     def write(self, f):
-        f.write(f"{self.name.upper()} {self.value} \n")
+        f.write(f"{self.name.upper()} {self.value}\n")
 
 
 class MFFilename(MFScalar):
-    def __init__(self, name=None, description=None, optional=False):
-        super().__init__(name, description, optional)
+    def __init__(
+        self, name=None, longname=None, description=None, optional=False
+    ):
+        super().__init__(name, longname, description, optional)
         self._value = None
-    
+
     @property
     def value(self):
         return self._value
-
-    @value.setter
-    def value(self, value):
-        self._value = value
 
     @classmethod
     def load(cls, f):
@@ -161,11 +144,12 @@ class MFFilename(MFScalar):
                 "Expected space-separated: "
                 "1) keyword, "
                 "2) FILEIN or FILEOUT, "
-                "3) file path")
+                "3) file path"
+            )
 
         scalar = cls(name=words[0].lower())
-        scalar.value = Path(words[2])
+        scalar._value = Path(words[2])
         return scalar
 
     def write(self, f):
-        f.write(f"{self.name.upper()} {self.value} \n")
+        f.write(f"{self.name.upper()} {self.value}\n")

@@ -167,3 +167,6 @@ misc
     - alternative to full-fledged OIM: data access object pattern
         - https://en.wikipedia.org/wiki/Data_access_object
         - encapsulate input data without exposing input format details
+- how to implement multiple backends (input file formats)
+    - define blocks in terms of native python types?
+    - dynamically bind

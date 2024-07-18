@@ -1,9 +1,0 @@
-from flopy4.package import MFPackage
-
-
-class {{ model_abbr }}(MFPackage):
-    {% block options %}{% endblock %}
-    {% block packages %}{% endblock %}
-
-    def __init__(self, {% for param in params %}{% endfor %}):
-        {% for param in params %}self.{{ param }} = {{ param }}{% endfor %}

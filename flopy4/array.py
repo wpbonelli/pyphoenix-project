@@ -185,13 +185,15 @@ class MFArray(MFParameter, NumPyArrayMixin):
         self,
         array,
         shape,
-        description=None,
-        optional=True,
         how=MFArrayType.internal,
         factor=None,
         layered=False,
+        name=None,
+        longname=None,
+        description=None,
+        optional=True,
     ):
-        MFParameter().__init__(description, optional)
+        MFParameter().__init__(name, longname, description, optional)
         self._value = array
         self._shape = shape
         self._how = how
@@ -199,30 +201,9 @@ class MFArray(MFParameter, NumPyArrayMixin):
         self._layered = layered
 
     def __getitem__(self, item):
-        """
-
-        Parameters
-        ----------
-        item
-
-        Returns
-        -------
-
-        """
         return self.raw[item]
 
     def __setitem__(self, key, value):
-        """
-
-        Parameters
-        ----------
-        key
-        value
-
-        Returns
-        -------
-
-        """
         values = self.raw
         values[key] = value
         if self._layered:

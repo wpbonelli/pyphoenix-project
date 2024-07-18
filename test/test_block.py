@@ -1,11 +1,9 @@
-from flopy4.array import MFArray
-from flopy4.block import MFBlock, MFBlocks, get_member_params
-from flopy4.list import MFList
-from flopy4.scalar import MFKeyword, MFInteger, MFDouble, MFString, MFFilename
+from flopy4.block import MFBlock, get_member_params
+from flopy4.scalar import MFDouble, MFFilename, MFInteger, MFKeyword, MFString
 
 
 class TestBlock(MFBlock):
-    __test__ = False # tell pytest not to collect
+    __test__ = False  # tell pytest not to collect
 
     k = MFKeyword(description="keyword")
     i = MFInteger(description="int")
@@ -61,10 +59,10 @@ def test_block_load_no_index(tmp_path):
     fpth = tmp_path / f"{name}.txt"
     with open(fpth, "w") as f:
         f.write(f"BEGIN {name.upper()}\n")
-        f.write(f"  K\n")
-        f.write(f"  I 1\n")
-        f.write(f"  D 1.0\n")
-        f.write(f"  S value\n")
+        f.write("  K\n")
+        f.write("  I 1\n")
+        f.write("  D 1.0\n")
+        f.write("  S value\n")
         f.write(f"  F {fpth}\n")
         f.write(f"END {name.upper()}\n")
 
@@ -72,7 +70,7 @@ def test_block_load_no_index(tmp_path):
         block = TestBlock.load(f)
         assert block.k
         assert block.i == 1
-        assert block.d == 1.
+        assert block.d == 1.0
         assert block.s == "value"
         assert block.f == fpth
 

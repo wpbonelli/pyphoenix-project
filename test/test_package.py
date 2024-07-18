@@ -3,11 +3,12 @@ from flopy4.package import MFPackage, get_member_blocks
 
 
 class TestPackage(MFPackage):
-    __test__ = False # tell pytest not to collect
+    __test__ = False  # tell pytest not to collect
 
     options = MFBlock()
     package = MFBlock()
     periods = MFBlocks()
+
 
 def test_get_member_blocks():
     blocks = get_member_blocks(TestPackage)

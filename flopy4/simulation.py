@@ -1,9 +1,10 @@
+from abc import ABC
 from pathlib import Path
 
 from flopy4.model import MFModels
 
 
-class MFSimulation:
+class MFSimulationBase(ABC):
     @property
     def workspace(self) -> Path:
         pass

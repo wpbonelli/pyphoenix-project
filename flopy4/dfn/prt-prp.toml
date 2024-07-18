@@ -1,0 +1,99 @@
+[options]
+[options.boundnames]
+type = "boolean"
+
+[options.print_input]
+type = "boolean"
+
+[options.dev_exit_solve_method]
+type = "integer"
+
+[options.exit_solve_tolerance]
+type = "double"
+
+[options.local_z]
+type = "boolean"
+
+[options.extend_tracking]
+type = "boolean"
+
+[options.track_file]
+type = "path"
+
+[options.trackcsv_file]
+type = "path"
+
+[options.stoptime]
+type = "double"
+
+[options.stoptraveltime]
+type = "double"
+
+[options.stop_at_weak_sink]
+type = "boolean"
+
+[options.istopzone]
+type = "integer"
+
+[options.drape]
+type = "boolean"
+
+[options.release_times]
+type = "double"
+repeat = true
+
+[options.release_times_file]
+type = "path"
+
+[options.dev_force_ternary]
+type = "boolean"
+
+[dimensions]
+[dimensions.nreleasepts]
+type = "integer"
+
+[packagedata]
+type = "table"
+
+[packagedata.fields]
+[packagedata.fields.irptno]
+type = "integer"
+optional = false
+
+[packagedata.fields.cellid]
+type = "integer"
+repeat = true
+optional = false
+
+[packagedata.fields.xrpt]
+type = "double"
+optional = false
+
+[packagedata.fields.yrpt]
+type = "double"
+optional = false
+
+[packagedata.fields.zrpt]
+type = "double"
+optional = false
+
+[packagedata.fields.boundname]
+type = "str"
+
+[period]
+type = "compound"
+repeat = true
+
+[period.fields]
+[period.fields.all]
+type = "boolean"
+
+[period.fields.first]
+type = "boolean"
+
+[period.fields.frequency]
+type = "integer"
+
+[period.fields.steps]
+type = "integer"
+repeat = true

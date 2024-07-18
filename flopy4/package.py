@@ -9,7 +9,7 @@ def get_member_blocks(cls) -> Dict[str, MFBlock]:
     return {
         k: v
         for k, v in cls.__dict__.items()
-        if issubclass(type(v), MFBlock) or issubclass(type(v), MFBlocks)
+        if issubclass(type(v), (MFBlock, MFBlocks))
     }
 
 

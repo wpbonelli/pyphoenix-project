@@ -1,5 +1,6 @@
 from abc import ABCMeta
 from collections.abc import MutableMapping
+from dataclasses import asdict
 from typing import Dict
 
 from flopy4.parameter import MFParameter
@@ -15,7 +16,7 @@ def get_member_params(cls) -> Dict[str, MFParameter]:
         for k, v in cls.__dict__.items()
         if issubclass(type(v), MFParameter)
     }
-        
+
 
 class MFBlockMeta(type):
     def __new__(cls, clsname, bases, attrs):
@@ -33,10 +34,12 @@ class MFBlockMappingMeta(MFBlockMeta, ABCMeta):
 
 class MFBlock(MutableMapping, metaclass=MFBlockMappingMeta):
     def __init__(self, name=None, index=None, *args, **kwargs):
-        self._name = name
-        self._index = index
+        self.name = name
+        self.index = index
         self._params = dict()
         self.update(dict(*args, **kwargs))
+        for key, param in self.items():
+            setattr(self, key, param)
 
     def __getitem__(self, key):
         return self._params[key]
@@ -53,45 +56,33 @@ class MFBlock(MutableMapping, metaclass=MFBlockMappingMeta):
     def __len__(self):
         return len(self._params)
 
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def index(self):
-        return self._index
-
     @classmethod
     def load(cls, f):
         name = None
         index = None
-        active = False
+        found = False
         params = dict()
         members = get_member_params(cls)
         while True:
             pos = f.tell()
             line = strip(f.readline()).lower()
             words = line.split(" ")
-            key = words[0]
-
-            if active:
-                if key in members:
-                    f.seek(pos)
-                    param = members[key]
-                    param = type(param).load(f, metadata=param.metadata)
-                    params[key] = param
-                elif key == "end":
-                    break
-            elif key == "begin":
+            keyword = words[0]
+            if keyword == "begin":
+                found = True
                 name = words[1]
                 if len(words) > 2 and str.isdigit(words[2]):
                     index = words[2]
-                active = True
+            elif found:
+                if keyword in members:
+                    f.seek(pos)
+                    param = members[keyword]
+                    param = type(param).load(f, **asdict(param.spec))
+                    params[keyword] = param
+            elif keyword == "end":
+                break
 
-        block = cls(name, index, **params)
-        for key, param in params.items():
-            setattr(block, key, param)
-        return block
+        return cls(name, index, **params)
 
     def write(self, f):
         pass

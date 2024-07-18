@@ -1,0 +1,71 @@
+options:
+  boundnames:
+    type: boolean
+  print_input:
+    type: boolean
+  dev_exit_solve_method:
+    type: integer
+  exit_solve_tolerance:
+    type: double
+  local_z:
+    type: boolean
+  extend_tracking:
+    type: boolean
+  track_file:
+    type: path
+  trackcsv_file:
+    type: path
+  stoptime:
+    type: double
+  stoptraveltime:
+    type: double
+  stop_at_weak_sink:
+    type: boolean
+  istopzone:
+    type: integer
+  drape:
+    type: boolean
+  release_times:
+    type: double
+    repeat: true
+  release_times_file:
+    type: path
+  dev_force_ternary:
+    type: boolean
+dimensions:
+  nreleasepts:
+    type: integer
+packagedata:
+  type: table
+  fields:
+    irptno:
+      type: integer
+      optional: false
+    cellid:
+      type: integer
+      repeat: true
+      optional: false
+    xrpt:
+      type: double
+      optional: false
+    yrpt:
+      type: double
+      optional: false
+    zrpt:
+      type: double
+      optional: false
+    boundname:
+      type: str
+period:
+  type: compound
+  repeat: true
+  fields:
+    all:
+      type: boolean
+    first:
+      type: boolean
+    frequency:
+      type: integer
+    steps:
+      type: integer
+      repeat: true
