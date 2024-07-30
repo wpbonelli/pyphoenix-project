@@ -2,30 +2,32 @@ from pathlib import Path
 
 from conftest import PROJ_ROOT_PATH
 
-from flopy4.dfn import Dfn, DfnSet
+from flopy4.dfn import DFN, DFNs
 
 
-class TestDfn(Dfn):
-    __test__ = False  # tell pytest not to collect
-
-
-def test_dfn_load(tmp_path):
+def test_dfn_load():
     key = "prt-prp"
 
-    f = Path(PROJ_ROOT_PATH / "spec" / "toml" / f"{key}.toml")
-    dfn = Dfn.load(f.absolute(), {})
+    fpth = Path(PROJ_ROOT_PATH / "spec" / "dfn" / f"{key}.dfn")
+    with open(fpth, "r") as f:
+        dfn = DFN.load(f)
 
     assert dfn.component == "prt"
     assert dfn.subcomponent == "prp"
-    assert type(dfn.dfn) is dict
-    assert len(dfn) == 4
-    assert dfn.blocknames == ["options", "dimensions", "packagedata", "period"]
+    assert type(dfn.data) is dict
+    assert len(dfn) == 41
+    assert list(dfn.blocks.keys()) == [
+        "options",
+        "dimensions",
+        "packagedata",
+        "period",
+    ]
 
-    for b in dfn.blocknames:
+    for b in dfn.blocks.keys():
         block_d = dfn[b]
         assert type(block_d) is dict
 
-    assert list(dfn.blocktags("options")) == [
+    assert list(dfn.keys()) == [
         "boundnames",
         "print_input",
         "dev_exit_solve_method",
@@ -53,7 +55,7 @@ def test_dfn_load(tmp_path):
         "dev_forceternary",
     ]
 
-    assert dfn.param("options", "drape") == {
+    assert dfn["drape"] == {
         "type": "keyword",
         "block_variable": False,
         "valid": [],
@@ -76,19 +78,16 @@ def test_dfn_load(tmp_path):
     }
 
 
-def test_dfn_container(tmp_path):
+def test_dfns():
     key = "prt-prp"
-
-    f = Path(PROJ_ROOT_PATH / "spec" / "toml" / f"{key}.toml")
-    dfn = Dfn.load(f.absolute(), {})
-
-    dfns = DfnSet()
-    assert len(dfns) == 0
-    dfns.add(key, dfn)
+    fpth = Path(PROJ_ROOT_PATH / "spec" / "dfn" / f"{key}.dfn")
+    with open(fpth, "r") as f:
+        dfn = DFN.load(f)
+    dfns = DFNs({dfn.name: dfn})
     assert len(dfns) == 1
 
     d = dfns[key]
-    assert type(d) is Dfn
+    assert type(d) is DFN
     assert d is dfn
     assert d.component == "prt"
     assert d.subcomponent == "prp"

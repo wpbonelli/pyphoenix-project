@@ -185,7 +185,7 @@ class MFArray(MFParam, NumPyArrayMixin):
     def __init__(
         self,
         shape,
-        array=None,
+        value=None,
         how=MFArrayType.internal,
         factor=None,
         block=None,
@@ -224,11 +224,14 @@ class MFArray(MFParam, NumPyArrayMixin):
             shape=shape,
             default_value=default_value,
         )
-        self._value = array
-        self._shape = shape
+        self._value = value
+        self.shape = property(fget=self._get_shape, doc="The array's shape.")
         self._how = how
         self._factor = factor
         self._path = path
+
+    def _get_shape(self):
+        pass
 
     def __getitem__(self, item):
         return self.raw[item]
@@ -262,13 +265,13 @@ class MFArray(MFParam, NumPyArrayMixin):
         if not isinstance(result, np.ndarray):
             raise NotImplementedError(f"{str(ufunc)} has not been implemented")
 
-        if result.shape != self._shape:
+        if result.shape != self.shape:
             raise AssertionError(
                 f"{str(ufunc)} is not supported for inplace operations on "
                 f"MFArray objects"
             )
 
-        tmp = [None for _ in self._shape]
+        tmp = [None for _ in self.shape]
         self.__setitem__(slice(*tmp), result)
         return self
 
@@ -287,9 +290,9 @@ class MFArray(MFParam, NumPyArrayMixin):
             return np.array(arr)
 
         if self._how == MFArrayType.constant:
-            return np.ones(self._shape) * self._value * self.factor
+            return np.ones(self.shape) * self._value * self.factor
         else:
-            return self._value.reshape(self._shape) * self.factor
+            return self._value.reshape(self.shape) * self.factor
 
     @value.setter
     def value(self, value: Optional[np.ndarray]):
@@ -315,9 +318,9 @@ class MFArray(MFParam, NumPyArrayMixin):
             return np.array(arr)
 
         if self._how == MFArrayType.constant:
-            return np.ones(self._shape) * self._value
+            return np.ones(self.shape) * self._value
         else:
-            return self._value.reshape(self._shape)
+            return self._value.reshape(self.shape)
 
     @property
     def factor(self) -> Optional[float]:
@@ -440,7 +443,7 @@ class MFArray(MFParam, NumPyArrayMixin):
 
             return MFArray(
                 shape,
-                array=np.array(objs, dtype=object),
+                value=np.array(objs, dtype=object),
                 how=None,
                 factor=None,
                 name=name,

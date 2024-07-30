@@ -45,7 +45,9 @@ class MFCompound(MFParam, MFParams):
         shape=None,
         default_value=None,
     ):
-        MFParams.__init__(self, {k: p.with_name(k) for k, p in params.items()})
+        MFParams.__init__(
+            self, params={k: p.with_name(k) for k, p in params.items()}
+        )
         MFParam.__init__(
             self,
             block,

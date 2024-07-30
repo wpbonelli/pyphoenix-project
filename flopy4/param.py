@@ -1,10 +1,9 @@
 from abc import abstractmethod
-from ast import literal_eval
 from collections import OrderedDict, UserDict
 from dataclasses import dataclass, fields
 from io import StringIO
 from pprint import pformat
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from flopy4.constants import MFReader
 
@@ -29,9 +28,7 @@ class MFParamSpec:
     repeating: bool = False
     tagged: bool = True
     reader: MFReader = MFReader.urword
-    # todo change to variadic tuple of str and resolve
-    # actual shape at load time from simulation context
-    shape: Optional[Tuple[int]] = None
+    shape: Optional[Tuple[str, ...]] = None
     default_value: Optional[Any] = None
 
     @classmethod
@@ -52,9 +49,16 @@ class MFParamSpec:
         Load an MF6 input input parameter specification
         from a definition file.
         """
+        # todo: also support toml?
+        return cls._load_dfn(f)
+
+    @classmethod
+    def _load_dfn(cls, f):
         spec = dict()
         members = cls.fields()
-        keywords = [f.name for f in members if f.type is bool]
+
+        # find keyword fields
+        keywords = [m.name for m in members if m.type == "keyword"]
 
         while True:
             line = f.readline()
@@ -68,7 +72,9 @@ class MFParamSpec:
             elif key == "reader":
                 spec[key] = MFReader.from_str(val)
             elif key == "shape":
-                spec[key] = literal_eval(val)
+                spec[key] = tuple(
+                    val.replace("(", "").replace(")", "").split(",")
+                )
             else:
                 spec[key] = val
 
@@ -160,14 +166,17 @@ class MFParam(MFParamSpec):
         return buffer.getvalue()
 
     def __eq__(self, other):
-        if not isinstance(other, MFParam):
-            raise TypeError(f"Expected MFParam, got {type(other)}")
-        return self.value == other.value
+        if isinstance(other, MFParam):
+            return self.value == other.value
+        try:
+            return self.value == other
+        except:
+            return False
 
     @property
     @abstractmethod
     def value(self) -> Optional[Any]:
-        """Get the parameter's value, if loaded."""
+        """Get the parameter's value."""
         pass
 
     @abstractmethod
@@ -183,7 +192,7 @@ class MFParams(UserDict):
     """
 
     def __init__(self, params=None):
-        MFParams.assert_params(params)
+        MFParams.check(params)
         super().__init__(params)
         for key, param in self.items():
             setattr(self, key, param)
@@ -192,25 +201,27 @@ class MFParams(UserDict):
         return pformat(self.data)
 
     def __eq__(self, other):
-        if not isinstance(other, MFParams):
-            raise TypeError(f"Expected MFParams, got {type(other)}")
-        return OrderedDict(sorted(self.value)) == OrderedDict(
-            sorted(other.value)
-        )
+        tother = type(other)
+        if issubclass(tother, MFParams):
+            other = other.value
+        if issubclass(tother, Mapping):
+            return OrderedDict(sorted(self.value)) == OrderedDict(
+                sorted(other)
+            )
+        return False
 
     @staticmethod
-    def assert_params(params):
+    def check(items):
         """
-        Raise an error if any of the given items are not
-        subclasses of `MFParam`.
+        Raise if any items are not instances of `MFParam` or subclasses.
         """
-        if not params:
+        if not items:
             return
-        elif isinstance(params, dict):
-            params = params.values()
+        elif isinstance(items, dict):
+            items = items.values()
         not_params = [
             p
-            for p in params
+            for p in items
             if p is not None and not issubclass(type(p), MFParam)
         ]
         if any(not_params):
@@ -229,7 +240,7 @@ class MFParams(UserDict):
             return
 
         params = value.copy()
-        MFParams.assert_params(params)
+        MFParams.check(params)
         self.update(params)
         for key, param in self.items():
             setattr(self, key, param)

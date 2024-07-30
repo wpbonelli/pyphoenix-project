@@ -1,27 +1,29 @@
 from abc import ABCMeta
+from collections import OrderedDict, UserDict
 from io import StringIO
 from itertools import groupby
+from pathlib import Path
 from pprint import pformat
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
-from flopy4.block import MFBlock, MFBlockMeta, MFBlocks
+import flopy4.idm as idm
+from flopy4.block import MFBlock, MFBlocks, get_block
 from flopy4.param import MFParam, MFParams
 from flopy4.utils import strip
 
 
-def get_block(pkg_name, block_name, params):
+def get_package(model_name, pkg_name):
     """
-    Dynamically subclass `MFBlock`. The class' name is composed from
-    the given package and block name. The class will have attributes
-    according to the given parameter specification; parameter values
-    are not yet initialized.
+    Select a subclass of `MFPackage` for the given model and
+    package name. Raise an error if the component is unknown.
     """
-    cls = MFBlockMeta(
-        f"{pkg_name.title()}{block_name.title()}Block",
-        (MFBlock,),
-        params.copy(),
-    )
-    return cls(name=block_name, params=params)
+
+    for cls in idm.find_components():
+        name = f"{model_name.title()}{pkg_name.title()}"
+        if cls.__name__ == name:
+            return cls(name=name)
+
+    raise ValueError(f"Unknown component: {model_name}-{pkg_name}")
 
 
 class MFPackageMeta(type):
@@ -32,7 +34,7 @@ class MFPackageMeta(type):
         # detect package name
         pkg_name = clsname.replace("Package", "")
 
-        # add class attributes for the package parameter specification.
+        # add class attributes for the parameter specification.
         # dynamically set each parameter's name and docstring.
         params = dict()
         for attr_name, attr in attrs.items():
@@ -42,15 +44,15 @@ class MFPackageMeta(type):
                 attrs[attr_name] = attr
                 params[attr_name] = attr
 
-        # add class attributes for the package block specification.
-        # subclass `MFBlock` dynamically with class name and params
+        # add class attributes for the block specification.
+        # subclass `MFBlock` dynamically with name/params
         # as given in the block parameter specification.
         blocks = dict()
         for block_name, block_params in groupby(
             params.values(), lambda p: p.block
         ):
             block = get_block(
-                pkg_name=pkg_name,
+                component_name=pkg_name,
                 block_name=block_name,
                 params={param.name: param for param in block_params},
             )
@@ -70,13 +72,13 @@ class MFPackageMappingMeta(MFPackageMeta, ABCMeta):
 
 class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
     """
-    MF6 component package. Maps block names to blocks.
+    MF6 package. Maps block names to blocks.
 
 
     Notes
     -----
     Subclasses are generated from Jinja2 templates to
-    match packages as specified by definition files.
+    match models/packages specified in definition files.
 
 
     TODO: reimplement with `ChainMap`?
@@ -85,9 +87,11 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
     def __init__(
         self,
         name: Optional[str] = None,
+        path: Optional[Path] = None,
         blocks: Optional[Dict[str, Dict]] = None,
     ):
         self.name = name
+        self.path = path
         super().__init__(blocks=blocks)
 
     def __getattribute__(self, name: str) -> Any:
@@ -122,8 +126,6 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
         return buffer.getvalue()
 
     def __eq__(self, other):
-        if not isinstance(other, MFPackage):
-            raise TypeError(f"Expected MFPackage, got {type(other)}")
         return super().__eq__(other)
 
     def _get_params(self) -> Dict[str, MFParam]:
@@ -142,7 +144,7 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
         }
 
     @property
-    def value(self):
+    def value(self) -> Dict[str, Dict[str, Any]]:
         """
         Get a dictionary of package block values. This is a
         nested mapping of block names to blocks, where each
@@ -152,23 +154,22 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
         return MFBlocks.value.fget(self)
 
     @value.setter
-    def value(self, value):
+    def value(self, value: Optional[Dict[str, Dict[str, Any]]]):
         """
         Set package block values from a nested dictionary,
         where each block value is a mapping of parameter
         names to parameter values.
         """
 
-        if value is None or not any(value):
+        if not value:
             return
 
-        # coerce the block mapping to the spec and set defaults
         blocks = type(self).coerce(value.copy(), set_default=True)
         MFBlocks.value.fset(self, blocks)
 
     @classmethod
     def coerce(
-        cls, blocks: Dict[str, MFBlock], set_default: bool = False
+        cls, blocks: Mapping[str, MFBlock], set_default: bool = False
     ) -> Dict[str, MFBlock]:
         """
         Check that the dictionary contains only known blocks,
@@ -184,9 +185,6 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
             block = type(block).coerce(block, set_default=set_default)
             known[block_name] = block
 
-        # raise an error if we have any unrecognized blocks.
-        # `MFPackage` strictly disallows unrecognized blocks.
-        # for an arbitrary block collection, use `MFBlocks`.
         if any(blocks):
             raise ValueError(f"Unrecognized blocks:\n{pformat(blocks)}")
 
@@ -221,3 +219,70 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
     def write(self, f, **kwargs):
         """Write the package to file."""
         super().write(f, **kwargs)
+
+
+class MFPackages(UserDict):
+    """
+    Mapping of package names to packages. Acts like a
+    dictionary, also supports named attribute access.
+    """
+
+    def __init__(self, blocks=None):
+        MFPackages.check(blocks)
+        super().__init__(blocks)
+        for key, block in self.items():
+            setattr(self, key, block)
+
+    def __repr__(self):
+        return pformat(self.data)
+
+    def __eq__(self, other):
+        tother = type(other)
+        if issubclass(tother, MFPackages):
+            other = other.value
+        if issubclass(tother, Mapping):
+            return OrderedDict(sorted(self.value)) == OrderedDict(
+                sorted(other)
+            )
+        return False
+
+    @staticmethod
+    def check(items):
+        """
+        Raise if any items are not instances of `MFPackage` or subclasses.
+        """
+        if not items:
+            return
+        elif isinstance(items, dict):
+            items = items.values()
+        not_pkgs = [
+            b
+            for b in items
+            if b is not None and not issubclass(type(b), MFBlock)
+        ]
+        if any(not_pkgs):
+            raise TypeError(f"Expected MFPackage subclasses, got {not_pkgs}")
+
+    @property
+    def value(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """
+        Get a nested dictionary of package values. This is a
+        nested mapping of package names to packages, where
+        packages map package names to package values. Each
+        package value is itself a nested mapping of blocks,
+        each of which maps parameter names to param values.
+        """
+        return {k: v.value for k, v in self.items()}
+
+    @value.setter
+    def value(self, value: Optional[Dict[str, Dict[str, Dict[str, Any]]]]):
+        """Set package values from a nested dictionary."""
+
+        if not value:
+            return
+
+        pkgs = value.copy()
+        MFPackages.check(pkgs)
+        self.update(pkgs)
+        for key, pkg in self.items():
+            setattr(self, key, pkg)

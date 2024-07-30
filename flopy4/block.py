@@ -3,13 +3,28 @@ from collections import OrderedDict, UserDict
 from dataclasses import asdict
 from io import StringIO
 from pprint import pformat
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 from flopy4.array import MFArray
 from flopy4.compound import MFKeystring, MFRecord, get_keystrings
-from flopy4.param import MFParam, MFParams
+from flopy4.param import MFParam, MFParams, MFParamSpec
 from flopy4.scalar import MFScalar
 from flopy4.utils import find_upper, strip
+
+
+def get_block(component_name, block_name, params):
+    """
+    Dynamically subclass `MFBlock`. The class' name is composed from
+    the given package and block name. The class will have attributes
+    according to the given parameter specification; parameter values
+    are not yet initialized.
+    """
+    cls = MFBlockMeta(
+        f"{component_name.title()}{block_name.title()}Block",
+        (MFBlock,),
+        params.copy(),
+    )
+    return cls(name=block_name, params=params)
 
 
 def get_param(params, block_name, param_name):
@@ -133,7 +148,6 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
         if value is None or not any(value):
             return
 
-        # coerce the parameter mapping to the spec and set defaults
         params = type(self).coerce(value.copy(), set_default=True)
         MFParams.value.fset(self, params)
 
@@ -146,18 +160,17 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
         raising an error if any unrecognized parameters are provided.
 
         Dictionary values may be subclasses of `MFParam` or values
-        provided directly. If the former, this function optionally
-        sets default values for any missing member parameters.
+        provided directly. If the former, optionally set default
+        values for any missing member parameters.
         """
 
         known = dict()
         for param_name, param_spec in cls.params.copy().items():
             param = params.pop(param_name, param_spec)
-
-            # make sure param is of expected type. set a
-            # default value if enabled and none provided.
             spec_type = type(param_spec)
             real_type = type(param)
+            if real_type is MFParamSpec:
+                pass
             if issubclass(real_type, MFParam):
                 if param.value is None and set_default:
                     param.value = param_spec.default_value
@@ -170,9 +183,6 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
 
             known[param_name] = param
 
-        # raise an error if we have any unknown parameters.
-        # `MFBlock` strictly disallows unrecognized params,
-        # for arbitrary parameter collections use `MFParams`.
         if any(params):
             raise ValueError(f"Unrecognized parameters:\n{pformat(params)}")
 
@@ -241,7 +251,7 @@ class MFBlocks(UserDict):
     """
 
     def __init__(self, blocks=None):
-        MFBlocks.assert_blocks(blocks)
+        MFBlocks.check(blocks)
         super().__init__(blocks)
         for key, block in self.items():
             setattr(self, key, block)
@@ -250,25 +260,27 @@ class MFBlocks(UserDict):
         return pformat(self.data)
 
     def __eq__(self, other):
-        if not isinstance(other, MFBlocks):
-            raise TypeError(f"Expected MFBlocks, got {type(other)}")
-        return OrderedDict(sorted(self.value)) == OrderedDict(
-            sorted(other.value)
-        )
+        tother = type(other)
+        if issubclass(tother, MFBlocks):
+            other = other.value
+        if issubclass(tother, Mapping):
+            return OrderedDict(sorted(self.value)) == OrderedDict(
+                sorted(other)
+            )
+        return False
 
     @staticmethod
-    def assert_blocks(blocks):
+    def check(items):
         """
-        Raise an error if any of the given items are
-        not subclasses of `MFBlock`.
+        Raise if any items are not instances of `MFBlock` or subclasses.
         """
-        if not blocks:
+        if not items:
             return
-        elif isinstance(blocks, dict):
-            blocks = blocks.values()
+        elif isinstance(items, dict):
+            items = items.values()
         not_blocks = [
             b
-            for b in blocks
+            for b in items
             if b is not None and not issubclass(type(b), MFBlock)
         ]
         if any(not_blocks):
@@ -277,10 +289,9 @@ class MFBlocks(UserDict):
     @property
     def value(self) -> Dict[str, Dict[str, Any]]:
         """
-        Get a dictionary of package block values. This is a
+        Get a nested dictionary of block values. This is a
         nested mapping of block names to blocks, where each
-        block is a mapping of parameter names to parameter
-        values.
+        block maps parameter names to parameter values.
         """
         return {k: v.value for k, v in self.items()}
 
@@ -288,11 +299,11 @@ class MFBlocks(UserDict):
     def value(self, value: Optional[Dict[str, Dict[str, Any]]]):
         """Set block values from a nested dictionary."""
 
-        if value is None or not any(value):
+        if not value:
             return
 
         blocks = value.copy()
-        MFBlocks.assert_blocks(blocks)
+        MFBlocks.check(blocks)
         self.update(blocks)
         for key, block in self.items():
             setattr(self, key, block)

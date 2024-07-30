@@ -1,101 +1,130 @@
-from pathlib import Path
+from collections import OrderedDict, UserDict
+from itertools import groupby
+from pprint import pformat
+from typing import Mapping
 
-import toml
+from flopy4.block import get_block
+from flopy4.param import MFParamSpec
+from flopy4.utils import strip
 
 
-class Dfn:
-    def __init__(self, component, subcomponent, dfn, *args, **kwargs):
-        self._component = component
-        self._subcomponent = subcomponent
-        self._dfn = dfn
+class DFN(UserDict):
+    """
+    Mapping of parameter names to parameter specifications.
+    Also dynamically creates block specifications to match.
+    Acts like a dictionary and supports named attributes.
+    """
 
-    def __getitem__(self, key):
-        return self._dfn["block"][key]
+    def __init__(self, component, subcomponent, params):
+        self.component = component
+        self.subcomponent = subcomponent
 
-    def __setitem__(self, key, value):
-        self._dfn["block"][key] = value
+        # param spec
+        DFN.check(params)
+        self.params = params
+        super().__init__(params)
+        for key, param in self.items():
+            setattr(self, key, param)
 
-    def __delitem__(self, key):
-        del self._dfn["block"][key]
+        # block spec
+        pkg_name = component.title() + subcomponent.title()
+        blocks = {
+            block_name: get_block(
+                component_name=pkg_name,
+                block_name=block_name,
+                params={param.name: param for param in block_params},
+            )
+            for block_name, block_params in groupby(
+                params.values(), lambda p: p.block
+            )
+        }
+        self.blocks = blocks
+        for key, block in blocks.items():
+            setattr(self, key, block)
 
-    def __iter__(self):
-        return iter(self._dfn["block"])
+    def __repr__(self):
+        return pformat(self.data)
 
-    def __len__(self):
-        return len(self._dfn["block"])
+    def __eq__(self, other):
+        tother = type(other)
+        if issubclass(tother, Mapping):
+            return OrderedDict(sorted(self)) == OrderedDict(sorted(other))
+        return False
 
     @property
-    def component(self):
-        return self._component
+    def name(self):
+        return f"{self.component}-{self.subcomponent}"
 
-    @property
-    def subcomponent(self):
-        return self._subcomponent
-
-    @property
-    def blocknames(self):
-        return self._dfn["blocknames"]
-
-    @property
-    def dfn(self):
-        return self._dfn
-
-    def blocktags(self, blockname) -> list:
-        return list(self._dfn["block"][blockname])
-
-    def block(self, blockname) -> dict:
-        return self._dfn["block"][blockname]
-
-    def param(self, blockname, tagname) -> dict:
-        return self._dfn["block"][blockname][tagname]
+    @staticmethod
+    def check(items):
+        """Raise if any items are not instances of `MFParamSpec`."""
+        if not items:
+            return
+        elif isinstance(items, dict):
+            items = items.values()
+        not_specs = [
+            p
+            for p in items
+            if p is not None and not isinstance(p, MFParamSpec)
+        ]
+        if any(not_specs):
+            raise TypeError(f"Expected MFParamSpec, got {not_specs}")
 
     @classmethod
-    def load(cls, f, metadata=None):
-        p = Path(f)
+    def load(cls, f):
+        component = None
+        subcomponent = None
+        params = dict()
 
-        if not p.exists():
-            raise ValueError("Invalid DFN path")
+        while True:
+            pos = f.tell()
+            line = f.readline()
+            if line == "":
+                break
+            if line == "\n":
+                continue
+            words = strip(line).lower().split()
+            if not any(words):
+                continue
+            if words[0].startswith("#"):
+                component, subcomponent = words[2:3]
 
-        component, subcomponent = p.stem.split("-")
-        data = toml.load(f)
+            f.seek(pos)
+            spec = MFParamSpec.load(f)
+            params[spec.name] = spec
 
-        return cls(component, subcomponent, data, **metadata)
+        return cls(
+            component=component,
+            subcomponent=subcomponent,
+            params=params,
+        )
 
 
-class DfnSet:
-    def __init__(self, *args, **kwargs):
-        self._dfns = dict()
+class DFNs(UserDict):
+    """
+    Mapping of DFN names to DFNs, where the definition
+    file's name follows the <component>-<subcomponent>
+    format convention.
+    """
 
-    def __getitem__(self, key):
-        return self._dfns[key]
+    def __init__(self, dfns):
+        DFNs.check(dfns)
+        super().__init__(dfns)
 
-    def __setitem__(self, key, value):
-        self._dfns[key] = value
+    def __repr__(self):
+        return pformat(self.data)
 
-    def __delitem__(self, key):
-        del self._dfns[key]
-
-    def __iter__(self):
-        return iter(self._dfns)
-
-    def __len__(self):
-        return len(self._dfns)
-
-    def add(self, key, dfn):
-        if key in self._dfns:
-            raise ValueError("DFN exists in container")
-
-        self._dfns[key] = dfn
-
-    def get(self, key):
-        if key not in self._dfns:
-            raise ValueError("DFN does not exist in container")
-
-        return self._dfns[key]
-
-    # def get(self, component, subcomponent):
-    #    key = f"{component.lower()}-{subcomponent.lower()}"
-    #    if key not in self._dfns:
-    #        raise ValueError("DFN does not exist in container")
-    #
-    #    return self._dfns[key]
+    @staticmethod
+    def check(blocks):
+        """
+        Raise if any items are not instances of `DFN`.
+        """
+        if not blocks:
+            return
+        elif isinstance(blocks, dict):
+            blocks = blocks.values()
+        not_dfns = [
+            b for b in blocks if b is not None and not issubclass(type(b), DFN)
+        ]
+        if any(not_dfns):
+            raise TypeError(f"Expected DFN, got {not_dfns}")
