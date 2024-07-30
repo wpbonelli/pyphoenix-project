@@ -15,7 +15,7 @@ from flopy4.utils import strip
 def get_package(model_name, pkg_name):
     """
     Select a subclass of `MFPackage` for the given model and
-    package name. Raise an error if the component is unknown.
+    package name. Raise if the package is unrecognized.
     """
 
     for cls in idm.find_components():

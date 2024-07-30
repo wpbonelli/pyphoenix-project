@@ -7,6 +7,7 @@ from typing import Any, Dict, Mapping, Optional
 
 from flopy4.array import MFArray
 from flopy4.compound import MFKeystring, MFRecord, get_keystrings
+from flopy4.context import SimContext
 from flopy4.param import MFParam, MFParams, MFParamSpec
 from flopy4.scalar import MFScalar
 from flopy4.utils import find_upper, strip
@@ -222,9 +223,10 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
                 kwrgs = {**kwargs, **spec}
                 ptype = type(param)
                 if ptype is MFArray:
-                    # TODO: inject from model somehow?
-                    # and remove special handling here
-                    kwrgs["cwd"] = ""
+                    kwrgs["cwd"] = SimContext.get("cwd")
+                    kwrgs["shape"] = tuple(
+                        [SimContext.get(dim) for dim in param.shape]
+                    )
                 if ptype is MFRecord:
                     kwrgs["params"] = param.data.copy()
                 if ptype is MFKeystring:

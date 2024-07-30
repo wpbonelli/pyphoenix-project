@@ -173,8 +173,10 @@ class MFModel(metaclass=MFModelMeta):
 
     def write(self, f, **kwargs):
         """Write the model to file."""
+
         for block in self.blocks.values():
             block.write(f, **kwargs)
+
         for package in self.packages.values():
             with open(package.path, "w") as pf:
                 package.write(pf, **kwargs)
