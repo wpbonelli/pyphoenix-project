@@ -88,7 +88,7 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
         self,
         name: Optional[str] = None,
         path: Optional[Path] = None,
-        blocks: Optional[Dict[str, Dict]] = None,
+        blocks: Optional[Dict] = None,
     ):
         self.name = name
         self.path = path
@@ -97,24 +97,15 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
     def __getattribute__(self, name: str) -> Any:
         self_type = type(self)
 
-        # shortcut to block value for instance attribute.
-        # the class attribute is the block specification.
         if name in self_type.blocks:
             return self[name].value
-
-        # shortcut to parameter value for instance attribute.
-        # the class attribute is the parameter specification,
-        # and dictionary access on the instance returns the
-        # full `MFParam` instance.
+        
         if name in self_type.params:
             return self._get_param_values()[name]
 
-        # add .blocks attribute as an alias for .value, this
-        # overrides the class attribute with the block spec.
-        # also add a .params attribute, which is a flat dict
-        # of all block parameter values.
         if name == "blocks":
             return self.value
+
         elif name == "params":
             return self._get_param_values()
 
@@ -258,13 +249,13 @@ class MFPackages(UserDict):
         not_pkgs = [
             b
             for b in items
-            if b is not None and not issubclass(type(b), MFBlock)
+            if b is not None and not issubclass(type(b), MFPackage)
         ]
         if any(not_pkgs):
             raise TypeError(f"Expected MFPackage subclasses, got {not_pkgs}")
 
     @property
-    def value(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    def value(self) -> Dict:
         """
         Get a nested dictionary of package values. This is a
         nested mapping of package names to packages, where
@@ -275,7 +266,7 @@ class MFPackages(UserDict):
         return {k: v.value for k, v in self.items()}
 
     @value.setter
-    def value(self, value: Optional[Dict[str, Dict[str, Dict[str, Any]]]]):
+    def value(self, value: Optional[Dict]):
         """Set package values from a nested dictionary."""
 
         if not value:

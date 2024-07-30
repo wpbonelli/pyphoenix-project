@@ -1,7 +1,7 @@
 from threading import local
 from typing import Any, Optional
 
-from flopy4.sim import MFSim
+from flopy4.sim import MFSimulation
 
 
 class SimContext:
@@ -9,7 +9,7 @@ class SimContext:
 
     data = local()
 
-    def __init__(self, sim: Optional[MFSim]):
+    def __init__(self, sim: Optional[MFSimulation]):
         type(self).data.sim = sim
 
     def __enter__(self):
@@ -20,7 +20,7 @@ class SimContext:
         pass
 
     @classmethod
-    def current(cls) -> Optional[MFSim]:
+    def current(cls) -> Optional[MFSimulation]:
         return cls.data.sim
 
     @classmethod

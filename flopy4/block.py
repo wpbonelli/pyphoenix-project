@@ -102,7 +102,7 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
         self,
         name: Optional[str] = None,
         index: Optional[int] = None,
-        params: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict] = None,
     ):
         self.name = name
         self.index = index
@@ -171,6 +171,7 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
             spec_type = type(param_spec)
             real_type = type(param)
             if real_type is MFParamSpec:
+                # implicitly support mapping of param specs
                 pass
             if issubclass(real_type, MFParam):
                 if param.value is None and set_default:
@@ -218,19 +219,30 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
                 param = get_param(members, name, key)
                 if param is None:
                     continue
-                f.seek(pos)
+
                 spec = asdict(param)
                 kwrgs = {**kwargs, **spec}
                 ptype = type(param)
+
+                # set array cwd and shape from context
                 if ptype is MFArray:
                     kwrgs["cwd"] = SimContext.get("cwd")
-                    kwrgs["shape"] = tuple(
-                        [SimContext.get(dim) for dim in param.shape]
+                    kwrgs["shape"] = (
+                        param.shape
+                        if isinstance(param.shape[0], int)
+                        else tuple(
+                            [SimContext.get(dim) for dim in param.shape]
+                        )
                     )
+
+                # set composite parameter members
                 if ptype is MFRecord:
                     kwrgs["params"] = param.data.copy()
                 if ptype is MFKeystring:
                     kwrgs["params"] = param.data.copy()
+
+                # load the parameter
+                f.seek(pos)
                 params[param.name] = ptype.load(f, **kwrgs)
 
         return cls(name=name, index=index, params=params)
@@ -289,7 +301,7 @@ class MFBlocks(UserDict):
             raise TypeError(f"Expected MFBlock subclasses, got {not_blocks}")
 
     @property
-    def value(self) -> Dict[str, Dict[str, Any]]:
+    def value(self) -> Dict:
         """
         Get a nested dictionary of block values. This is a
         nested mapping of block names to blocks, where each
@@ -298,7 +310,7 @@ class MFBlocks(UserDict):
         return {k: v.value for k, v in self.items()}
 
     @value.setter
-    def value(self, value: Optional[Dict[str, Dict[str, Any]]]):
+    def value(self, value: Optional[Dict]):
         """Set block values from a nested dictionary."""
 
         if not value:

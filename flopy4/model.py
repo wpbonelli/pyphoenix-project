@@ -1,3 +1,4 @@
+from collections import UserDict, OrderedDict
 from io import StringIO
 from itertools import groupby
 from pprint import pformat
@@ -76,8 +77,8 @@ class MFModel(metaclass=MFModelMeta):
     def __init__(
         self,
         name: Optional[str] = None,
-        blocks: Optional[MFBlocks | Dict[str, Any]] = None,
-        packages: Optional[MFPackage | Dict[str, Any]] = None,
+        blocks: Optional[MFBlocks | Dict] = None,
+        packages: Optional[MFPackages | Dict] = None,
     ):
         self.name = name
         self.blocks = MFBlocks(blocks)
@@ -91,17 +92,14 @@ class MFModel(metaclass=MFModelMeta):
     def __getattribute__(self, name: str) -> Any:
         self_type = type(self)
 
-        # shortcut to block value for instance attribute.
-        # the class attribute is the block specification.
         if name in self_type.blocks:
             return self[name].value
 
-        # shortcut to parameter value for instance attribute.
-        # the class attribute is the parameter specification,
-        # and dictionary access on the instance returns the
-        # full `MFParam` instance.
         if name in self_type.options:
-            return self.options[name]
+            return self.options[name].value
+        
+        if name in self_type.packages:
+            return self.packages[name].value
 
         return super().__getattribute__(name)
 
@@ -180,3 +178,70 @@ class MFModel(metaclass=MFModelMeta):
         for package in self.packages.values():
             with open(package.path, "w") as pf:
                 package.write(pf, **kwargs)
+
+
+class MFModels(UserDict):
+    """
+    Mapping of model names to models. Acts like a
+    dictionary, also supports named attribute access.
+    """
+
+    def __init__(self, models=None):
+        MFModels.check(models)
+        super().__init__(models)
+        for key, model in self.items():
+            setattr(self, key, model)
+
+    def __repr__(self):
+        return pformat(self.data)
+
+    def __eq__(self, other):
+        tother = type(other)
+        if issubclass(tother, MFModels):
+            other = other.value
+        if issubclass(tother, Mapping):
+            return OrderedDict(sorted(self.value)) == OrderedDict(
+                sorted(other)
+            )
+        return False
+    
+    @staticmethod
+    def check(items):
+        """
+        Raise if any items are not instances of `MFModel` or subclasses.
+        """
+        if not items:
+            return
+        elif isinstance(items, dict):
+            items = items.values()
+        not_pkgs = [
+            b
+            for b in items
+            if b is not None and not issubclass(type(b), MFModel)
+        ]
+        if any(not_pkgs):
+            raise TypeError(f"Expected MFModel subclasses, got {not_pkgs}")
+
+    @property
+    def value(self) -> Dict:
+        """
+        Get a nested dictionary of package values. This is a
+        nested mapping of package names to packages, where
+        packages map package names to package values. Each
+        package value is itself a nested mapping of blocks,
+        each of which maps parameter names to param values.
+        """
+        return {k: v.value for k, v in self.items()}
+
+    @value.setter
+    def value(self, value: Optional[Dict]):
+        """Set package values from a nested dictionary."""
+
+        if not value:
+            return
+
+        pkgs = value.copy()
+        MFModels.check(pkgs)
+        self.update(pkgs)
+        for key, pkg in self.items():
+            setattr(self, key, pkg)

@@ -184,7 +184,6 @@ class MFArray(MFParam, NumPyArrayMixin):
 
     def __init__(
         self,
-        shape,
         value=None,
         how=MFArrayType.internal,
         factor=None,
@@ -202,6 +201,7 @@ class MFArray(MFParam, NumPyArrayMixin):
         repeating=False,
         tagged=False,
         reader=MFReader.urword,
+        shape=None,
         default_value=None,
         path: Optional[Path] = None,
     ):
@@ -225,13 +225,9 @@ class MFArray(MFParam, NumPyArrayMixin):
             default_value=default_value,
         )
         self._value = value
-        self.shape = property(fget=self._get_shape, doc="The array's shape.")
         self._how = how
         self._factor = factor
         self._path = path
-
-    def _get_shape(self):
-        pass
 
     def __getitem__(self, item):
         return self.raw[item]

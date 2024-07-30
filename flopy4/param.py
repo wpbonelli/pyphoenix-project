@@ -28,7 +28,7 @@ class MFParamSpec:
     repeating: bool = False
     tagged: bool = True
     reader: MFReader = MFReader.urword
-    shape: Optional[Tuple[str, ...]] = None
+    shape: Optional[Tuple[str | int, ...]] = None
     default_value: Optional[Any] = None
 
     @classmethod
@@ -72,9 +72,12 @@ class MFParamSpec:
             elif key == "reader":
                 spec[key] = MFReader.from_str(val)
             elif key == "shape":
-                spec[key] = tuple(
-                    val.replace("(", "").replace(")", "").split(",")
-                )
+                shape = tuple(val.replace("(", "").replace(")", "").split(","))
+                try:
+                    shape = tuple([int(dim) for dim in shape])
+                except:
+                    pass
+                spec[key] = shape
             else:
                 spec[key] = val
 
