@@ -9,6 +9,7 @@ from flopy.utils.flopy_io import line_strip, multi_line_strip
 
 from flopy4.constants import CommonNames
 from flopy4.param import MFParam, MFReader
+from flopy4.signals import depend
 
 
 class NumPyArrayMixin:
@@ -175,6 +176,7 @@ class MFArrayType(Enum):
                 return e
 
 
+@depend("shape")
 class MFArray(MFParam, NumPyArrayMixin):
     """
     A MODFLOW 6 array backed by a 1-dimensional NumPy array,

@@ -1,4 +1,4 @@
-from collections import UserDict, OrderedDict
+from collections import OrderedDict, UserDict
 from io import StringIO
 from itertools import groupby
 from pprint import pformat
@@ -97,7 +97,7 @@ class MFModel(metaclass=MFModelMeta):
 
         if name in self_type.options:
             return self.options[name].value
-        
+
         if name in self_type.packages:
             return self.packages[name].value
 
@@ -204,7 +204,7 @@ class MFModels(UserDict):
                 sorted(other)
             )
         return False
-    
+
     @staticmethod
     def check(items):
         """

@@ -4,12 +4,14 @@ from typing import Generic, Optional, TypeVar, get_args
 
 from flopy4.constants import MFFileInout
 from flopy4.param import MFParam, MFReader
+from flopy4.signals import signal
 from flopy4.utils import strip
 
 PAD = "  "
 T = TypeVar("T")
 
 
+@signal
 class MFScalar(MFParam, Generic[T]):
     @abstractmethod
     def __init__(
@@ -182,10 +184,6 @@ class MFInteger(MFScalar[int]):
 
     def __len__(self):
         return 2
-
-    @property
-    def vtype(self):
-        return int
 
     @classmethod
     def load(cls, f, **kwargs) -> "MFInteger":

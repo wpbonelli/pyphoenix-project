@@ -32,16 +32,12 @@ class MFParamSpec:
     default_value: Optional[Any] = None
 
     @classmethod
-    def fields(cls):
+    def fields(cls) -> Dict[str.Field]:
         """
         Get the MF6 input parameter field specification.
         These uniquely describe the MF6 input parameter.
-
-        Notes
-        -----
-        This is equivalent to `dataclasses.fields(MFParamSpec)`.
         """
-        return fields(cls)
+        return {f.name: f for f in fields(cls)}
 
     @classmethod
     def load(cls, f) -> "MFParamSpec":
@@ -55,7 +51,7 @@ class MFParamSpec:
     @classmethod
     def _load_dfn(cls, f):
         spec = dict()
-        members = cls.fields()
+        members = fields(cls)
 
         # find keyword fields
         keywords = [m.name for m in members if m.type == "keyword"]

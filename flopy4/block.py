@@ -10,7 +10,7 @@ from flopy4.compound import MFKeystring, MFRecord, get_keystrings
 from flopy4.context import SimContext
 from flopy4.param import MFParam, MFParams, MFParamSpec
 from flopy4.scalar import MFScalar
-from flopy4.utils import find_upper, strip
+from flopy4.utils import strip, uppers
 
 
 def get_block(component_name, block_name, params):
@@ -50,9 +50,7 @@ class MFBlockMeta(type):
 
         # detect block name
         block_name = (
-            clsname[list(find_upper(clsname))[1] :]
-            .replace("Block", "")
-            .lower()
+            clsname[list(uppers(clsname))[1] :].replace("Block", "").lower()
         )
 
         # add class attributes for the block parameter specification.

@@ -1,10 +1,12 @@
 import sys
-from typing import Iterator
+from pathlib import Path
+from typing import List
 
-from flopy4.utils import find_classes
+from flopy4.utils import get_member_classes
 
-__all__ = ["gwfdis", "gwfic"]
+components = [p for p in Path(__file__).glob("*.py") if "_" not in p.stem]
+__all__ = [p.stem for p in components]
 
 
-def find_components() -> Iterator[type]:
-    return find_classes(sys.modules[__name__])
+def get_component_classes() -> List[type]:
+    return get_member_classes(sys.modules[__name__])

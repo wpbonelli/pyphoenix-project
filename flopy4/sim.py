@@ -16,7 +16,7 @@ class MFSimulation:
         name: Optional[str] = None,
         blocks: Optional[MFBlocks | Dict] = None,
         models: Optional[MFModels | Dict] = None,
-        packages: Optional[MFPackages | Dict] = None
+        packages: Optional[MFPackages | Dict] = None,
     ):
         self.name = name
         self.blocks = MFBlocks(blocks)
@@ -36,10 +36,10 @@ class MFSimulation:
 
         if name in self_type.options:
             return self.options[name].value
-        
+
         if name in self_type.models:
             return self.models[name].value
-        
+
         if name in self_type.packages:
             return self.packages[name].value
 
@@ -52,4 +52,3 @@ class MFSimulation:
 
     def __eq__(self, other):
         return super().__eq__(other)
-    

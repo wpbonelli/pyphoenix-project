@@ -18,7 +18,7 @@ def get_package(model_name, pkg_name):
     package name. Raise if the package is unrecognized.
     """
 
-    for cls in idm.find_components():
+    for cls in idm.get_component_classes():
         name = f"{model_name.title()}{pkg_name.title()}"
         if cls.__name__ == name:
             return cls(name=name)
@@ -99,7 +99,7 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
 
         if name in self_type.blocks:
             return self[name].value
-        
+
         if name in self_type.params:
             return self._get_param_values()[name]
 
