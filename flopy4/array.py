@@ -187,6 +187,7 @@ class MFArray(MFParam, NumPyArrayMixin):
     def __init__(
         self,
         value=None,
+        path=None,
         how=MFArrayType.internal,
         factor=None,
         block=None,
@@ -205,7 +206,6 @@ class MFArray(MFParam, NumPyArrayMixin):
         reader=MFReader.urword,
         shape=None,
         default_value=None,
-        path: Optional[Path] = None,
     ):
         MFParam.__init__(
             self,
@@ -229,7 +229,7 @@ class MFArray(MFParam, NumPyArrayMixin):
         self._value = value
         self._how = how
         self._factor = factor
-        self._path = path
+        self.path = path
 
     def __getitem__(self, item):
         return self.raw[item]
@@ -373,7 +373,7 @@ class MFArray(MFParam, NumPyArrayMixin):
                 elif mfa._how == MFArrayType.external:
                     lines = (
                         f"{PAD*2}" + f"{MFArrayType.to_string(mfa._how)} "
-                        f"{mfa._path}\n"
+                        f"{mfa.path}\n"
                     )
                 elif mfa._how == MFArrayType.constant:
                     lines = (
@@ -408,7 +408,7 @@ class MFArray(MFParam, NumPyArrayMixin):
                 lines = (
                     f"{PAD}" + f"{self.name.upper()}\n"
                     f"{PAD*2}"
-                    + f"{MFArrayType.to_string(self._how)} {self._path}\n"
+                    + f"{MFArrayType.to_string(self._how)} {self.path}\n"
                 )
             elif self._how == MFArrayType.constant:
                 lines = (
@@ -419,7 +419,7 @@ class MFArray(MFParam, NumPyArrayMixin):
             f.write(lines)
 
     @classmethod
-    def load(cls, f, cwd, shape, header=True, **kwargs):
+    def load(cls, f, shape, header=True, **kwargs):
         layered = kwargs.pop("layered", False)
 
         if header:
@@ -436,7 +436,7 @@ class MFArray(MFParam, NumPyArrayMixin):
             lshp = shape[1:]
             objs = []
             for _ in range(nlay):
-                mfa = cls._load(f, cwd, lshp, name)
+                mfa = cls._load(f, lshp, name)
                 objs.append(mfa)
 
             return MFArray(
@@ -449,12 +449,10 @@ class MFArray(MFParam, NumPyArrayMixin):
             )
         else:
             kwargs.pop("layered", None)
-            return cls._load(
-                f, cwd, shape, layered=layered, name=name, **kwargs
-            )
+            return cls._load(f, shape, name=name, **kwargs)
 
     @classmethod
-    def _load(cls, f, cwd, shape, layered=False, **kwargs):
+    def _load(cls, f, shape, **kwargs):
         control_line = multi_line_strip(f).split()
 
         if CommonNames.iprn.lower() in control_line:
@@ -475,7 +473,7 @@ class MFArray(MFParam, NumPyArrayMixin):
 
         elif how == MFArrayType.external:
             extpath = Path(control_line[clpos])
-            fpath = cwd / extpath
+            fpath = Path.cwd() / extpath
             with open(fpath) as foo:
                 array = cls.read_array(foo)
             clpos += 1

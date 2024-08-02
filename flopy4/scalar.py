@@ -13,6 +13,19 @@ T = TypeVar("T")
 
 @signal
 class MFScalar(MFParam, Generic[T]):
+    """
+    MODFLOW 6 scalar parameter. A scalar has a generic
+    type parameter `T` which is set upon subclass init.
+    A scalar also has a `len()` which is the number of
+    words comprising the parameter in MF6 input format.
+
+    Note
+    ----
+    Scalars may signal their values to other parameters,
+    e.g. to inform an array of its dimensions when they
+    first become known (or clear it when they change).
+    """
+
     @abstractmethod
     def __init__(
         self,
@@ -61,10 +74,12 @@ class MFScalar(MFParam, Generic[T]):
 
     @property
     def value(self) -> T:
+        """Get the scalar parameter's value."""
         return self._value
 
     @value.setter
     def value(self, value: Optional[T]):
+        """Set the scalar parameter's value."""
         if value is None:
             return
 

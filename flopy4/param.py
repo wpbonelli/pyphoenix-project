@@ -1,10 +1,10 @@
 from abc import abstractmethod
 from collections import OrderedDict, UserDict
 from dataclasses import dataclass, fields
-from io import StringIO
 from pprint import pformat
 from typing import Any, Dict, Mapping, Optional, Tuple
 
+from flopy4.component import MFComponent
 from flopy4.constants import MFReader
 
 
@@ -80,17 +80,17 @@ class MFParamSpec:
         return cls(**spec)
 
     def with_name(self, name) -> "MFParamSpec":
-        """Set the parameter name and return the parameter."""
+        """Set the parameter name and return the specification."""
         self.name = name
         return self
 
     def with_block(self, block) -> "MFParamSpec":
-        """Set the parameter block and return the parameter."""
+        """Set the parameter block and return the specification."""
         self.block = block
         return self
 
 
-class MFParam(MFParamSpec):
+class MFParam(MFComponent, MFParamSpec):
     """
     MODFLOW 6 input parameter. Can be a scalar or compound of
     scalars, an array, or a list (i.e. a table).
@@ -159,11 +159,6 @@ class MFParam(MFParamSpec):
             default_value=default_value,
         )
 
-    def __str__(self):
-        buffer = StringIO()
-        self.write(buffer)
-        return buffer.getvalue()
-
     def __eq__(self, other):
         if isinstance(other, MFParam):
             return self.value == other.value
@@ -172,19 +167,8 @@ class MFParam(MFParamSpec):
         except:
             return False
 
-    @property
-    @abstractmethod
-    def value(self) -> Optional[Any]:
-        """Get the parameter's value."""
-        pass
 
-    @abstractmethod
-    def write(self, f, **kwargs):
-        """Write the parameter to file."""
-        pass
-
-
-class MFParams(UserDict):
+class MFParams(MFComponent, UserDict):
     """
     Mapping of parameter names to parameters. Acts like
     a dictionary, also supports named attribute access.

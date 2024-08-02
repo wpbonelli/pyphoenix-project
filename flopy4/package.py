@@ -8,6 +8,7 @@ from typing import Any, Dict, Mapping, Optional
 
 import flopy4.idm as idm
 from flopy4.block import MFBlock, MFBlocks, get_block
+from flopy4.component import MFComponent
 from flopy4.param import MFParam, MFParams
 from flopy4.utils import strip
 
@@ -212,7 +213,7 @@ class MFPackage(MFBlocks, metaclass=MFPackageMappingMeta):
         super().write(f, **kwargs)
 
 
-class MFPackages(UserDict):
+class MFPackages(MFComponent, UserDict):
     """
     Mapping of package names to packages. Acts like a
     dictionary, also supports named attribute access.

@@ -1,4 +1,5 @@
 import numpy as np
+from modflow_devtools.misc import set_dir
 
 from flopy4.array import MFArray
 
@@ -13,9 +14,10 @@ def test_array_load_1d(tmp_path):
     with open(fpth, "w") as f:
         f.write(f"{name.upper()}\n{how}\n{value}\n")
     with open(fpth, "r") as f:
-        array = MFArray.load(f, cwd=tmp_path, shape=(3))
-        assert array.name == name
-        assert np.allclose(array.value, np.array(v))
+        with set_dir(tmp_path):
+            array = MFArray.load(f, shape=(3))
+            assert array.name == name
+            assert np.allclose(array.value, np.array(v))
 
 
 def test_array_load_3d(tmp_path):
@@ -32,9 +34,10 @@ def test_array_load_3d(tmp_path):
     with open(fpth, "w") as f:
         f.write(f"{name.upper()}\n{how}\n{value}\n")
     with open(fpth, "r") as f:
-        array = MFArray.load(f, cwd=tmp_path, shape=(3, 1, 3))
-        assert array.name == name
-        assert np.allclose(array.value, np.array(v))
+        with set_dir(tmp_path):
+            array = MFArray.load(f, shape=(3, 1, 3))
+            assert array.name == name
+            assert np.allclose(array.value, np.array(v))
 
 
 def test_array_load_3d_external(tmp_path):
@@ -54,9 +57,10 @@ def test_array_load_3d_external(tmp_path):
     with open(fpth, "w") as f:
         f.write(f"{name.upper()}\n{how} {extfpth}\n")
     with open(fpth, "r") as f:
-        array = MFArray.load(f, cwd=tmp_path, shape=(3, 1, 3))
-        assert array.name == name
-        assert np.allclose(array.value, np.array(v))
+        with set_dir(tmp_path):
+            array = MFArray.load(f, shape=(3, 1, 3))
+            assert array.name == name
+            assert np.allclose(array.value, np.array(v))
 
 
 def test_array_load_layered(tmp_path):
@@ -74,6 +78,7 @@ def test_array_load_layered(tmp_path):
     with open(fpth, "w") as f:
         f.write(f"{name.upper()} LAYERED\n{value}")
     with open(fpth, "r") as f:
-        array = MFArray.load(f, cwd=tmp_path, shape=(3, 1, 3))
-        assert array.name == name
-        assert np.allclose(array.value, np.array(v))
+        with set_dir(tmp_path):
+            array = MFArray.load(f, shape=(3, 1, 3))
+            assert array.name == name
+            assert np.allclose(array.value, np.array(v))

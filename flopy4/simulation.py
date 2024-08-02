@@ -1,12 +1,14 @@
+from collections import UserDict
 from io import StringIO
 from typing import Any, Dict, Optional
 
 from flopy4.block import MFBlocks
+from flopy4.component import MFComponent
 from flopy4.model import MFModels
 from flopy4.package import MFPackages
 
 
-class MFSimulation:
+class MFSimulation(MFComponent, UserDict):
     """
     MF6 simulation.
     """

@@ -5,9 +5,8 @@ from io import StringIO
 from pprint import pformat
 from typing import Any, Dict, Mapping, Optional
 
-from flopy4.array import MFArray
+from flopy4.component import MFComponent
 from flopy4.compound import MFKeystring, MFRecord, get_keystrings
-from flopy4.context import SimContext
 from flopy4.param import MFParam, MFParams, MFParamSpec
 from flopy4.scalar import MFScalar
 from flopy4.utils import strip, uppers
@@ -222,21 +221,8 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
                 kwrgs = {**kwargs, **spec}
                 ptype = type(param)
 
-                # set array cwd and shape from context
-                if ptype is MFArray:
-                    kwrgs["cwd"] = SimContext.get("cwd")
-                    kwrgs["shape"] = (
-                        param.shape
-                        if isinstance(param.shape[0], int)
-                        else tuple(
-                            [SimContext.get(dim) for dim in param.shape]
-                        )
-                    )
-
                 # set composite parameter members
-                if ptype is MFRecord:
-                    kwrgs["params"] = param.data.copy()
-                if ptype is MFKeystring:
+                if ptype is MFRecord or ptype is MFKeystring:
                     kwrgs["params"] = param.data.copy()
 
                 # load the parameter
@@ -256,7 +242,7 @@ class MFBlock(MFParams, metaclass=MFBlockMappingMeta):
         f.write(end)
 
 
-class MFBlocks(UserDict):
+class MFBlocks(MFComponent, UserDict):
     """
     Mapping of block names to blocks. Acts like a
     dictionary, also supports named attribute access.
