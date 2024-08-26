@@ -1,24 +1,54 @@
-def find_upper(s):
+"""Miscellaneous utilities"""
+
+from operator import add
+from collections.abc import MutableMapping
+from typing import Dict, Iterator
+
+
+def depth(d):
+    """
+    Get the nesting depth of a dictionary.
+    Referenced from https://stackoverflow.com/a/23499101/6514033.
+    """
+    if isinstance(d, dict):
+        return 1 + (max(map(depth, d.values())) if d else 0)
+    return 0
+
+
+def find_upper(s: str):
+    """Yield the uppercase characters in the string."""
     for i in range(len(s)):
         if s[i].isupper():
             yield i
 
 
-def strip(line):
-    """
-    Remove comments and replace commas from input text
-    for a free formatted modflow input file
+_FLAG_FIRST = object()
 
-    Parameters
-    ----------
-        line : str
-            a line of text from a modflow input file
-
-    Returns
-    -------
-        str : line with comments removed and commas replaced
+def flatten(d, join=add, lift=lambda x:(x,), split=False) -> dict | Iterator[Dict]:
     """
-    for comment_flag in ["//", "#", "!"]:
-        line = line.split(comment_flag)[0]
-    line = line.strip()
-    return line.replace(",", " ")
+    Flatten nested dictionaries in the given dictionary into
+    a single dictionary with hierarchical keys.
+
+    Adapted from https://stackoverflow.com/a/6043835/6514033.
+    """
+    results = []
+    def visit(subdict, results, partialKey):
+        for k,v in subdict.items():
+            newKey = lift(k) if partialKey==_FLAG_FIRST else join(partialKey,lift(k))
+            try:
+                visit(v, results, newKey)
+                if split:
+                    yield v
+            except:
+                results.append((newKey, v))
+    visit(d, results, _FLAG_FIRST)
+    if not split:
+        return dict(results)
+
+
+def get_alias_map(cls) -> Dict[str, str]:
+    """
+    Get a map of field names to aliases
+    for an `attrs`-based class.
+    """
+    return {a.name: a.alias for a in cls.__attrs_attrs__}

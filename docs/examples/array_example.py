@@ -22,8 +22,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pooch
 
-from flopy4.array import MFArray
-
 # -
 
 try:
