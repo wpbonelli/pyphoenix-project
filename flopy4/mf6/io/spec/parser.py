@@ -3,8 +3,9 @@ from os import linesep
 from lark import Lark
 
 ATTRIBUTES = [
-    "block",
-    "name",
+    # omit block/name since they're hardcoded into the grammar
+    # "block",
+    # "name",
     "type",
     "reader",
     "optional",
@@ -21,6 +22,9 @@ ATTRIBUTES = [
     "default_value",
     "numeric_index",
     "deprecated",
+    "repeating",
+    "block_variable",
+    "time_series",
 ]
 
 DFN_GRAMMAR = r"""
@@ -29,25 +33,26 @@ dfn: _NL* (block _NL*)+ _NL*
 
 // block
 block: _header parameter*
-_header: _hash _dashes _headtext _dashes _NL+
+_header: _hash _dashes _headtext _dashes [_flopynote] _NL+
 _headtext: component subcompnt blockname
+_flopynote: _NL _hash _word+
 component: _word
 subcompnt: _word
 blockname: _word
 
 // parameter
-parameter.+1: _paramhead _NL (attribute _NL)*
+parameter.+1: _paramhead (_NL attribute)* _NL*
 _paramhead: paramblock _NL paramname
 paramblock: "block" _word
 paramname: "name" _word
 
 // attribute
-attribute.-1: key value
+attribute.-1: key [value]
 key: ATTRIBUTE
 value: string
 
 // string
-_word: /[a-zA-z0-9.;\(\)\-\,\\\/]+/
+_word: /[a-zA-Z0-9.;\(\)\{\}\'\#\:\<\>\-\\`_\,\\\/]+/
 string: _word+
 
 // newline

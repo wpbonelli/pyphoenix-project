@@ -7,6 +7,7 @@ from flopy4.mf6.io import MF6Transformer
 from flopy4.mf6.io import make_parser as make_mf6_parser
 from flopy4.mf6.io.spec import DFNTransformer
 from flopy4.mf6.io.spec import make_parser as make_dfn_parser
+from flopy4.utils import depth
 
 COMPONENT = """
 BEGIN OPTIONS
@@ -68,16 +69,21 @@ DFN_TRANSFORMER = DFNTransformer()
 
 PROJ_ROOT = Path(__file__).parents[1]
 DFNS_PATH = PROJ_ROOT / "spec" / "dfn"
-DFN_PATH = DFNS_PATH / "gwf-ic.dfn"
+GWF_IC_PATH = DFNS_PATH / "gwf-ic.dfn"
+PRT_PRP_PATH = DFNS_PATH / "prt-prp.dfn"
+
+
+# TODO parametrize tests, keeping
+# separate for now just to debug.
 
 
 def test_parse_dfn():
-    tree = DFN_PARSER.parse(open(DFN_PATH).read())
+    tree = DFN_PARSER.parse(open(GWF_IC_PATH).read())
     print(tree.pretty())
 
 
 def test_transform_dfn():
-    tree = DFN_PARSER.parse(open(DFN_PATH).read())
+    tree = DFN_PARSER.parse(open(GWF_IC_PATH).read())
     data = DFN_TRANSFORMER.transform(tree)
     assert data["options"] == {
         "export_array_ascii": {
@@ -134,3 +140,31 @@ def test_transform_dfn():
             "type": "double precision",
         }
     }
+
+
+def test_parse_dfn_with_list():
+    tree = DFN_PARSER.parse(open(PRT_PRP_PATH).read())
+    print(tree.pretty())
+
+
+def test_transform_dfn_with_list():
+    tree = DFN_PARSER.parse(open(PRT_PRP_PATH).read())
+    data = DFN_TRANSFORMER.transform(tree)
+
+    assert len(data) == 4
+    assert "options" in data
+    assert "dimensions" in data
+    assert "packagedata" in data
+    assert "period" in data
+
+    assert depth(data["options"]) == 4
+    assert depth(data["dimensions"]) == 2
+    assert depth(data["packagedata"]) == 4
+    assert depth(data["period"]) == 6
+
+    assert (
+        "first"
+        in data["period"]["perioddata"]["components"]["releasesetting"][
+            "components"
+        ]
+    )

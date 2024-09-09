@@ -1,3 +1,13 @@
+def depth(d):
+    """
+    Get the nesting depth of a dictionary.
+    Referenced from https://stackoverflow.com/a/23499101/6514033.
+    """
+    if isinstance(d, dict):
+        return 1 + (max(map(depth, d.values())) if d else 0)
+    return 0
+
+
 def find_upper(s):
     for i in range(len(s)):
         if s[i].isupper():
