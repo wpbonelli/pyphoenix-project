@@ -1,0 +1,97 @@
+attributes:
+  time_series_namerecord:
+    type: record name time_series_name
+    shape: null
+    reader: urword
+    tagged: false
+    optional: false
+    longname: null
+    description: xxx
+  name:
+    type: keyword
+    shape: null
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+  time_series_name:
+    type: string
+    shape: any1d
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: Name by which a package references a particular time-array series.
+      The name must be unique among all time-array series used in a package.
+  interpolation_methodrecord:
+    type: record method interpolation_method
+    shape: null
+    reader: urword
+    tagged: false
+    optional: true
+    longname: null
+    description: xxx
+  method:
+    type: keyword
+    shape: null
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+  interpolation_method:
+    type: string
+    valid: stepwise linear linearend
+    shape: null
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: Interpolation method, which is either STEPWISE or LINEAR.
+  sfacrecord:
+    type: record sfac sfacval
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: xxx
+  sfac:
+    type: keyword
+    shape: null
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+  sfacval:
+    type: double precision
+    shape: time_series_name
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: Scale factor, which will multiply all array values in time series.
+      SFAC is an optional attribute; if omitted, SFAC = 1.0.
+_variable True:
+  time_from_model_start:
+    type: double precision
+    in_record: true
+    shape: null
+    tagged: false
+    valid: null
+    reader: urword
+    optional: false
+    longname: null
+    description: A numeric time relative to the start of the simulation, in the time
+      unit used in the simulation. Times must be strictly increasing.
+time:
+  tas_array:
+    type: double precision
+    tagged: false
+    just_data: true
+    shape: (unknown)
+    reader: readarray
+    optional: false
+    repeating: true
+    longname: null
+    description: An array of numeric, floating-point values, or a constant value,
+      readable by the U2DREL array-reading utility.

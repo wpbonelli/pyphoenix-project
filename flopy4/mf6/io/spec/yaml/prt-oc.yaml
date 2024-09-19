@@ -1,0 +1,298 @@
+options:
+  budget_filerecord:
+    type: record budget fileout budgetfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  budget:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: budget keyword
+    description: keyword to specify that record corresponds to the budget.
+  fileout:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: file keyword
+    description: keyword to specify that an output filename is expected next.
+  budgetfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the output file to write budget information.
+  budgetcsv_filerecord:
+    type: record budgetcsv fileout budgetcsvfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  budgetcsv:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: budget keyword
+    description: keyword to specify that record corresponds to the budget CSV.
+  budgetcsvfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the comma-separated value (CSV) output file to write budget
+      summary information.  A budget summary record will be written to this file for
+      each time step of the simulation.
+  track_filerecord:
+    type: record track fileout trackfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  track:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: track keyword
+    description: keyword to specify that record corresponds to a binary track file.  Each
+      PRT Model's OC Package may have only one binary track output file.
+  trackfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the binary output file to write tracking information.
+  trackcsv_filerecord:
+    type: record trackcsv fileout trackcsvfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  trackcsv:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: track keyword
+    description: keyword to specify that record corresponds to a CSV track file.  Each
+      PRT Model's OC Package may have only one CSV track file.
+  trackcsvfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the comma-separated value (CSV) file to write tracking information.
+  track_release:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: track release
+    description: keyword to indicate that particle tracking output is to be written
+      when a particle is released
+  track_exit:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: track transitions
+    description: keyword to indicate that particle tracking output is to be written
+      when a particle exits a feature (a model, cell, or subcell)
+  track_timestep:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: track timestep ends
+    description: keyword to indicate that particle tracking output is to be written
+      at the end of each time step
+  track_terminate:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: track termination
+    description: keyword to indicate that particle tracking output is to be written
+      when a particle terminates for any reason
+  track_weaksink:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: track weaksink exits
+    description: keyword to indicate that particle tracking output is to be written
+      when a particle exits a weak sink (a cell which removes some but not all inflow
+      from adjacent cells)
+  track_usertime:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: track usertime
+    description: keyword to indicate that particle tracking output is to be written
+      at user-specified times, provided as double precision values in the TRACKTIMES
+      block.
+dimensions:
+  ntracktimes:
+    type: integer
+    reader: urword
+    optional: false
+    longname: number of particle tracking times
+    description: is the number of user-specified particle tracking times in the TRACKTIMES
+      block.
+tracktimes:
+  tracktimes:
+    type: recarray time
+    shape: (ntracktimes)
+    reader: urword
+    longname: null
+    description: null
+  time:
+    type: double precision
+    shape: null
+    tagged: false
+    in_record: true
+    reader: urword
+    longname: release time
+    description: real value that defines the tracking time with respect to the simulation
+      start time.
+_variable True:
+  iper:
+    type: integer
+    in_record: true
+    tagged: false
+    shape: null
+    valid: null
+    reader: urword
+    optional: false
+    longname: stress period number
+    description: REPLACE iper {}
+period:
+  saverecord:
+    type: record save rtype ocsetting
+    shape: null
+    reader: urword
+    tagged: false
+    optional: true
+    longname: null
+    description: null
+  save:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: keyword to save
+    description: keyword to indicate that information will be saved this stress period.
+  printrecord:
+    type: record print rtype ocsetting
+    shape: null
+    reader: urword
+    tagged: false
+    optional: true
+    longname: null
+    description: null
+  print:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: keyword to save
+    description: keyword to indicate that information will be printed this stress
+      period.
+  rtype:
+    type: string
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: record type
+    description: type of information to save or print.  Can only be BUDGET.
+  ocsetting:
+    type: keystring all first last frequency steps
+    shape: null
+    tagged: false
+    in_record: true
+    reader: urword
+    longname: null
+    description: specifies the steps for which the data will be saved.
+  all:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    longname: null
+    description: keyword to indicate save for all time steps in period.
+  first:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    longname: null
+    description: keyword to indicate save for first step in period. This keyword may
+      be used in conjunction with other keywords to print or save results for multiple
+      time steps.
+  last:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    longname: null
+    description: keyword to indicate save for last step in period. This keyword may
+      be used in conjunction with other keywords to print or save results for multiple
+      time steps.
+  frequency:
+    type: integer
+    shape: null
+    tagged: true
+    in_record: true
+    reader: urword
+    longname: null
+    description: save at the specified time step frequency. This keyword may be used
+      in conjunction with other keywords to print or save results for multiple time
+      steps.
+  steps:
+    type: integer
+    shape: (<nstp)
+    tagged: true
+    in_record: true
+    reader: urword
+    longname: null
+    description: save for each step specified in STEPS. This keyword may be used in
+      conjunction with other keywords to print or save results for multiple time steps.

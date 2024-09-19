@@ -3,14 +3,6 @@ from pathlib import Path
 import numpy as np
 from lark import Transformer
 
-from flopy4.io.lark import (
-    parse_array,
-    parse_float,
-    parse_int,
-    parse_string,
-    parse_word,
-)
-
 
 class MF6Transformer(Transformer):
     """
@@ -32,6 +24,25 @@ class MF6Transformer(Transformer):
     def key(self, k):
         (k,) = k
         return str(k).lower()
+
+    def string(self, s):
+        return " ".join(s)
+
+    def word(self, w):
+        (w,) = w
+        return str(w)
+
+    def int(self, i):
+        (i,) = i
+        return int(i)
+
+    def float(self, f):
+        (f,) = f
+        return float(f)
+
+    def array(self, a):
+        (a,) = a
+        return np.array(a)
 
     def constantarray(self, a):
         # TODO factor out `ConstantArray`
@@ -72,11 +83,6 @@ class MF6Transformer(Transformer):
             name = f"{name} {index}"
         return name.lower()
 
-    word = parse_word
-    string = parse_string
-    int = parse_int
-    float = parse_float
-    array = parse_array
     record = tuple
     list = list
     dict = dict

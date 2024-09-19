@@ -1,0 +1,142 @@
+attributes:
+  time_series_namerecord:
+    type: record names time_series_names
+    shape: null
+    reader: urword
+    tagged: false
+    optional: false
+    longname: null
+    description: xxx
+  names:
+    other_names: name
+    type: keyword
+    shape: null
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+  time_series_names:
+    type: string
+    shape: any1d
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: Name by which a package references a particular time-array series.
+      The name must be unique among all time-array series used in a package.
+  interpolation_methodrecord:
+    type: record methods interpolation_method
+    shape: null
+    reader: urword
+    tagged: false
+    optional: true
+    longname: null
+    description: xxx
+  methods:
+    type: keyword
+    shape: null
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+  interpolation_method:
+    type: string
+    valid: stepwise linear linearend
+    shape: time_series_names
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: Interpolation method, which is either STEPWISE or LINEAR.
+  interpolation_methodrecord_single:
+    type: record method interpolation_method_single
+    shape: null
+    reader: urword
+    tagged: false
+    optional: true
+    longname: null
+    description: xxx
+  method:
+    type: keyword
+    shape: null
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+  interpolation_method_single:
+    type: string
+    valid: stepwise linear linearend
+    shape: null
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: Interpolation method, which is either STEPWISE or LINEAR.
+  sfacrecord:
+    type: record sfacs sfacval
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: xxx
+  sfacs:
+    type: keyword
+    shape: null
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+  sfacval:
+    type: double precision
+    shape: <time_series_name
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: Scale factor, which will multiply all array values in time series.
+      SFAC is an optional attribute; if omitted, SFAC = 1.0.
+  sfacrecord_single:
+    type: record sfac sfacval
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: xxx
+  sfac:
+    type: keyword
+    shape: null
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: xxx
+timeseries:
+  timeseries:
+    type: recarray ts_time ts_array
+    shape: null
+    reader: urword
+    tagged: true
+    optional: false
+    longname: null
+    description: xxx
+  ts_time:
+    type: double precision
+    shape: null
+    tagged: false
+    reader: urword
+    optional: false
+    repeating: false
+    longname: null
+    description: A numeric time relative to the start of the simulation, in the time
+      unit used in the simulation. Times must be strictly increasing.
+  ts_array:
+    type: double precision
+    shape: time_series_names
+    tagged: false
+    reader: urword
+    optional: false
+    longname: null
+    description: A 2-D array of numeric, floating-point values, or a constant value,
+      readable by the U2DREL array-reading utility.

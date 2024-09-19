@@ -21,50 +21,43 @@ ATTRIBUTES = [
     "default_value",
     "numeric_index",
     "deprecated",
+    "removed",
     "repeating",
     "time_series",
-    "other_names"
+    "other_names",
+    "support_negative_index",
+    "jagged_array",
+    "just_data",
+    "block_variable"
 ]
 
 DFN_GRAMMAR = r"""
 // dfn
-dfn: _NL* (block _NL*)+ _NL*
-
-// block
-block: _header _blockattr* parameter*
-_header: _hash _dashes _headtext _dashes _NL+
-_headtext: component subcompnt blockname
-component: _word
-subcompnt: _word
-blockname: _word
-_blockattr: _hash _word* _NL+
+dfn: _NL* parameter* _NL*
 
 // parameter
-parameter.+1: _paramhead (_NL attribute)* _NL*
-_paramhead: paramblock _NL paramname
-paramblock: "block" _word
-paramname: "name" _word
+parameter.+1: _head (_NL attribute)* _NL*
+_head: block _NL name
+block: "block" WS_INLINE CNAME
+name: "name" WS_INLINE CNAME
 
 // attribute
 attribute.-1: key [value]
 key: ATTRIBUTE
-value: string
+value: _string
 
-// string
-_word: /[a-zA-z0-9.:;\(\)\{\}\#\_\-\+\,\\\/\`\'\<\>\$\=\^\*\~]+/
-string: _word+
+// string (anything but newline)
+_string: /[^\n]+/
 
 // newline
 _NL: /(\r?\n[\t ]*)+/
 
-// comment format
-_hash: /\#/
-_dashes: /[\-]+/
-
-%import common.SH_COMMENT -> COMMENT
+%import common.CNAME
+%import common.SH_COMMENT
 %import common.WORD
 %import common.WS_INLINE
 
+%ignore SH_COMMENT
 %ignore WS_INLINE
 """
 """

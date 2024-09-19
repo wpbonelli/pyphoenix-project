@@ -21,7 +21,7 @@ DFNFormat = Literal["toml", "yaml"]
 
 def collect_dfns(path: Path) -> List[Path]:
     if path.is_dir():
-        return list(path.rglob("*.dfn"))
+        return [p for p in path.rglob("*.dfn") if p.stem != "common"]
     elif path.suffix.lower() in [".dfn"]:
         if not path.is_file():
             raise FileNotFoundError(f"DFN file does not exist: {path}")

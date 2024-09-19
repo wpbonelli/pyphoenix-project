@@ -1,0 +1,262 @@
+options:
+  budget_filerecord:
+    type: record budget fileout budgetfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  budget:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: budget keyword
+    description: keyword to specify that record corresponds to the budget.
+  fileout:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: file keyword
+    description: keyword to specify that an output filename is expected next.
+  budgetfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the output file to write budget information.
+  budgetcsv_filerecord:
+    type: record budgetcsv fileout budgetcsvfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  budgetcsv:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: budget keyword
+    description: keyword to specify that record corresponds to the budget CSV.
+  budgetcsvfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the comma-separated value (CSV) output file to write budget
+      summary information.  A budget summary record will be written to this file for
+      each time step of the simulation.
+  head_filerecord:
+    type: record head fileout headfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  head:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: head keyword
+    description: keyword to specify that record corresponds to head.
+  headfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the output file to write head information.
+  headprintrecord:
+    type: record head print_format formatrecord
+    shape: null
+    reader: urword
+    optional: true
+    longname: null
+    description: null
+  print_format:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: keyword to indicate that a print format follows
+    description: keyword to specify format for printing to the listing file.
+  formatrecord:
+    type: record columns width digits format
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: null
+    optional: false
+    longname: null
+    description: null
+  columns:
+    type: integer
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: null
+    longname: number of columns
+    description: number of columns for writing data.
+  width:
+    type: integer
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: null
+    longname: width for each number
+    description: width for writing each number.
+  digits:
+    type: integer
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: null
+    longname: number of digits
+    description: number of digits to use for writing a number.
+  format:
+    type: string
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: write format
+    description: write format can be EXPONENTIAL, FIXED, GENERAL, or SCIENTIFIC.
+_variable True:
+  iper:
+    type: integer
+    in_record: true
+    tagged: false
+    shape: null
+    valid: null
+    reader: urword
+    optional: false
+    longname: stress period number
+    description: REPLACE iper {}
+period:
+  saverecord:
+    type: record save rtype ocsetting
+    shape: null
+    reader: urword
+    tagged: false
+    optional: true
+    longname: null
+    description: null
+  save:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: keyword to save
+    description: keyword to indicate that information will be saved this stress period.
+  printrecord:
+    type: record print rtype ocsetting
+    shape: null
+    reader: urword
+    tagged: false
+    optional: true
+    longname: null
+    description: null
+  print:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: keyword to save
+    description: keyword to indicate that information will be printed this stress
+      period.
+  rtype:
+    type: string
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: record type
+    description: type of information to save or print.  Can be BUDGET or HEAD.
+  ocsetting:
+    type: keystring all first last frequency steps
+    shape: null
+    tagged: false
+    in_record: true
+    reader: urword
+    longname: null
+    description: specifies the steps for which the data will be saved.
+  all:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    longname: null
+    description: keyword to indicate save for all time steps in period.
+  first:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    longname: null
+    description: keyword to indicate save for first step in period. This keyword may
+      be used in conjunction with other keywords to print or save results for multiple
+      time steps.
+  last:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    longname: null
+    description: keyword to indicate save for last step in period. This keyword may
+      be used in conjunction with other keywords to print or save results for multiple
+      time steps.
+  frequency:
+    type: integer
+    shape: null
+    tagged: true
+    in_record: true
+    reader: urword
+    longname: null
+    description: save at the specified time step frequency. This keyword may be used
+      in conjunction with other keywords to print or save results for multiple time
+      steps.
+  steps:
+    type: integer
+    shape: (<nstp)
+    tagged: true
+    in_record: true
+    reader: urword
+    longname: null
+    description: save for each step specified in STEPS. This keyword may be used in
+      conjunction with other keywords to print or save results for multiple time steps.

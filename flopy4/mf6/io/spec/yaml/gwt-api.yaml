@@ -1,0 +1,75 @@
+options:
+  boundnames:
+    type: keyword
+    shape: null
+    reader: urword
+    optional: true
+    longname: null
+    description: 'REPLACE boundnames {''{#1}'': ''api boundary''}'
+  print_input:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: print input to listing file
+    description: 'REPLACE print_input {''{#1}'': ''api boundary''}'
+  print_flows:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: print calculated flows to listing file
+    description: 'REPLACE print_flows {''{#1}'': ''api boundary''}'
+  save_flows:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: save api flows to budget file
+    description: 'REPLACE save_flows {''{#1}'': ''api boundary''}'
+  obs_filerecord:
+    type: record obs6 filein obs6_filename
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  obs6:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: obs keyword
+    description: keyword to specify that record corresponds to an observations file.
+  filein:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: file keyword
+    description: keyword to specify that an input filename is expected next.
+  obs6_filename:
+    type: string
+    preserve_case: true
+    in_record: true
+    tagged: false
+    reader: urword
+    optional: false
+    longname: obs6 input filename
+    description: 'REPLACE obs6_filename {''{#1}'': ''api boundary''}'
+  mover:
+    type: keyword
+    tagged: true
+    reader: urword
+    optional: true
+    longname: null
+    description: 'REPLACE mover {''{#1}'': ''api boundary''}'
+dimensions:
+  maxbound:
+    type: integer
+    reader: urword
+    optional: false
+    longname: maximum number of user-defined api boundaries
+    description: 'REPLACE maxbound {''{#1}'': ''api boundary''}'

@@ -17,4 +17,4 @@ def test_dfn2toml(tmp_path):
     toml_path = tmp_path / "gwf-ic.toml"
     assert toml_path.is_file()
     dfn = toml.load(toml_path)
-    pprint(dfn)
+    pprint(dfn, sort_dicts=False)

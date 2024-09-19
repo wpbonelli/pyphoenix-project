@@ -1,0 +1,99 @@
+options:
+  print_input:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: print input to listing file
+    description: 'REPLACE print_input {''{#1}'': ''spt''}'
+  ts_filerecord:
+    type: record ts6 filein ts6_filename
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  ts6:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: head keyword
+    description: keyword to specify that record corresponds to a time-series file.
+  filein:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: file keyword
+    description: keyword to specify that an input filename is expected next.
+  ts6_filename:
+    type: string
+    preserve_case: true
+    in_record: true
+    reader: urword
+    optional: false
+    tagged: false
+    longname: file name of time series information
+    description: REPLACE timeseriesfile {}
+dimensions:
+  maxbound:
+    type: integer
+    reader: urword
+    optional: false
+    longname: maximum number of ssm entries
+    description: 'REPLACE maxbound {''{#1}'': ''spt''}'
+_variable True:
+  iper:
+    type: integer
+    in_record: true
+    tagged: false
+    shape: null
+    valid: null
+    reader: urword
+    optional: false
+    longname: stress period number
+    description: REPLACE iper {}
+period:
+  perioddata:
+    type: recarray bndno sptsetting
+    shape: null
+    reader: urword
+    longname: null
+    description: null
+  bndno:
+    type: integer
+    shape: null
+    tagged: false
+    in_record: true
+    reader: urword
+    longname: bound number for this entry
+    description: integer value that defines the boundary package feature number associated
+      with the specified PERIOD data on the line. BNDNO must be greater than zero
+      and less than or equal to MAXBOUND.
+    numeric_index: true
+  sptsetting:
+    type: keystring temperature
+    shape: null
+    tagged: false
+    in_record: true
+    reader: urword
+    longname: null
+    description: 'line of information that is parsed into a keyword and values.  Keyword
+      values that can be used to start the SPTSETTING string include: TEMPERATURE.'
+  temperature:
+    type: double precision
+    shape: null
+    tagged: true
+    in_record: true
+    reader: urword
+    time_series: true
+    longname: well boundary temperature
+    description: is the boundary temperature. If the Options block includes a TIMESERIESFILE
+      entry (see the ``Time-Variable Input'' section), values can be obtained from
+      a time series by entering the time-series name in place of a numeric value.
+      By default, the TEMPERATURE for each boundary feature is zero.

@@ -1,26 +1,23 @@
 options:
   time_units:
-    name: time_units
     type: string
     reader: urword
     optional: true
     longname: time unit
-    description: is the time units of the simulation. This is a text string that is
-      used as a label within model output files. Values for time\_units may be ``unknown'',
-      ``seconds'', ``minutes'', ``hours'', ``days'', or ``years''. The default time
-      unit is ``unknown''.
+    description: is the time units of the simulation.  This is a text string that
+      is used as a label within model output files.  Values for time\_units may be
+      ``unknown'',  ``seconds'', ``minutes'', ``hours'', ``days'', or ``years''.  The
+      default time unit is ``unknown''.
   start_date_time:
-    name: start_date_time
     type: string
     reader: urword
     optional: true
     longname: starting date and time
-    description: is the starting date and time of the simulation. This is a text string
-      that is used as a label within the simulation list file. The value has no effect
-      on the simulation. The recommended format for the starting date and time is
-      described at https://www.w3.org/TR/NOTE-datetime.
+    description: is the starting date and time of the simulation.  This is a text
+      string that is used as a label within the simulation list file.  The value has
+      no effect on the simulation.  The recommended format for the starting date and
+      time is described at https://www.w3.org/TR/NOTE-datetime.
   ats_filerecord:
-    name: ats_filerecord
     type: record ats6 filein ats6_filename
     shape: null
     reader: urword
@@ -29,7 +26,6 @@ options:
     longname: null
     description: null
   ats6:
-    name: ats6
     type: keyword
     shape: null
     in_record: true
@@ -38,10 +34,9 @@ options:
     optional: false
     longname: ats keyword
     description: keyword to specify that record corresponds to an adaptive time step
-      (ATS) input file. The behavior of ATS and a description of the input file is
+      (ATS) input file.  The behavior of ATS and a description of the input file is
       provided separately.
   filein:
-    name: filein
     type: keyword
     shape: null
     in_record: true
@@ -51,7 +46,6 @@ options:
     longname: file keyword
     description: keyword to specify that an input filename is expected next.
   ats6_filename:
-    name: ats6_filename
     type: string
     preserve_case: true
     in_record: true
@@ -59,12 +53,11 @@ options:
     optional: false
     tagged: false
     longname: file name of adaptive time series information
-    description: defines an adaptive time step (ATS) input file defining ATS controls.
-      Records in the ATS file can be used to override the time step behavior for selected
+    description: defines an adaptive time step (ATS) input file defining ATS controls.  Records
+      in the ATS file can be used to override the time step behavior for selected
       stress periods.
 dimensions:
   nper:
-    name: nper
     type: integer
     reader: urword
     optional: false
@@ -73,7 +66,6 @@ dimensions:
     default_value: 1
 perioddata:
   perioddata:
-    name: perioddata
     type: recarray perlen nstp tsmult
     reader: urword
     optional: false
@@ -81,7 +73,6 @@ perioddata:
     description: null
     default_value: ((1.0, 1, 1.0),)
   perlen:
-    name: perlen
     type: double precision
     in_record: true
     tagged: false
@@ -90,7 +81,6 @@ perioddata:
     longname: length of stress period
     description: is the length of a stress period.
   nstp:
-    name: nstp
     type: integer
     in_record: true
     tagged: false
@@ -99,7 +89,6 @@ perioddata:
     longname: number of time steps
     description: is the number of time steps in a stress period.
   tsmult:
-    name: tsmult
     type: double precision
     in_record: true
     tagged: false

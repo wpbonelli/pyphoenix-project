@@ -1,0 +1,84 @@
+options:
+  print_input:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: print input to listing file
+    description: 'REPLACE print_input {''{#1}'': ''mover''}'
+  print_flows:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: print calculated flows to listing file
+    description: 'REPLACE print_flows {''{#1}'': ''lake''}'
+  save_flows:
+    type: keyword
+    reader: urword
+    optional: true
+    longname: save lake flows to budget file
+    description: 'REPLACE save_flows {''{#1}'': ''lake''}'
+  budget_filerecord:
+    type: record budget fileout budgetfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  budget:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: budget keyword
+    description: keyword to specify that record corresponds to the budget.
+  fileout:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: file keyword
+    description: keyword to specify that an output filename is expected next.
+  budgetfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the binary output file to write budget information.
+  budgetcsv_filerecord:
+    type: record budgetcsv fileout budgetcsvfile
+    shape: null
+    reader: urword
+    tagged: true
+    optional: true
+    longname: null
+    description: null
+  budgetcsv:
+    type: keyword
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: true
+    optional: false
+    longname: budget keyword
+    description: keyword to specify that record corresponds to the budget CSV.
+  budgetcsvfile:
+    type: string
+    preserve_case: true
+    shape: null
+    in_record: true
+    reader: urword
+    tagged: false
+    optional: false
+    longname: file keyword
+    description: name of the comma-separated value (CSV) output file to write budget
+      summary information.  A budget summary record will be written to this file for
+      each time step of the simulation.

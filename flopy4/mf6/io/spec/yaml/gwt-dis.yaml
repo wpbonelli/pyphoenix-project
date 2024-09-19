@@ -1,51 +1,45 @@
 options:
   length_units:
-    name: length_units
     type: string
     reader: urword
     optional: true
     longname: model length units
-    description: is the length units used for this model. Values can be ``FEET'',
-      ``METERS'', or ``CENTIMETERS''. If not specified, the default is ``UNKNOWN''.
+    description: is the length units used for this model.  Values can be ``FEET'',
+      ``METERS'', or ``CENTIMETERS''.  If not specified, the default is ``UNKNOWN''.
   nogrb:
-    name: nogrb
     type: keyword
     reader: urword
     optional: true
     longname: do not write binary grid file
     description: keyword to deactivate writing of the binary grid file.
   xorigin:
-    name: xorigin
     type: double precision
     reader: urword
     optional: true
     longname: x-position of the model grid origin
-    description: x-position of the lower-left corner of the model grid. A default
-      value of zero is assigned if not specified. The value for XORIGIN does not affect
-      the model simulation, but it is written to the binary grid file so that postprocessors
-      can locate the grid in space.
+    description: x-position of the lower-left corner of the model grid.  A default
+      value of zero is assigned if not specified.  The value for XORIGIN does not
+      affect the model simulation, but it is written to the binary grid file so that
+      postprocessors can locate the grid in space.
   yorigin:
-    name: yorigin
     type: double precision
     reader: urword
     optional: true
     longname: y-position of the model grid origin
-    description: y-position of the lower-left corner of the model grid. If not specified,
-      then a default value equal to zero is used. The value for YORIGIN does not affect
-      the model simulation, but it is written to the binary grid file so that postprocessors
-      can locate the grid in space.
+    description: y-position of the lower-left corner of the model grid.  If not specified,
+      then a default value equal to zero is used.  The value for YORIGIN does not
+      affect the model simulation, but it is written to the binary grid file so that
+      postprocessors can locate the grid in space.
   angrot:
-    name: angrot
     type: double precision
     reader: urword
     optional: true
     longname: rotation angle
     description: counter-clockwise rotation angle (in degrees) of the lower-left corner
-      of the model grid. If not specified, then a default value of 0.0 is assigned.
-      The value for ANGROT does not affect the model simulation, but it is written
-      to the binary grid file so that postprocessors can locate the grid in space.
+      of the model grid.  If not specified, then a default value of 0.0 is assigned.  The
+      value for ANGROT does not affect the model simulation, but it is written to
+      the binary grid file so that postprocessors can locate the grid in space.
   export_array_ascii:
-    name: export_array_ascii
     type: keyword
     reader: urword
     optional: true
@@ -54,7 +48,6 @@ options:
     description: keyword that specifies input griddata arrays should be written to
       layered ascii output files.
   export_array_netcdf:
-    name: export_array_netcdf
     type: keyword
     reader: urword
     optional: true
@@ -63,7 +56,6 @@ options:
     description: keyword that specifies input griddata arrays should be written to
       the model output netcdf file.
   ncf_filerecord:
-    name: ncf_filerecord
     type: record ncf6 filein ncf6_filename
     reader: urword
     tagged: true
@@ -71,7 +63,6 @@ options:
     longname: null
     description: null
   ncf6:
-    name: ncf6
     type: keyword
     in_record: true
     reader: urword
@@ -81,7 +72,6 @@ options:
     description: keyword to specify that record corresponds to a netcdf configuration
       (NCF) file.
   filein:
-    name: filein
     type: keyword
     in_record: true
     reader: urword
@@ -90,7 +80,6 @@ options:
     longname: file keyword
     description: keyword to specify that an input filename is expected next.
   ncf6_filename:
-    name: ncf6_filename
     type: string
     preserve_case: true
     in_record: true
@@ -101,7 +90,6 @@ options:
     description: defines a netcdf configuration (NCF) input file.
 dimensions:
   nlay:
-    name: nlay
     type: integer
     reader: urword
     optional: false
@@ -109,7 +97,6 @@ dimensions:
     description: is the number of layers in the model grid.
     default_value: 1
   nrow:
-    name: nrow
     type: integer
     reader: urword
     optional: false
@@ -117,7 +104,6 @@ dimensions:
     description: is the number of rows in the model grid.
     default_value: 2
   ncol:
-    name: ncol
     type: integer
     reader: urword
     optional: false
@@ -126,7 +112,6 @@ dimensions:
     default_value: 2
 griddata:
   delr:
-    name: delr
     type: double precision
     shape: (ncol)
     reader: readarray
@@ -134,7 +119,6 @@ griddata:
     description: is the column spacing in the row direction.
     default_value: 1.0
   delc:
-    name: delc
     type: double precision
     shape: (nrow)
     reader: readarray
@@ -142,7 +126,6 @@ griddata:
     description: is the row spacing in the column direction.
     default_value: 1.0
   top:
-    name: top
     type: double precision
     shape: (ncol, nrow)
     reader: readarray
@@ -150,7 +133,6 @@ griddata:
     description: is the top elevation for each cell in the top model layer.
     default_value: 1.0
   botm:
-    name: botm
     type: double precision
     shape: (ncol, nrow, nlay)
     reader: readarray
@@ -159,7 +141,6 @@ griddata:
     description: is the bottom elevation for each cell.
     default_value: 0.0
   idomain:
-    name: idomain
     type: integer
     shape: (ncol, nrow, nlay)
     reader: readarray
@@ -167,11 +148,11 @@ griddata:
     optional: true
     longname: idomain existence array
     description: is an optional array that characterizes the existence status of a
-      cell. If the IDOMAIN array is not specified, then all model cells exist within
-      the solution. If the IDOMAIN value for a cell is 0, the cell does not exist
-      in the simulation. Input and output values will be read and written for the
-      cell, but internal to the program, the cell is excluded from the solution. If
-      the IDOMAIN value for a cell is 1, the cell exists in the simulation. If the
-      IDOMAIN value for a cell is -1, the cell does not exist in the simulation. Furthermore,
-      the first existing cell above will be connected to the first existing cell below.
-      This type of cell is referred to as a ``vertical pass through'' cell.
+      cell.  If the IDOMAIN array is not specified, then all model cells exist within
+      the solution.  If the IDOMAIN value for a cell is 0, the cell does not exist
+      in the simulation.  Input and output values will be read and written for the
+      cell, but internal to the program, the cell is excluded from the solution.  If
+      the IDOMAIN value for a cell is 1, the cell exists in the simulation.  If the
+      IDOMAIN value for a cell is -1, the cell does not exist in the simulation.  Furthermore,
+      the first existing cell above will be connected to the first existing cell below.  This
+      type of cell is referred to as a ``vertical pass through'' cell.
