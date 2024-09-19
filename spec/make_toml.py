@@ -91,6 +91,7 @@ class Dfn2Toml:
         # if len(self._subpackage) > 0:
         #    d["subpackage"] = self._subpackage.copy()
 
+    def write(self):
         fname = f"{self.component.lower()}-{self.subcomponent.lower()}.toml"
         fspec = self._outdir[0] / fname
         with open(
