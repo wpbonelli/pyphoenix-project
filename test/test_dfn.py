@@ -1,6 +1,4 @@
-from pathlib import Path
-
-from conftest import PROJ_ROOT_PATH
+from conftest import SPEC_PATH
 
 from flopy4.dfn import Dfn, DfnSet
 
@@ -12,7 +10,7 @@ class TestDfn(Dfn):
 def test_dfn_load(tmp_path):
     key = "prt-prp"
 
-    f = Path(PROJ_ROOT_PATH / "spec" / "toml" / f"{key}.toml")
+    f = SPEC_PATH / "toml" / f"{key}.toml"
     dfn = Dfn.load(f.absolute(), {})
 
     assert dfn.component == "prt"
@@ -79,7 +77,7 @@ def test_dfn_load(tmp_path):
 def test_dfn_container(tmp_path):
     key = "prt-prp"
 
-    f = Path(PROJ_ROOT_PATH / "spec" / "toml" / f"{key}.toml")
+    f = SPEC_PATH / "toml" / f"{key}.toml"
     dfn = Dfn.load(f.absolute(), {})
 
     dfns = DfnSet()

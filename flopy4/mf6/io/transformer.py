@@ -26,7 +26,7 @@ class MF6Transformer(Transformer):
     primitives which are already in the right representation.
 
     See https://lark-parser.readthedocs.io/en/stable/visitors.html#transformer
-    for more info.
+    for more info on how transformers work.
     """
 
     def key(self, k):

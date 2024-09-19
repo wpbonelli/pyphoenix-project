@@ -1,15 +1,19 @@
-from pathlib import Path
+from conftest import SPEC_PATH
 
-from spec.make_toml import Dfn2Toml
+from flopy4.mf6.io.spec.dfn2toml import load_spec
 
-
-PROJ_ROOT = Path(__file__).parents[1]
-DFNS_PATH = PROJ_ROOT / "spec" / "dfn"
-TOML_PATH = PROJ_ROOT / "spec" / "toml"
+DFNS_PATH = SPEC_PATH / "dfn"
 
 
-def test_dfn2toml(tmp_path):
-    dfn_path = DFNS_PATH / "gwf-ic.dfn"
-    Dfn2Toml(dfn_path, tmp_path)
-    toml_path = tmp_path / "gwf-ic.toml"
-    assert toml_path.is_file()
+def test_load_spec():
+    dfn_paths = DFNS_PATH.glob("*.dfn")
+    spec = load_spec(*dfn_paths)
+    assert set(spec.keys()) == {
+        "gwf",
+        "gwt",
+        "gwe",
+        "prt",
+        "sim",
+        "exg",
+        "sln",
+    }

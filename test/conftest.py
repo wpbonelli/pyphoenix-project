@@ -2,6 +2,7 @@ from pathlib import Path
 
 PROJ_ROOT_PATH = Path(__file__).parents[1]
 DOCS_PATH = PROJ_ROOT_PATH / "docs"
+SPEC_PATH = PROJ_ROOT_PATH / "flopy4" / "mf6" / "io" / "spec"
 EXAMPLES_PATH = DOCS_PATH / "examples"
 EXCLUDED_EXAMPLES = []
 

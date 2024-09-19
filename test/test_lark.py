@@ -1,5 +1,6 @@
 from os import linesep
 from pathlib import Path
+from pprint import pprint
 
 import numpy as np
 
@@ -67,17 +68,19 @@ DFN_PARSER = make_dfn_parser()
 DFN_TRANSFORMER = DFNTransformer()
 
 PROJ_ROOT = Path(__file__).parents[1]
-DFNS_PATH = PROJ_ROOT / "spec" / "dfn"
-DFN_PATH = DFNS_PATH / "gwf-ic.dfn"
+SPEC_PATH = PROJ_ROOT / "flopy4" / "mf6" / "io" / "spec"
+DFNS_PATH = SPEC_PATH / "dfn"
 
 
-def test_parse_dfn():
-    tree = DFN_PARSER.parse(open(DFN_PATH).read())
+def test_parse_gwf_ic():
+    dfn_path = DFNS_PATH / "gwf-ic.dfn"
+    tree = DFN_PARSER.parse(open(dfn_path).read())
     print(tree.pretty())
 
 
-def test_transform_dfn():
-    tree = DFN_PARSER.parse(open(DFN_PATH).read())
+def test_transform_gwf_ic():
+    dfn_path = DFNS_PATH / "gwf-ic.dfn"
+    tree = DFN_PARSER.parse(open(dfn_path).read())
     data = DFN_TRANSFORMER.transform(tree)
     assert data["options"] == {
         "export_array_ascii": {
@@ -89,7 +92,7 @@ def test_transform_dfn():
             "longname": "export array variables to " "layered ascii files.",
             "mf6internal": "export_ascii",
             "name": "export_array_ascii",
-            "optional": "true",
+            "optional": True,
             "reader": "urword",
             "type": "keyword",
         },
@@ -101,7 +104,7 @@ def test_transform_dfn():
             "longname": "export array variables to " "netcdf output files.",
             "mf6internal": "export_nc",
             "name": "export_array_netcdf",
-            "optional": "true",
+            "optional": True,
             "reader": "urword",
             "type": "keyword",
         },
@@ -126,7 +129,7 @@ def test_transform_dfn():
             "A head value lower than the cell bottom "
             "can be provided if a cell should start "
             "as dry.",
-            "layered": "true",
+            "layered": True,
             "longname": "starting head",
             "name": "strt",
             "reader": "readarray",
@@ -134,3 +137,17 @@ def test_transform_dfn():
             "type": "double precision",
         }
     }
+
+
+def test_transform_gwf_dis():
+    dfn_path = DFNS_PATH / "gwf-dis.dfn"
+    tree = DFN_PARSER.parse(open(dfn_path).read())
+    data = DFN_TRANSFORMER.transform(tree)
+    pprint(data)
+
+
+def test_transform_prt_prp():
+    dfn_path = DFNS_PATH / "prt-prp.dfn"
+    tree = DFN_PARSER.parse(open(dfn_path).read())
+    data = DFN_TRANSFORMER.transform(tree)
+    pprint(data)
