@@ -3,7 +3,8 @@ Wrap `xattree` and `attrs` specification utilities for MF6.
 These include field decorators and introspection functions.
 """
 
-from attrs import NOTHING, Attribute, fields_dict
+from attrs import NOTHING, Attribute
+from xattree import fields_dict as xattree_fields_dict
 
 from flopy4.spec import array as flopy_array
 from flopy4.spec import coord as flopy_coord
@@ -140,7 +141,6 @@ def blocks_dict(cls) -> dict[str, Block]:
     (field) name to `attrs.Attribute`.
     """
     fields = fields_dict(cls)
-    fields = {k: v for k, v in fields.items() if "block" in v.metadata}
     blocks: dict[str, Block] = {}
     for k, v in fields.items():
         block = v.metadata["block"]
@@ -148,3 +148,17 @@ def blocks_dict(cls) -> dict[str, Block]:
             blocks[block] = {}
         blocks[block][k] = v
     return dict(sorted(blocks.items(), key=_block_sort_key))
+
+
+def fields(cls) -> list[Attribute]:
+    """Return an ordered list of fields for a component class."""
+    return list(fields_dict(cls).values())
+
+
+def fields_dict(cls) -> dict[str, Attribute]:
+    """
+    Return an ordered dictionary of fields for a component class,
+    whose keys are field names. Each field is an `attrs.Attribute`.
+    """
+    fields = xattree_fields_dict(cls)
+    return {k: v for k, v in fields.items() if "block" in v.metadata}

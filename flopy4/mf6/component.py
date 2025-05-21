@@ -2,7 +2,8 @@ from abc import ABC
 from collections.abc import MutableMapping
 
 from xattree import xattree
-from flopy4.io import Writer
+
+from flopy4.mf6.io import Writer
 
 COMPONENTS = {}
 """MF6 component registry."""
