@@ -2,13 +2,14 @@ from abc import ABC
 from collections.abc import MutableMapping
 
 from xattree import xattree
+from flopy4.io import Writer
 
 COMPONENTS = {}
 """MF6 component registry."""
 
 
 @xattree
-class Component(ABC, MutableMapping):
+class Component(ABC, MutableMapping, Writer):
     @classmethod
     def __attrs_init_subclass__(cls):
         COMPONENTS[cls.__name__.lower()] = cls
@@ -27,8 +28,3 @@ class Component(ABC, MutableMapping):
 
     def __len__(self):
         return len(self.children)  # type: ignore
-
-    def write(self) -> None:
-        # TODO: write with jinja to file
-        for child in self.children.values():  # type: ignore
-            child.write()
