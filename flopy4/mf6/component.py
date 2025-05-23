@@ -3,7 +3,7 @@ from collections.abc import MutableMapping
 
 from xattree import xattree
 
-from flopy4.mf6.io import ComponentReader, ComponentWriter, IOMethod
+from flopy4.io import IOMethod, Loader, Writer
 
 COMPONENTS = {}
 """MF6 component registry."""
@@ -14,12 +14,17 @@ class Component(ABC, MutableMapping):
     """
     Base class for MF6 components.
 
+    Notes
+    -----
+    All subclasses of `Component` must be decorated with `xattree`.
+
     We use the `children` attribute provided by `xattree`. We know
-    children are also `Component`s, but mypy does not. How to fix?
+    children are also `Component`s, but mypy does not. TODO: fix??
     """
 
     @classmethod
     def __attrs_init_subclass__(cls):
+        # add class to the component registry
         COMPONENTS[cls.__name__.lower()] = cls
 
     def __getitem__(self, key):
@@ -37,10 +42,10 @@ class Component(ABC, MutableMapping):
     def __len__(self):
         return len(self.children)  # type: ignore
 
-    _read = IOMethod(ComponentReader)  # type: ignore
-    _write = IOMethod(ComponentWriter)  # type: ignore
+    _load = IOMethod(Loader)  # type: ignore
+    _write = IOMethod(Writer)  # type: ignore
 
-    def read(self, format=None) -> None:
+    def load(self, format=None) -> None:
         self._read(format=format)
         for child in self.children.values():  # type: ignore
             child.read(format=format)
