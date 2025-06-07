@@ -152,6 +152,12 @@ def unstructure_component(value: Component) -> dict[str, Any]:
     return data
 
 
+def unstructure_context(value: Any) -> dict[str, Any]:
+    data = xattree.asdict(value)
+    blocks = get_blocks(value.dfn)
+    return data
+
+
 def unstructure_tdis(value: Any) -> dict[str, Any]:
     data = xattree.asdict(value)
     blocks = get_blocks(value.dfn)

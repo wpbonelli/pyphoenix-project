@@ -1,4 +1,6 @@
 from os import PathLike
+from pathlib import Path
+from typing import Optional
 from warnings import warn
 
 from flopy.discretization.modeltime import ModelTime
@@ -23,10 +25,17 @@ def convert_time(value):
 
 @xattree
 class Simulation(Context):
-    models: dict[str, Model] = field()
-    exchanges: dict[str, Exchange] = field()
-    solutions: dict[str, Solution] = field()
-    tdis: Tdis = field(converter=convert_time)
+    continue_: bool = field(default=False, block="options")
+    nocheck: bool = field(default=False, block="options")
+    memory_print_option: Optional[str] = field(default=None, block="options")
+    profile_option: Optional[str] = field(default=None, block="options")
+    maxerrors: Optional[int] = field(default=None, block="options")
+    print_input: bool = field(default=True, block="options")
+    hpc_filerecord: Optional[Path] = field(default=None, block="options")
+    tdis: Tdis = field(converter=convert_time, block="timing")
+    models: dict[str, Model] = field(block="models")
+    exchanges: dict[str, Exchange] = field(block="exchanges")
+    solutions: dict[str, Solution] = field(block="solutions")
     filename: str = field(default="mfsim.nam", init=False)
 
     def __attrs_post_init__(self):

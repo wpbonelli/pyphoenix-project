@@ -13,6 +13,7 @@ from flopy4.mf6.codec.converter import (
     unstructure_array,
     unstructure_chd,
     unstructure_component,
+    unstructure_context,
     unstructure_oc,
     unstructure_tdis,
 )
@@ -45,6 +46,7 @@ def _make_converter() -> Converter:
     # don't eagerly unstructure to dict, lazily access from the template?
 
     from flopy4.mf6.component import Component
+    from flopy4.mf6.context import Context
     from flopy4.mf6.gwf.chd import Chd
     from flopy4.mf6.gwf.oc import Oc
     from flopy4.mf6.tdis import Tdis
@@ -52,6 +54,7 @@ def _make_converter() -> Converter:
     converter = Converter()
     converter.register_unstructure_hook_factory(xattree.has, lambda _: xattree.asdict)
     converter.register_unstructure_hook(Component, unstructure_component)
+    converter.register_unstructure_hook(Context, unstructure_context)
     converter.register_unstructure_hook(Tdis, unstructure_tdis)
     converter.register_unstructure_hook(Chd, unstructure_chd)
     converter.register_unstructure_hook(Oc, unstructure_oc)
