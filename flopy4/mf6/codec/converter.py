@@ -1,8 +1,11 @@
+from functools import partial
 from typing import Any, Tuple
 
 import numpy as np
+import pandas as pd
 import sparse
 import xattree
+from cattrs import structure, unstructure
 from numpy.typing import NDArray
 from xarray import DataArray
 from xattree import get_xatspec
@@ -14,19 +17,7 @@ from flopy4.mf6.constants import FILL_DNODATA
 from flopy4.mf6.spec import get_blocks, is_list_field
 
 
-# TODO: convert to a cattrs structuring hook so we don't have to
-# apply separately to all array fields?
-def structure_array(value, self_, field) -> NDArray:
-    """
-    Convert a sparse dictionary representation of an array to a
-    dense numpy array or a sparse COO array.
-    """
-
-    if not isinstance(value, dict):
-        # if not a dict, assume it's a numpy array
-        # and let xarray deal with it if it isn't
-        return value
-
+def _dataframe_to_array(value: pd.DataFrame, self_, field) -> NDArray:
     # get spec
     spec = get_xatspec(type(self_))
     field = spec[field.name]
@@ -42,11 +33,15 @@ def structure_array(value, self_, field) -> NDArray:
     if any(unresolved):
         raise ValueError(f"Couldn't resolve dims: {unresolved}")
 
+    convert = (
+        (lambda val: structure(val, field.type)) if field.dtype is np.object_ else (lambda val: val)
+    )
+
     if np.prod(shape) > SPARSE_THRESHOLD:
         a: dict[Tuple[Any, ...], Any] = dict()
 
         def set_(arr, val, *ind):
-            arr[tuple(ind)] = val
+            arr[tuple(ind)] = convert(val)
 
         def final(arr):
             coords = np.array(list(map(list, zip(*arr.keys()))))
@@ -60,32 +55,47 @@ def structure_array(value, self_, field) -> NDArray:
         a = np.full(shape, FILL_DNODATA, dtype=field.dtype)  # type: ignore
 
         def set_(arr, val, *ind):
-            arr[ind] = val
+            arr[ind] = convert(val)
 
         def final(arr):
             arr[arr == FILL_DNODATA] = field.default or FILL_DNODATA
             return arr
 
-    # populate array. TODO: is there a way to do this
-    # without hardcoding awareness of kper and cellid?
+    # Expect DataFrame with columns: 'kper', 'cellid', 'value'
     if "nper" in dims:
-        for kper, period in value.items():
-            if kper == "*":
-                kper = 0
-            match len(shape):
-                case 1:
-                    set_(a, period, kper)
-                case _:
-                    for cellid, v in period.items():
-                        nn = get_nn(cellid, **dims)
-                        set_(a, v, kper, nn)
-            if kper == "*":
-                break
+        for row in value.itertuples(index=False):
+            set_(a, row.value, row.kper, get_nn(row.cellid, **dims))
     else:
-        for cellid, v in value.items():
-            nn = get_nn(cellid, **dims)
-            set_(a, v, nn)
+        for row in value.itertuples(index=False):
+            set_(a, row.value, get_nn(row.cellid, **dims))
+
     return final(a)
+
+
+def structure_array(value, self_, field) -> NDArray:
+    """
+    Convert a sparse, unstructured representation of an array to a
+    structured array, either a dense numpy array or a sparse array.
+
+    The input value may be a dictionary, a numpy recarray, or a
+    pandas DataFrame. If the value is a dictionary, it must have
+    the structure {kper: {cellid: value, ...}, ...}. If the value
+    is a recarray or a DataFrame, it must have exactly 3 columns:
+    'kper', 'cellid', and 'value'.
+    """
+
+    df_to_array = partial(_dataframe_to_array, self_=self_, field=field)
+
+    match value:
+        case dict():
+            return df_to_array(pd.DataFrame.from_dict(value, orient="index"))
+        case np.recarray():
+            return df_to_array(pd.DataFrame.from_records(value))
+        case pd.DataFrame():
+            return df_to_array(value)
+        case _:
+            # assume it's already an array, let xarray raise an error if not
+            return value
 
 
 def unstructure_array(value: DataArray) -> dict:
@@ -144,22 +154,21 @@ def unstructure_tdis(value: Any) -> dict[str, Any]:
     blocks = get_blocks(value.dfn)
     for block_name, block in blocks.items():
         if block_name == "perioddata":
-            arrs_d = {}
             periods = set()  # type: ignore
-            for field_name in block.keys():
-                arr = data.get(field_name, None)
-                arr_d = {} if arr is None else unstructure_array(arr)
-                arrs_d[field_name] = arr_d
-                periods.update(arr_d.keys())
+            arr = data.get("perioddata", None)
+            arr_d = {} if arr is None else unstructure_array(arr)
+            periods.update(arr_d.keys())
             periods = sorted(periods)  # type: ignore
             perioddata = {}  # type: ignore
             for kper in periods:
                 line = []
                 if kper not in perioddata:
                     perioddata[kper] = []  # type: ignore
-                for arr_d in arrs_d.values():
-                    if val := arr_d.get(kper, None):
-                        line.append(val)
+                if val := arr_d.get(kper, None):
+                    field = block["perioddata"]
+                    line.append(
+                        unstructure(val, field["type"]) if field["dtype"] is np.object_ else val
+                    )
                 perioddata[kper] = tuple(line)
             data["perioddata"] = perioddata
     return data

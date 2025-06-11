@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
+import attrs
 import numpy as np
+import pandas as pd
 from attrs import Converter, define
 from flopy.discretization.modeltime import ModelTime
 from numpy.typing import NDArray
@@ -14,11 +16,11 @@ from flopy4.mf6.spec import array, dim, field
 
 @xattree
 class Tdis(Package):
-    @define
+    @define(slots=False)
     class PeriodData:
-        perlen: float
-        nstp: int
-        tsmult: float
+        perlen: float = 1.0
+        nstp: int = 1
+        tsmult: float = 1.0
 
     nper: int = dim(
         block="dimensions",
@@ -28,47 +30,33 @@ class Tdis(Package):
     )
     time_units: Optional[str] = field(block="options", default=None)
     start_date_time: Optional[datetime] = field(block="options", default=None)
-    perlen: NDArray[np.floating] = array(
+    perioddata: NDArray[np.object_] = array(
+        PeriodData,
         block="perioddata",
-        default=1.0,
         dims=("nper",),
-        converter=Converter(structure_array, takes_self=True, takes_field=True),
         reader="urword",
-    )
-    nstp: NDArray[np.integer] = array(
-        block="perioddata",
-        default=1,
-        dims=("nper",),
-        converter=Converter(structure_array, takes_self=True, takes_field=True),
-        reader="urword",
-    )
-    tsmult: NDArray[np.floating] = array(
-        block="perioddata",
-        default=1.0,
-        dims=("nper",),
-        converter=Converter(structure_array, takes_self=True, takes_field=True),
-        reader="urword",
+        converter=Converter(structure_array, takes_field=True, takes_self=True),
     )
 
     def to_time(self) -> ModelTime:
-        """Convert to a `ModelTime` object."""
+        """Convert the time discretization package to a `ModelTime` object."""
+        perioddata = pd.DataFrame([attrs.astuple(pd) for pd in self.perioddata.to_numpy()])
         return ModelTime(
             nper=self.nper,
             time_units=self.time_units,
             start_date_time=self.start_date_time,
-            perlen=self.perlen,
-            nstp=self.nstp,
-            tsmult=self.tsmult,
+            perlen=perioddata.perlen,
+            nstp=perioddata.nstp,
+            tsmult=perioddata.tsmult,
         )
 
     @classmethod
     def from_time(cls, time: ModelTime) -> "Tdis":
-        """Create a time discretization from a `ModelTime`."""
+        """Create a time discretization package from a `ModelTime` object."""
+        perioddata = [Tdis.PeriodData(*t) for t in zip(time.perlen, time.nstp, time.tsmult)]
         return cls(
             nper=time.nper,
             time_units=time.time_units,
             start_date_time=time.start_datetime,
-            perlen=time.perlen,
-            nstp=time.nstp,
-            tsmult=time.tsmult,
+            perioddata=perioddata,
         )

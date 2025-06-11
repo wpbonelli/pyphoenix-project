@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 import xattree
-from cattrs import Converter
+from cattrs import Converter, structure_attrs_fromtuple
 from jinja2 import Environment, PackageLoader
 
 from flopy4.mf6 import filters
@@ -50,11 +50,17 @@ def _make_converter() -> Converter:
     from flopy4.mf6.tdis import Tdis
 
     converter = Converter()
+
+    # structuring hooks
+    converter.register_structure_hook(Tdis.PeriodData, structure_attrs_fromtuple)
+
+    # unstructuring hooks
     converter.register_unstructure_hook_factory(xattree.has, lambda _: xattree.asdict)
-    converter.register_unstructure_hook(Component, unstructure_component)
     converter.register_unstructure_hook(Tdis, unstructure_tdis)
+    converter.register_unstructure_hook(Component, unstructure_component)
     converter.register_unstructure_hook(Chd, unstructure_chd)
     converter.register_unstructure_hook(Oc, unstructure_oc)
+
     return converter
 
 
