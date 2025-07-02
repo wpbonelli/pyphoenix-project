@@ -8,13 +8,7 @@ from cattrs import Converter
 from jinja2 import Environment, PackageLoader
 
 from flopy4.mf6 import filters
-from flopy4.mf6.codec.converter import (
-    unstructure_array,
-    unstructure_chd,
-    unstructure_component,
-    unstructure_oc,
-    unstructure_tdis,
-)
+from flopy4.mf6.codec.converter import unstructure_component
 
 _JINJA_ENV = Environment(
     loader=PackageLoader("flopy4.mf6"),
@@ -28,6 +22,8 @@ _JINJA_ENV.filters["field_value"] = filters.field_value
 _JINJA_ENV.filters["array_how"] = filters.array_how
 _JINJA_ENV.filters["array_chunks"] = filters.array_chunks
 _JINJA_ENV.filters["array2string"] = filters.array2string
+_JINJA_ENV.filters["to_sparse_dict"] = filters.to_sparse_dict
+_JINJA_ENV.filters["to_period_records"] = filters.to_period_records
 
 _JINJA_TEMPLATE_NAME = "blocks.jinja"
 
@@ -39,21 +35,12 @@ _PRINT_OPTIONS = {
 
 
 def _make_converter() -> Converter:
-    # TODO: document what is converter's responsibility vs Jinja's
-    # TODO: how can we make sure writing remains lazy for list input?
-    # don't eagerly unstructure to dict, lazily access from the template?
-
+    """Create a simple converter that just handles structure conversion."""
     from flopy4.mf6.component import Component
-    from flopy4.mf6.gwf.chd import Chd
-    from flopy4.mf6.gwf.oc import Oc
-    from flopy4.mf6.tdis import Tdis
 
     converter = Converter()
     converter.register_unstructure_hook_factory(xattree.has, lambda _: xattree.asdict)
     converter.register_unstructure_hook(Component, unstructure_component)
-    converter.register_unstructure_hook(Tdis, unstructure_tdis)
-    converter.register_unstructure_hook(Chd, unstructure_chd)
-    converter.register_unstructure_hook(Oc, unstructure_oc)
     return converter
 
 
@@ -72,19 +59,20 @@ def load(path: str | PathLike) -> Any:
 
 def dumps(data) -> str:
     template = _JINJA_ENV.get_template(_JINJA_TEMPLATE_NAME)
+    unstructured_data = _CONVERTER.unstructure(data)
     with np.printoptions(**_PRINT_OPTIONS):  # type: ignore
-        return template.render(dfn=type(data).dfn, data=_CONVERTER.unstructure(data))
+        return template.render(dfn=type(data).dfn, data=unstructured_data, component=data)
 
 
 def dump(data, path: str | PathLike) -> None:
     template = _JINJA_ENV.get_template(_JINJA_TEMPLATE_NAME)
-    iterator = template.generate(dfn=type(data).dfn, data=_CONVERTER.unstructure(data))
+    unstructured_data = _CONVERTER.unstructure(data)
+    iterator = template.generate(dfn=type(data).dfn, data=unstructured_data, component=data)
     with np.printoptions(**_PRINT_OPTIONS), open(path, "w") as f:  # type: ignore
         f.writelines(iterator)
 
 
 __all__ = [
-    "unstructure_array",
     "loads",
     "load",
     "dumps",

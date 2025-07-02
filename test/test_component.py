@@ -302,7 +302,7 @@ def test_write_ascii(function_tmpdir):
     ic = Ic(parent=gwf)
     oc = Oc(parent=gwf)
     npf = Npf(parent=gwf)
-    chd = Chd(parent=gwf, head={0: {(0, 0, 0): 1.0, (0, 9, 9): 0.0}})
+    chd = Chd(parent=gwf, head={0: {0: 1.0, 99: 0.0}})
 
     sim.write()
 
