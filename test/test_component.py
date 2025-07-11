@@ -8,10 +8,10 @@ from xarray import DataTree
 
 from flopy4.mf6.component import COMPONENTS
 from flopy4.mf6.constants import FILL_DNODATA
-from flopy4.mf6.gwf import Chd, Dis, Gwf, Ic, Npf, Oc
-from flopy4.mf6.ims import Ims
-from flopy4.mf6.simulation import Simulation
-from flopy4.mf6.tdis import Tdis
+from flopy4.mf6.modflow.gwf import Chd, Dis, Gwf, Ic, Npf, Oc
+from flopy4.mf6.modflow.sim import Simulation
+from flopy4.mf6.modflow.simtdis import Tdis
+from flopy4.mf6.modflow.slnims import Ims
 
 
 def test_registry():

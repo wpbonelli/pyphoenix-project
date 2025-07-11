@@ -33,7 +33,7 @@ END griddata
 
 
 def test_dumps_ic():
-    from flopy4.mf6.gwf import Dis, Gwf, Ic
+    from flopy4.mf6.modflow.gwf import Dis, Gwf, Ic
 
     dis = Dis()
     gwf = Gwf(dis=dis)
@@ -54,7 +54,7 @@ def test_dumps_ic():
 
 
 def test_dumps_oc():
-    from flopy4.mf6.gwf import Oc
+    from flopy4.mf6.modflow.gwf import Oc
 
     oc = Oc(
         budget_file="test.bud",
@@ -75,7 +75,7 @@ def test_dumps_oc():
 
 
 def test_dumps_dis():
-    from flopy4.mf6.gwf import Dis
+    from flopy4.mf6.modflow.gwf import Dis
 
     dis = Dis(
         nlay=1,
@@ -105,7 +105,7 @@ def test_dumps_dis():
 def test_dumps_tdis():
     from flopy.discretization.modeltime import ModelTime
 
-    from flopy4.mf6.tdis import Tdis
+    from flopy4.mf6.modflow.simtdis import Tdis
 
     tdis = Tdis.from_time(ModelTime(perlen=[1.0, 2.0], nstp=[1, 2]))
     tdis.time_units = "days"
@@ -121,7 +121,7 @@ def test_dumps_tdis():
 
 
 def test_dumps_chd():
-    from flopy4.mf6.gwf import Chd, Dis, Gwf
+    from flopy4.mf6.modflow.gwf import Chd, Dis, Gwf
 
     dis = Dis(nrow=10, ncol=10)
     gwf = Gwf(dis=dis)

@@ -6,6 +6,9 @@ venv/
 *.egg-info
 **/__pycache__/
 
-# pixi environments
+# python environments
 .pixi
 *.egg-info
+
+# temporary TODO remove
+dfn/toml
