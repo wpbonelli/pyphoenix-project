@@ -33,8 +33,24 @@ def is_list_block(block: dict) -> bool:
         "aux",
         "boundname",
     }
+    binding_fields = {
+        "models",
+        "exchanges",
+        "solutions",
+        "packages",
+        "tdis",
+        "dis",
+        "ic",
+        "npf",
+        "oc",
+        "chd",
+        "wel",
+        "drn",
+        "rch",
+        "sto",
+    }
     for field_name in meaningful_fields.keys():
-        if field_name.lower() not in stress_fields:
+        if field_name.lower() not in stress_fields and field_name.lower() not in binding_fields:
             return False
     return True
 
@@ -155,14 +171,14 @@ def array2string(value: NDArray) -> str:
     return buffer.getvalue().strip()
 
 
-def array2list(value: xr.DataArray, include_zeros: bool = False):
+def array2list(value, include_zeros: bool = False):
     """
     Generator that yields sparse (indices, value, *aux) tuples from a `DataArray`.
     Iterates only over meaningful values (excludes zeros, NaN, and `FILL_DNODATA`).
 
     Parameters
     ----------
-    value : xr.DataArray
+    value : xr.DataArray or other
         The input array to iterate over sparsely
     include_zeros : bool, optional
         If True, include zero values in iteration. Default False.
@@ -173,6 +189,29 @@ def array2list(value: xr.DataArray, include_zeros: bool = False):
         Tuples of (layer, row, col, value) with 1-based indexing for MF6
     """
     from flopy4.mf6.constants import FILL_DNODATA
+
+    # Handle non-DataArray inputs (like plain tuples or lists)
+    if not hasattr(value, "dtype"):
+        if isinstance(value, list):
+            # List of items - yield each item
+            for item in value:
+                yield item
+        elif isinstance(value, tuple):
+            # Single tuple - yield as one item
+            yield value
+        else:
+            yield value
+        return
+
+    # Handle string arrays (like binding records) - just yield all rows
+    if value.dtype.kind in ["U", "S"]:  # Unicode or byte strings
+        for i in range(value.shape[0]):
+            row = value.values[i]
+            if isinstance(row, np.ndarray):
+                yield tuple(row)
+            else:
+                yield row
+        return
 
     if not include_zeros:
         mask = (value != 0) & (value != FILL_DNODATA) & ~np.isnan(value)

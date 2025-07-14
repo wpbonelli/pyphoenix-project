@@ -218,7 +218,7 @@ def test_dumps_drn_sparse_multiperiod():
     assert "43 7.0 2.2" in result
 
 
-def test_dumps_chd_sparse_realistic():
+def test_dumps_chd_sparse():
     from flopy4.mf6.gwf import Chd, Dis, Gwf
 
     dis = Dis(nlay=1, nrow=20, ncol=30)
@@ -281,3 +281,97 @@ def test_dumps_wel_with_auxiliary():
     assert len(lines) == 2
     assert "-75" in result or "75" in result
     assert "-25" in result or "25" in result
+
+
+def test_convert_to_binding_format():
+    from flopy4.mf6.converter import _to_bindings
+
+    # Mock component for testing
+    class MockDis:
+        def __init__(self):
+            self.filename = None
+
+        def default_filename(self):
+            return "dis.dat"
+
+    class MockGwf:
+        def __init__(self):
+            self.filename = None
+
+        def default_filename(self):
+            return "gwf.dat"
+
+    dis = MockDis()
+    gwf = MockGwf()
+
+    # Test single component
+    bindings = _to_bindings("dis", dis)
+    assert len(bindings) == 1
+    assert bindings[0] == ("MOCKDIS6", "dis.dat")
+
+    # Test dict of components (models need names)
+    models_dict = {"model1": gwf}
+    bindings = _to_bindings("models", models_dict)
+    assert len(bindings) == 1
+    assert bindings[0] == ("MOCKGWF6", "gwf.dat", "model1")
+
+    # Test list of components
+    packages_list = [dis]
+    bindings = _to_bindings("packages", packages_list)
+    assert len(bindings) == 1
+    assert bindings[0] == ("MOCKDIS6", "dis.dat")
+
+
+def test_simulation_namelist_rendering():
+    """Test simulation namelist file rendering."""
+    import numpy as np
+    import xarray as xr
+
+    from flopy4.mf6.codec.writer import dumps
+
+    # Test complete simulation structure
+    test_simulation = {
+        "timing": {"tdis": ("TDIS6", "simulation.tdis")},
+        "models": {
+            "models": xr.DataArray(
+                np.array([["GWF6", "model1.nam", "model1"], ["GWF6", "model2.nam", "model2"]]),
+                dims=["nrec", "ncol"],
+            )
+        },
+    }
+
+    result = dumps(test_simulation)
+    assert "BEGIN TIMING" in result
+    assert "TDIS6 simulation.tdis" in result
+    assert "END TIMING" in result
+    assert "BEGIN MODELS" in result
+    assert "GWF6 model1.nam model1" in result
+    assert "GWF6 model2.nam model2" in result
+    assert "END MODELS" in result
+
+
+def test_model_namelist_rendering():
+    """Test model namelist file rendering."""
+    import numpy as np
+    import xarray as xr
+
+    from flopy4.mf6.codec.writer import dumps
+
+    # Test complete model structure
+    test_model = {
+        "packages": {
+            "dis": ("DIS6", "test.dis"),
+            "ic": ("IC6", "test.ic"),
+            "chd": xr.DataArray(
+                np.array([["CHD6", "chd1.chd"], ["CHD6", "chd2.chd"]]), dims=["nrec", "ncol"]
+            ),
+        }
+    }
+
+    result = dumps(test_model)
+    assert "BEGIN PACKAGES" in result
+    assert "DIS6 test.dis" in result
+    assert "IC6 test.ic" in result
+    assert "CHD6 chd1.chd" in result
+    assert "CHD6 chd2.chd" in result
+    assert "END PACKAGES" in result
