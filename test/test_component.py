@@ -3,10 +3,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 from flopy.discretization import StructuredGrid
-from flopy.discretization.modeltime import ModelTime
 from modflow_devtools.dfn import Sln
 from xarray import DataTree
 
+from flopy4.discretization.time import Time
 from flopy4.mf6.component import COMPONENTS
 from flopy4.mf6.constants import FILL_DNODATA
 from flopy4.mf6.gwf import Chd, Dis, Gwf, Ic, Npf, Oc
@@ -29,7 +29,7 @@ def test_init_empty_sim():
 
 
 def test_init_gwf_explicit_dims():
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     grid = StructuredGrid(nlay=1, nrow=2, ncol=2)
     dims = {
         "nper": time.nper,
@@ -68,7 +68,7 @@ def test_init_gwf_explicit_dims():
 
 @pytest.mark.skip(reason="TODO")
 def test_init_gwf_from_grid_context():
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     grid = StructuredGrid(nlay=1, nrow=2, ncol=2)
     # TODO maybe a dumb idea, but we could put the
     # time and grid in a context manager? then you
@@ -155,7 +155,7 @@ def test_init_gwf_top_down_misaligned():
 
 
 def test_init_sim_explicit_dims():
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     grid = StructuredGrid(nlay=1, nrow=10, ncol=10)
     dims = {
         "nlay": grid.nlay,
@@ -205,7 +205,7 @@ def test_init_sim_explicit_dims():
 
 def test_init_big_sim():
     # if size over threshold, arrays should be sparse
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     grid = StructuredGrid(nlay=1, nrow=100, ncol=100)
     sim = Simulation(tdis=time)
     gwf = Gwf(parent=sim, dis=grid)
@@ -276,7 +276,7 @@ def test_ims_dfn():
 
 def test_write_ascii(function_tmpdir):
     sim_name = "sim"
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     grid = StructuredGrid(nlay=1, nrow=10, ncol=10)
     sim = Simulation(tdis=time, workspace=function_tmpdir, name=sim_name)
     gwf_name = "gwf"

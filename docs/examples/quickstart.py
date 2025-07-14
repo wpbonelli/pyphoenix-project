@@ -2,16 +2,16 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from flopy.discretization.modeltime import ModelTime
 from flopy.discretization.structuredgrid import StructuredGrid
 
+from flopy4.discretization.time import Time
 from flopy4.mf6.gwf import Chd, Gwf, Npf, Oc
 from flopy4.mf6.ims import Ims
 from flopy4.mf6.simulation import Simulation
 
 name = "quickstart"
 workspace = Path(__file__).parent / name
-time = ModelTime(perlen=[1.0], nstp=[1])
+time = Time(perlen=[1.0], nstp=[1])
 grid = StructuredGrid(nlay=1, nrow=10, ncol=10)
 sim = Simulation(name=name, workspace=workspace, tdis=time)
 ims = Ims(parent=sim)

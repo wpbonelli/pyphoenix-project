@@ -5,8 +5,8 @@ from warnings import warn
 import numpy as np
 from flopy.datbase import DataInterface, DataListInterface, DataType
 from flopy.discretization import StructuredGrid
-from flopy.discretization.grid import Grid
 from flopy.discretization.modeltime import ModelTime
+from flopy.discretization.grid import Grid
 from flopy.export.utils import model_export, package_export
 from flopy.mbase import ModelInterface
 from flopy.pakbase import PackageInterface
@@ -209,7 +209,7 @@ class Flopy3Package(PackageInterface):
                     name=a,
                     modelname=self.parent,
                     modelgrid=self._grid,
-                    modeltime=modeltime,
+                    modeltime=self._time,
                 )
                 self.__dict__[f"{a}"] = d_fp3
                 self._dlist.append(d_fp3)
@@ -226,7 +226,7 @@ class Flopy3Package(PackageInterface):
                     name=v,
                     modelname=self.parent,
                     modelgrid=self._grid,
-                    modeltime=modeltime,
+                    modeltime=self._time,
                 )
                 self.__dict__[f"{v}"] = d_fp3
                 self._dlist.append(d_fp3)

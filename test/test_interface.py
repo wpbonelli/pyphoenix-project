@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 from flopy.discretization import StructuredGrid
-from flopy.discretization.modeltime import ModelTime
 
+from flopy4.discretization.time import Time
 from flopy4.mf6.adapters import Flopy3Model, Flopy3Package
 from flopy4.mf6.gwf import Chd, Dis, Gwf, Ic, Npf, Oc
 from flopy4.mf6.ims import Ims
@@ -41,7 +41,7 @@ def test_flopy3_model(tmp_path):
     from flopy.mbase import ModelInterface
     from flopy.pakbase import PackageInterface
 
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     grid = StructuredGrid(nlay=1, nrow=10, ncol=10)
 
     dims = {
@@ -79,7 +79,7 @@ def test_flopy3_model(tmp_path):
     pnames = ["dis", "ic", "oc", "npf", "chd0"]
     ptypes = ["DIS", "IC", "OC", "NPF", "CHD"]
 
-    gwf3 = Flopy3Model(model=gwf, modeltime=time, ims=ims)
+    gwf3 = Flopy3Model(model=gwf, Time=time, ims=ims)
     assert isinstance(gwf3, ModelInterface)
     assert gwf3.modelgrid
     assert gwf3.modelgrid.nlay == gwf.dis.nlay
@@ -152,7 +152,7 @@ def test_flopy3_package(tmp_path):
         ]
     ]
 
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     grid = StructuredGrid(
         nlay=1,
         nrow=10,
@@ -191,8 +191,8 @@ def test_flopy3_package(tmp_path):
 
     # gwf3 is needed because "parent" property needs
     # to return it for flopy3 based plotting (below)
-    gwf3 = Flopy3Model(model=gwf, modeltime=time)
-    dis3 = Flopy3Package(package=dis, model=gwf3, modeltime=time)
+    gwf3 = Flopy3Model(model=gwf, Time=time)
+    dis3 = Flopy3Package(package=dis, model=gwf3, Time=time)
     assert isinstance(gwf3, ModelInterface)
     assert isinstance(dis3, PackageInterface)
     assert gwf3.modelgrid.nlay == grid.nlay
@@ -247,7 +247,7 @@ def norun_test_flopy3_cbd_small(tmp_path):
     sys.path.append("/home/mjreno/.clone/usgs/flopy/autotest")
     from test_grid_cases import GridCases
 
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
 
     cbd_small = GridCases.structured_cbd_small()
     dims = {
@@ -264,7 +264,7 @@ def norun_test_flopy3_cbd_small(tmp_path):
     )
     bpth = Path(tmp_path) / "flopy3_cbd_small" / "flopy3_cbd_small"
     (Path(tmp_path) / "flopy3_cbd_small").mkdir(parents=True, exist_ok=True)
-    gwf3 = Flopy3Model(model=gwf, modelgrid=cbd_small, modeltime=time)
+    gwf3 = Flopy3Model(model=gwf, modelgrid=cbd_small, Time=time)
     gwf3.plot(filename_base=bpth)
 
 
@@ -290,7 +290,7 @@ def test_flopy3_grid2(tmp_path):
         "ncol": ncol,
     }
 
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
     dis = Dis(**dims)
     dis.delr = adelr
     dis.delc = adelc
@@ -305,7 +305,7 @@ def test_flopy3_grid2(tmp_path):
     )
     bpth = Path(tmp_path) / "flopy3_grid2" / "flopy3_grid2"
     (Path(tmp_path) / "flopy3_grid2").mkdir(parents=True, exist_ok=True)
-    gwf3 = Flopy3Model(model=gwf, modeltime=time)
+    gwf3 = Flopy3Model(model=gwf, Time=time)
     gwf3.plot(filename_base=bpth)
 
 
@@ -316,10 +316,10 @@ def test_flopy3_export(tmp_path):
     (Path(tmp_path) / "flopy3_model/netcdf").mkdir(parents=True, exist_ok=True)
     (Path(tmp_path) / "flopy3_package/netcdf").mkdir(parents=True, exist_ok=True)
 
-    time = ModelTime(perlen=[1.0], nstp=[1], tsmult=[1.0])
+    time = Time(perlen=[1.0], nstp=[1], tsmult=[1.0])
 
     gwf = quickstart_model()
-    gwf3 = Flopy3Model(gwf, modeltime=time, crs=3070)
+    gwf3 = Flopy3Model(gwf, Time=time, crs=3070)
     dis3 = Flopy3Package(gwf.dis, model=gwf3)
 
     # model shapefile export
