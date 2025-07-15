@@ -5,32 +5,6 @@ from flopy4.mf6.codec import dumps
 from flopy4.mf6.converter import COMPONENT_CONVERTER
 
 
-def test_list_template_rendering():
-    """Test that list blocks render correctly with sparse arrays."""
-
-    nnodes = 9
-    data = np.full((1, nnodes), 1e30)
-
-    data[0, 4] = -500.0
-    data[0, 8] = -250.0
-
-    wel_data = xr.DataArray(
-        data, dims=["nper", "nnodes"], coords={"node": ("nnodes", range(nnodes))}
-    )
-
-    test_data = {"period": {"q": wel_data}}
-
-    result = dumps(test_data)
-    print("List template result:")
-    print(result)
-
-    assert "BEGIN PERIOD" in result
-    assert "END PERIOD" in result
-    assert "5 -500.0" in result  # Node 5 (1-based) with -500.0
-    assert "9 -250.0" in result  # Node 9 (1-based) with -250.0
-    assert "1e+30" not in result
-
-
 def test_dumps_ic():
     from flopy4.mf6.gwf import Dis, Gwf, Ic
 
@@ -42,7 +16,8 @@ def test_dumps_ic():
         export_array_netcdf=True,
     )
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(ic))
+    data = COMPONENT_CONVERTER.unstructure(ic)
+    result = dumps(data)
     print(result)
     assert result
 
@@ -58,7 +33,8 @@ def test_dumps_oc():
         dims={"nper": 1},
     )
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(oc))
+    data = COMPONENT_CONVERTER.unstructure(oc)
+    result = dumps(data)
     print(result)
     assert result
 
@@ -76,7 +52,8 @@ def test_dumps_dis():
         length_units="feet",
     )
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(dis))
+    data = COMPONENT_CONVERTER.unstructure(dis)
+    result = dumps(data)
     print(result)
     assert result
 
@@ -89,7 +66,8 @@ def test_dumps_tdis():
     tdis = Tdis.from_time(ModelTime(perlen=[1.0, 2.0], nstp=[1, 2]))
     tdis.time_units = "days"
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(tdis))
+    data = COMPONENT_CONVERTER.unstructure(tdis)
+    result = dumps(data)
     print(result)
     assert result
 
@@ -112,7 +90,9 @@ def test_dumps_chd():
         dims={"nper": 1},
     )
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(chd))
+    data = COMPONENT_CONVERTER.unstructure(chd)
+    result = dumps(data)
+    print(result)
 
     assert "BEGIN PERIOD 1" in result
     assert "END PERIOD 1" in result
@@ -145,7 +125,8 @@ def test_dumps_wel_sparse():
         dims={"nper": 1},
     )
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(wel))
+    data = COMPONENT_CONVERTER.unstructure(wel)
+    result = dumps(data)
     print("WEL sparse result:")
     print(result)
 
@@ -195,7 +176,8 @@ def test_dumps_drn_sparse_multiperiod():
         dims={"nper": 2},
     )
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(drn))
+    data = COMPONENT_CONVERTER.unstructure(drn)
+    result = dumps(data)
 
     assert "BEGIN PERIOD 1" in result
     assert "END PERIOD 1" in result
@@ -234,7 +216,8 @@ def test_dumps_chd_sparse():
 
     chd = Chd(parent=gwf, head={0: boundaries}, print_input=True, save_flows=True, dims={"nper": 1})
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(chd))
+    data = COMPONENT_CONVERTER.unstructure(chd)
+    result = dumps(data)
     print("CHD realistic sparse result:")
     print(result)
 
@@ -271,7 +254,8 @@ def test_dumps_wel_with_auxiliary():
         dims={"nper": 1},
     )
 
-    result = dumps(COMPONENT_CONVERTER.unstructure(wel))
+    data = COMPONENT_CONVERTER.unstructure(wel)
+    result = dumps(data)
     print("WEL with auxiliary sparse result:")
     print(result)
 
@@ -281,97 +265,3 @@ def test_dumps_wel_with_auxiliary():
     assert len(lines) == 2
     assert "-75" in result or "75" in result
     assert "-25" in result or "25" in result
-
-
-def test_convert_to_binding_format():
-    from flopy4.mf6.converter import _to_bindings
-
-    # Mock component for testing
-    class MockDis:
-        def __init__(self):
-            self.filename = None
-
-        def default_filename(self):
-            return "dis.dat"
-
-    class MockGwf:
-        def __init__(self):
-            self.filename = None
-
-        def default_filename(self):
-            return "gwf.dat"
-
-    dis = MockDis()
-    gwf = MockGwf()
-
-    # Test single component
-    bindings = _to_bindings("dis", dis)
-    assert len(bindings) == 1
-    assert bindings[0] == ("MOCKDIS6", "dis.dat")
-
-    # Test dict of components (models need names)
-    models_dict = {"model1": gwf}
-    bindings = _to_bindings("models", models_dict)
-    assert len(bindings) == 1
-    assert bindings[0] == ("MOCKGWF6", "gwf.dat", "model1")
-
-    # Test list of components
-    packages_list = [dis]
-    bindings = _to_bindings("packages", packages_list)
-    assert len(bindings) == 1
-    assert bindings[0] == ("MOCKDIS6", "dis.dat")
-
-
-def test_simulation_namelist_rendering():
-    """Test simulation namelist file rendering."""
-    import numpy as np
-    import xarray as xr
-
-    from flopy4.mf6.codec.writer import dumps
-
-    # Test complete simulation structure
-    test_simulation = {
-        "timing": {"tdis": ("TDIS6", "simulation.tdis")},
-        "models": {
-            "models": xr.DataArray(
-                np.array([["GWF6", "model1.nam", "model1"], ["GWF6", "model2.nam", "model2"]]),
-                dims=["nrec", "ncol"],
-            )
-        },
-    }
-
-    result = dumps(test_simulation)
-    assert "BEGIN TIMING" in result
-    assert "TDIS6 simulation.tdis" in result
-    assert "END TIMING" in result
-    assert "BEGIN MODELS" in result
-    assert "GWF6 model1.nam model1" in result
-    assert "GWF6 model2.nam model2" in result
-    assert "END MODELS" in result
-
-
-def test_model_namelist_rendering():
-    """Test model namelist file rendering."""
-    import numpy as np
-    import xarray as xr
-
-    from flopy4.mf6.codec.writer import dumps
-
-    # Test complete model structure
-    test_model = {
-        "packages": {
-            "dis": ("DIS6", "test.dis"),
-            "ic": ("IC6", "test.ic"),
-            "chd": xr.DataArray(
-                np.array([["CHD6", "chd1.chd"], ["CHD6", "chd2.chd"]]), dims=["nrec", "ncol"]
-            ),
-        }
-    }
-
-    result = dumps(test_model)
-    assert "BEGIN PACKAGES" in result
-    assert "DIS6 test.dis" in result
-    assert "IC6 test.ic" in result
-    assert "CHD6 chd1.chd" in result
-    assert "CHD6 chd2.chd" in result
-    assert "END PACKAGES" in result

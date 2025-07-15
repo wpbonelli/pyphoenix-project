@@ -1,4 +1,5 @@
 from pathlib import Path
+from pprint import pprint
 
 import numpy as np
 import pytest
@@ -8,7 +9,6 @@ from modflow_devtools.dfn import Sln
 from xarray import DataTree
 
 from flopy4.mf6.component import COMPONENTS
-from flopy4.mf6.constants import FILL_DNODATA
 from flopy4.mf6.gwf import Chd, Dis, Gwf, Ic, Npf, Oc
 from flopy4.mf6.ims import Ims
 from flopy4.mf6.simulation import Simulation
@@ -194,7 +194,7 @@ def test_init_sim_explicit_dims():
     assert np.array_equal(sim.models["gwf"].npf.data.k, np.ones(100))
     assert chd.head[0, 0] == 1.0
     assert chd.head[0, 99] == 0.0
-    assert np.array_equal(chd.head[0, 1:99].data, np.full((98,), FILL_DNODATA))
+    assert np.array_equal(chd.head[0, 1:99].data, np.full((98,), np.nan), equal_nan=True)
     assert np.array_equal(chd.head.data, chd.data.head.data)
     assert np.array_equal(
         chd.head.data,
@@ -225,7 +225,7 @@ def test_init_big_sim():
     assert np.array_equal(sim.models["gwf"].npf.data.k, np.ones(10000))
     assert chd.head[0, 0].item() == 1.0
     assert chd.head[0, 9999].item() == 0.0
-    assert np.array_equal(chd.head[0, 1:9999].data.todense(), np.full((9998,), FILL_DNODATA))
+    assert np.array_equal(chd.head[0, 1:9999].data.todense(), np.full((9998,), np.nan), equal_nan=True)
     assert np.array_equal(chd.head.data.todense(), chd.data.head.data.todense())
     assert np.array_equal(
         chd.head.data.todense(),
@@ -298,3 +298,8 @@ def test_write_ascii(function_tmpdir):
     assert f"{gwf_name}.oc" in file_names
     assert f"{gwf_name}.npf" in file_names
     assert f"{gwf_name}.chd" in file_names
+
+    # show mfsim.nam
+    with open(Path(function_tmpdir) / "mfsim.nam", "r") as f:
+        lines = f.readlines()
+        pprint(lines)

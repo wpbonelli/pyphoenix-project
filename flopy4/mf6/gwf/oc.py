@@ -6,7 +6,7 @@ from attrs import Converter, define
 from numpy.typing import NDArray
 from xattree import xattree
 
-from flopy4.mf6.converters import dict_to_array
+from flopy4.mf6.spec import dict_to_array
 from flopy4.mf6.package import Package
 from flopy4.mf6.spec import array, field
 from flopy4.utils import to_path
@@ -23,11 +23,11 @@ class Oc(Package):
 
     @define(slots=False)
     class Steps:
-        all: bool = field()
-        first: bool = field()
-        last: bool = field()
-        steps: list[int] = field()
-        frequency: int = field()
+        all: bool = field(default=True)
+        first: bool | None = field(default=None)
+        last: bool | None = field(default=None)
+        steps: list[int] | None = field(default=None)
+        frequency: int | None = field(default=None)
 
     @define(slots=False)
     class Period:
@@ -53,7 +53,7 @@ class Oc(Package):
     save_head: Optional[NDArray[np.object_]] = array(
         Steps,
         block="period",
-        default="all",
+        default=Steps(all=True),
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
         reader="urword",
@@ -61,7 +61,7 @@ class Oc(Package):
     save_budget: Optional[NDArray[np.object_]] = array(
         Steps,
         block="period",
-        default="all",
+        default=Steps(all=True),
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
         reader="urword",
@@ -69,7 +69,7 @@ class Oc(Package):
     print_head: Optional[NDArray[np.object_]] = array(
         Steps,
         block="period",
-        default="all",
+        default=Steps(all=True),
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
         reader="urword",
@@ -77,7 +77,7 @@ class Oc(Package):
     print_budget: Optional[NDArray[np.object_]] = array(
         Steps,
         block="period",
-        default="all",
+        default=Steps(all=True),
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
         reader="urword",

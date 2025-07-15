@@ -1,6 +1,5 @@
 from abc import ABC
 from pathlib import Path
-from typing import Optional
 
 from xattree import field, xattree
 
@@ -13,5 +12,5 @@ class Exchange(Package, ABC):
     # Component means we can have required fields here
     exgtype: type = field()  # type: ignore
     exgfile: Path = field()  # type: ignore
-    exgmnamea: Optional[str] = field(default=None)
-    exgmnameb: Optional[str] = field(default=None)
+    exgmnamea: str = field()
+    exgmnameb: str = field()
