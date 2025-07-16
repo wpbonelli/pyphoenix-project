@@ -1,0 +1,27 @@
+// Generated grammar for MF6 GWT-IST component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (save_flows | budget_filerecord | budgetcsv_filerecord | sorption | first_order_decay | zero_order_decay | cim_filerecord | cimprintrecord | sorbate_filerecord)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (porosity | volfrac | zetaim | cim | decay | decay_sorbed | bulk_density | distcoef | sp2)*
+save_flows: [WS] "save_flows" _NL+
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+sorption: [WS] "sorption" word _NL+
+first_order_decay: [WS] "first_order_decay" _NL+
+zero_order_decay: [WS] "zero_order_decay" _NL+
+cim_filerecord: [WS] "cim_filerecord" array_format _NL+ array_data
+cimprintrecord: [WS] "cimprintrecord" array_format _NL+ array_data
+sorbate_filerecord: [WS] "sorbate_filerecord" array_format _NL+ array_data
+porosity: [WS] "porosity" NUMBER _NL+
+volfrac: [WS] "volfrac" NUMBER _NL+
+zetaim: [WS] "zetaim" NUMBER _NL+
+cim: [WS] "cim" NUMBER _NL+
+decay: [WS] "decay" NUMBER _NL+
+decay_sorbed: [WS] "decay_sorbed" NUMBER _NL+
+bulk_density: [WS] "bulk_density" NUMBER _NL+
+distcoef: [WS] "distcoef" NUMBER _NL+
+sp2: [WS] "sp2" NUMBER _NL+

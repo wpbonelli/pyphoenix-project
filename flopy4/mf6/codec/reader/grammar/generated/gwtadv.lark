@@ -1,0 +1,9 @@
+// Generated grammar for MF6 GWT-ADV component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (scheme | ats_percel)*
+scheme: [WS] "scheme" word _NL+
+ats_percel: [WS] "ats_percel" NUMBER _NL+

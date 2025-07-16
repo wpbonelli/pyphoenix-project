@@ -1,0 +1,20 @@
+// Generated grammar for MF6 GWT-MST component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (save_flows | first_order_decay | zero_order_decay | sorption | sorbate_filerecord)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (porosity | decay | decay_sorbed | bulk_density | distcoef | sp2)*
+save_flows: [WS] "save_flows" _NL+
+first_order_decay: [WS] "first_order_decay" _NL+
+zero_order_decay: [WS] "zero_order_decay" _NL+
+sorption: [WS] "sorption" word _NL+
+sorbate_filerecord: [WS] "sorbate_filerecord" array_format _NL+ array_data
+porosity: [WS] "porosity" NUMBER _NL+
+decay: [WS] "decay" NUMBER _NL+
+decay_sorbed: [WS] "decay_sorbed" NUMBER _NL+
+bulk_density: [WS] "bulk_density" NUMBER _NL+
+distcoef: [WS] "distcoef" NUMBER _NL+
+sp2: [WS] "sp2" NUMBER _NL+

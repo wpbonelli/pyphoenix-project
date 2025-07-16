@@ -1,0 +1,29 @@
+// Generated grammar for MF6 GWT-DIS component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (length_units | nogrb | grb_filerecord | xorigin | yorigin | angrot | export_array_ascii | export_array_netcdf | crs | packagedata)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nlay | nrow | ncol)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (delr | delc | top | botm | idomain)*
+length_units: [WS] "length_units" word _NL+
+nogrb: [WS] "nogrb" _NL+
+grb_filerecord: [WS] "grb_filerecord" array_format _NL+ array_data
+xorigin: [WS] "xorigin" NUMBER _NL+
+yorigin: [WS] "yorigin" NUMBER _NL+
+angrot: [WS] "angrot" NUMBER _NL+
+export_array_ascii: [WS] "export_array_ascii" _NL+
+export_array_netcdf: [WS] "export_array_netcdf" _NL+
+crs: [WS] "crs" word _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+nlay: [WS] "nlay" NUMBER _NL+
+nrow: [WS] "nrow" NUMBER _NL+
+ncol: [WS] "ncol" NUMBER _NL+
+delr: [WS] "delr" NUMBER _NL+
+delc: [WS] "delc" NUMBER _NL+
+top: [WS] "top" NUMBER _NL+
+botm: [WS] "botm" NUMBER _NL+
+idomain: [WS] "idomain" NUMBER _NL+

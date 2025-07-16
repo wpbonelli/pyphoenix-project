@@ -1,0 +1,16 @@
+// Generated grammar for MF6 CHF-OC component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (budget_filerecord | budgetcsv_filerecord | qoutflow_filerecord | stage_filerecord | qoutflowprintrecord)*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: (saverecord | printrecord)*
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+qoutflow_filerecord: [WS] "qoutflow_filerecord" array_format _NL+ array_data
+stage_filerecord: [WS] "stage_filerecord" array_format _NL+ array_data
+qoutflowprintrecord: [WS] "qoutflowprintrecord" array_format _NL+ array_data
+saverecord: [WS] "saverecord" array_format _NL+ array_data
+printrecord: [WS] "printrecord" array_format _NL+ array_data

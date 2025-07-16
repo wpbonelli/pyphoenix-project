@@ -1,0 +1,37 @@
+// Generated grammar for MF6 GWF-MAW component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | packagedata_block | connectiondata_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (auxiliary | boundnames | print_input | print_head | print_flows | save_flows | head_filerecord | budget_filerecord | budgetcsv_filerecord | no_well_storage | flow_correction | flowing_wells | shutdown_theta | shutdown_kappa | mfrcsv_filerecord | timeseries | observations | mover)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nmawwells)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+connectiondata_block: "begin"i "connectiondata" [_block_index] _NL connectiondata_content "end"i "connectiondata" [_block_index] _NL+
+connectiondata_content: recarray_line*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: recarray_line*
+auxiliary: [WS] "auxiliary" word _NL+
+boundnames: [WS] "boundnames" _NL+
+print_input: [WS] "print_input" _NL+
+print_head: [WS] "print_head" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+head_filerecord: [WS] "head_filerecord" array_format _NL+ array_data
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+no_well_storage: [WS] "no_well_storage" _NL+
+flow_correction: [WS] "flow_correction" _NL+
+flowing_wells: [WS] "flowing_wells" _NL+
+shutdown_theta: [WS] "shutdown_theta" NUMBER _NL+
+shutdown_kappa: [WS] "shutdown_kappa" NUMBER _NL+
+mfrcsv_filerecord: [WS] "mfrcsv_filerecord" array_format _NL+ array_data
+timeseries: [WS] "timeseries" array_format _NL+ array_data
+observations: [WS] "observations" array_format _NL+ array_data
+mover: [WS] "mover" _NL+
+nmawwells: [WS] "nmawwells" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+connectiondata: [WS] "connectiondata" array_format _NL+ array_data
+perioddata: [WS] "perioddata" array_format _NL+ array_data

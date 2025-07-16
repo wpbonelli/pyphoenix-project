@@ -1,0 +1,15 @@
+// Generated grammar for MF6 GWT-OC component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (budget_filerecord | budgetcsv_filerecord | concentration_filerecord | concentrationprintrecord)*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: (saverecord | printrecord)*
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+concentration_filerecord: [WS] "concentration_filerecord" array_format _NL+ array_data
+concentrationprintrecord: [WS] "concentrationprintrecord" array_format _NL+ array_data
+saverecord: [WS] "saverecord" array_format _NL+ array_data
+printrecord: [WS] "printrecord" array_format _NL+ array_data

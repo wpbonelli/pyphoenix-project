@@ -1,0 +1,20 @@
+// Generated grammar for MF6 CHF-DFW component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (central_in_space | length_conversion | time_conversion | save_flows | print_flows | save_velocity | observations | export_array_ascii | dev_swr_conductance)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (manningsn | idcxs)*
+central_in_space: [WS] "central_in_space" _NL+
+length_conversion: [WS] "length_conversion" NUMBER _NL+
+time_conversion: [WS] "time_conversion" NUMBER _NL+
+save_flows: [WS] "save_flows" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_velocity: [WS] "save_velocity" _NL+
+observations: [WS] "observations" array_format _NL+ array_data
+export_array_ascii: [WS] "export_array_ascii" _NL+
+dev_swr_conductance: [WS] "dev_swr_conductance" _NL+
+manningsn: [WS] "manningsn" NUMBER _NL+
+idcxs: [WS] "idcxs" NUMBER _NL+

@@ -1,0 +1,13 @@
+// Generated grammar for MF6 PRT-MIP component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (export_array_ascii)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (porosity | retfactor | izone)*
+export_array_ascii: [WS] "export_array_ascii" _NL+
+porosity: [WS] "porosity" NUMBER _NL+
+retfactor: [WS] "retfactor" NUMBER _NL+
+izone: [WS] "izone" NUMBER _NL+

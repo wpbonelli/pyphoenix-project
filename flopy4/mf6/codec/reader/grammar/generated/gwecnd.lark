@@ -1,0 +1,20 @@
+// Generated grammar for MF6 GWE-CND component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (xt3d_off | xt3d_rhs | export_array_ascii | export_array_netcdf)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (alh | alv | ath1 | ath2 | atv | ktw | kts)*
+xt3d_off: [WS] "xt3d_off" _NL+
+xt3d_rhs: [WS] "xt3d_rhs" _NL+
+export_array_ascii: [WS] "export_array_ascii" _NL+
+export_array_netcdf: [WS] "export_array_netcdf" _NL+
+alh: [WS] "alh" NUMBER _NL+
+alv: [WS] "alv" NUMBER _NL+
+ath1: [WS] "ath1" NUMBER _NL+
+ath2: [WS] "ath2" NUMBER _NL+
+atv: [WS] "atv" NUMBER _NL+
+ktw: [WS] "ktw" NUMBER _NL+
+kts: [WS] "kts" NUMBER _NL+

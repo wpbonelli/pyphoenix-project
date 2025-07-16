@@ -13,7 +13,7 @@ from flopy4.mf6.spec import array, field
 
 
 @xattree
-class Rch(Package):
+class GwfRch(Package):
     multi_package: ClassVar[bool] = True
     fixed_cell: bool = field(block="options", default=False)
     auxiliary: Optional[list[str]] = array(block="options", default=None)

@@ -1,0 +1,22 @@
+// Generated grammar for MF6 GWF-RCHA component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (readasarrays | fixed_cell | auxiliary | auxmultname | print_input | print_flows | save_flows | timearrayseries | observations | export_array_netcdf)*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: (irch | recharge | aux)*
+readasarrays: [WS] "readasarrays" _NL+
+fixed_cell: [WS] "fixed_cell" _NL+
+auxiliary: [WS] "auxiliary" word _NL+
+auxmultname: [WS] "auxmultname" word _NL+
+print_input: [WS] "print_input" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+timearrayseries: [WS] "timearrayseries" array_format _NL+ array_data
+observations: [WS] "observations" array_format _NL+ array_data
+export_array_netcdf: [WS] "export_array_netcdf" _NL+
+irch: [WS] "irch" NUMBER _NL+
+recharge: [WS] "recharge" NUMBER _NL+
+aux: [WS] "aux" NUMBER _NL+

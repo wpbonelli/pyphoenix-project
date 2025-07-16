@@ -1,0 +1,12 @@
+// Generated grammar for MF6 GWT-IC component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (export_array_ascii | export_array_netcdf)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (strt)*
+export_array_ascii: [WS] "export_array_ascii" _NL+
+export_array_netcdf: [WS] "export_array_netcdf" _NL+
+strt: [WS] "strt" NUMBER _NL+

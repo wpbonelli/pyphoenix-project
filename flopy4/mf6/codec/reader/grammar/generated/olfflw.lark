@@ -1,0 +1,21 @@
+// Generated grammar for MF6 OLF-FLW component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (auxiliary | auxmultname | boundnames | print_input | print_flows | save_flows | timeseries | observations)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (maxbound)*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: recarray_line*
+auxiliary: [WS] "auxiliary" word _NL+
+auxmultname: [WS] "auxmultname" word _NL+
+boundnames: [WS] "boundnames" _NL+
+print_input: [WS] "print_input" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+timeseries: [WS] "timeseries" array_format _NL+ array_data
+observations: [WS] "observations" array_format _NL+ array_data
+maxbound: [WS] "maxbound" NUMBER _NL+
+stress_period_data: [WS] "stress_period_data" array_format _NL+ array_data

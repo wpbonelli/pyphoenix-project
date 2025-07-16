@@ -1,0 +1,17 @@
+// Generated grammar for MF6 GWF-BUY component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | packagedata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (hhformulation_rhs | denseref | density_filerecord | dev_efh_formulation)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nrhospecies)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+hhformulation_rhs: [WS] "hhformulation_rhs" _NL+
+denseref: [WS] "denseref" NUMBER _NL+
+density_filerecord: [WS] "density_filerecord" array_format _NL+ array_data
+dev_efh_formulation: [WS] "dev_efh_formulation" _NL+
+nrhospecies: [WS] "nrhospecies" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data

@@ -1,0 +1,12 @@
+// Generated grammar for MF6 UTL-OBS component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | continuous_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (digits | print_input)*
+continuous_block: "begin"i "continuous" [_block_index] _NL continuous_content "end"i "continuous" [_block_index] _NL+
+continuous_content: recarray_line*
+digits: [WS] "digits" NUMBER _NL+
+print_input: [WS] "print_input" _NL+
+continuous: [WS] "continuous" array_format _NL+ array_data

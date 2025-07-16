@@ -1,0 +1,39 @@
+// Generated grammar for MF6 PRT-PRP component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | packagedata_block | releasetimes_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (boundnames | print_input | dev_exit_solve_method | exit_solve_tolerance | local_z | extend_tracking | track_filerecord | trackcsv_filerecord | stoptime | stoptraveltime | stop_at_weak_sink | istopzone | drape | release_timesrecord | release_timesfilerecord | dry_tracking_method | dev_forceternary | release_time_tolerance | release_time_frequency)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nreleasepts | nreleasetimes)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+releasetimes_block: "begin"i "releasetimes" [_block_index] _NL releasetimes_content "end"i "releasetimes" [_block_index] _NL+
+releasetimes_content: recarray_line*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: recarray_line*
+boundnames: [WS] "boundnames" _NL+
+print_input: [WS] "print_input" _NL+
+dev_exit_solve_method: [WS] "dev_exit_solve_method" NUMBER _NL+
+exit_solve_tolerance: [WS] "exit_solve_tolerance" NUMBER _NL+
+local_z: [WS] "local_z" _NL+
+extend_tracking: [WS] "extend_tracking" _NL+
+track_filerecord: [WS] "track_filerecord" array_format _NL+ array_data
+trackcsv_filerecord: [WS] "trackcsv_filerecord" array_format _NL+ array_data
+stoptime: [WS] "stoptime" NUMBER _NL+
+stoptraveltime: [WS] "stoptraveltime" NUMBER _NL+
+stop_at_weak_sink: [WS] "stop_at_weak_sink" _NL+
+istopzone: [WS] "istopzone" NUMBER _NL+
+drape: [WS] "drape" _NL+
+release_timesrecord: [WS] "release_timesrecord" array_format _NL+ array_data
+release_timesfilerecord: [WS] "release_timesfilerecord" array_format _NL+ array_data
+dry_tracking_method: [WS] "dry_tracking_method" word _NL+
+dev_forceternary: [WS] "dev_forceternary" _NL+
+release_time_tolerance: [WS] "release_time_tolerance" NUMBER _NL+
+release_time_frequency: [WS] "release_time_frequency" NUMBER _NL+
+nreleasepts: [WS] "nreleasepts" NUMBER _NL+
+nreleasetimes: [WS] "nreleasetimes" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+releasetimes: [WS] "releasetimes" array_format _NL+ array_data
+perioddata: [WS] "perioddata" array_format _NL+ array_data

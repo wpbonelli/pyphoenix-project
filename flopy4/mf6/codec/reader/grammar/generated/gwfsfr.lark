@@ -1,0 +1,49 @@
+// Generated grammar for MF6 GWF-SFR component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | packagedata_block | crosssections_block | connectiondata_block | diversions_block | initialstages_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (storage | auxiliary | boundnames | print_input | print_stage | print_flows | save_flows | stage_filerecord | budget_filerecord | budgetcsv_filerecord | package_convergence_filerecord | timeseries | observations | mover | maximum_picard_iterations | maximum_iterations | maximum_depth_change | unit_conversion | length_conversion | time_conversion | dev_storage_weight)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nreaches)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+crosssections_block: "begin"i "crosssections" [_block_index] _NL crosssections_content "end"i "crosssections" [_block_index] _NL+
+crosssections_content: recarray_line*
+connectiondata_block: "begin"i "connectiondata" [_block_index] _NL connectiondata_content "end"i "connectiondata" [_block_index] _NL+
+connectiondata_content: recarray_line*
+diversions_block: "begin"i "diversions" [_block_index] _NL diversions_content "end"i "diversions" [_block_index] _NL+
+diversions_content: recarray_line*
+initialstages_block: "begin"i "initialstages" [_block_index] _NL initialstages_content "end"i "initialstages" [_block_index] _NL+
+initialstages_content: recarray_line*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: recarray_line*
+storage: [WS] "storage" _NL+
+auxiliary: [WS] "auxiliary" word _NL+
+boundnames: [WS] "boundnames" _NL+
+print_input: [WS] "print_input" _NL+
+print_stage: [WS] "print_stage" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+stage_filerecord: [WS] "stage_filerecord" array_format _NL+ array_data
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+package_convergence_filerecord: [WS] "package_convergence_filerecord" array_format _NL+ array_data
+timeseries: [WS] "timeseries" array_format _NL+ array_data
+observations: [WS] "observations" array_format _NL+ array_data
+mover: [WS] "mover" _NL+
+maximum_picard_iterations: [WS] "maximum_picard_iterations" NUMBER _NL+
+maximum_iterations: [WS] "maximum_iterations" NUMBER _NL+
+maximum_depth_change: [WS] "maximum_depth_change" NUMBER _NL+
+unit_conversion: [WS] "unit_conversion" NUMBER _NL+
+length_conversion: [WS] "length_conversion" NUMBER _NL+
+time_conversion: [WS] "time_conversion" NUMBER _NL+
+dev_storage_weight: [WS] "dev_storage_weight" NUMBER _NL+
+nreaches: [WS] "nreaches" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+crosssections: [WS] "crosssections" array_format _NL+ array_data
+connectiondata: [WS] "connectiondata" array_format _NL+ array_data
+diversions: [WS] "diversions" array_format _NL+ array_data
+initialstages: [WS] "initialstages" array_format _NL+ array_data
+perioddata: [WS] "perioddata" array_format _NL+ array_data

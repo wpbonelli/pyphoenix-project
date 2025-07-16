@@ -1,0 +1,23 @@
+// Generated grammar for MF6 UTL-NCF component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (wkt | deflate | shuffle | chunk_time | chunk_face | chunk_z | chunk_y | chunk_x | modflow6_attr_off)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (ncpl)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (latitude | longitude)*
+wkt: [WS] "wkt" word _NL+
+deflate: [WS] "deflate" NUMBER _NL+
+shuffle: [WS] "shuffle" _NL+
+chunk_time: [WS] "chunk_time" NUMBER _NL+
+chunk_face: [WS] "chunk_face" NUMBER _NL+
+chunk_z: [WS] "chunk_z" NUMBER _NL+
+chunk_y: [WS] "chunk_y" NUMBER _NL+
+chunk_x: [WS] "chunk_x" NUMBER _NL+
+modflow6_attr_off: [WS] "modflow6_attr_off" _NL+
+ncpl: [WS] "ncpl" NUMBER _NL+
+latitude: [WS] "latitude" NUMBER _NL+
+longitude: [WS] "longitude" NUMBER _NL+

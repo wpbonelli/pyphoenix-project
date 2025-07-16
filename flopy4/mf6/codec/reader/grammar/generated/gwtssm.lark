@@ -1,0 +1,15 @@
+// Generated grammar for MF6 GWT-SSM component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | sources_block | fileinput_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (print_flows | save_flows)*
+sources_block: "begin"i "sources" [_block_index] _NL sources_content "end"i "sources" [_block_index] _NL+
+sources_content: recarray_line*
+fileinput_block: "begin"i "fileinput" [_block_index] _NL fileinput_content "end"i "fileinput" [_block_index] _NL+
+fileinput_content: recarray_line*
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+sources: [WS] "sources" array_format _NL+ array_data
+fileinput: [WS] "fileinput" array_format _NL+ array_data

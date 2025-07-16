@@ -12,7 +12,7 @@ from flopy4.mf6.spec import array, field
 
 
 @xattree
-class Sto(Package):
+class GwfSto(Package):
     save_flows: bool = field(block="options", default=False)
     storagecoefficient: bool = field(block="options", default=False)
     ss_confined_only: bool = field(block="options", default=False)

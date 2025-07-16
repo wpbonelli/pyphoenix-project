@@ -1,0 +1,26 @@
+// Generated grammar for MF6 GWE-MWE component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | packagedata_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (flow_package_name | auxiliary | flow_package_auxiliary_name | boundnames | print_input | print_temperature | print_flows | save_flows | temperature_filerecord | budget_filerecord | budgetcsv_filerecord | timeseries | observations)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: recarray_line*
+flow_package_name: [WS] "flow_package_name" word _NL+
+auxiliary: [WS] "auxiliary" word _NL+
+flow_package_auxiliary_name: [WS] "flow_package_auxiliary_name" word _NL+
+boundnames: [WS] "boundnames" _NL+
+print_input: [WS] "print_input" _NL+
+print_temperature: [WS] "print_temperature" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+temperature_filerecord: [WS] "temperature_filerecord" array_format _NL+ array_data
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+timeseries: [WS] "timeseries" array_format _NL+ array_data
+observations: [WS] "observations" array_format _NL+ array_data
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+mweperioddata: [WS] "mweperioddata" array_format _NL+ array_data

@@ -1,0 +1,16 @@
+// Generated grammar for MF6 SIM-TDIS component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | perioddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (time_units | start_date_time | ats_perioddata)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nper)*
+perioddata_block: "begin"i "perioddata" [_block_index] _NL perioddata_content "end"i "perioddata" [_block_index] _NL+
+perioddata_content: recarray_line*
+time_units: [WS] "time_units" word _NL+
+start_date_time: [WS] "start_date_time" word _NL+
+ats_perioddata: [WS] "ats_perioddata" array_format _NL+ array_data
+nper: [WS] "nper" NUMBER _NL+
+perioddata: [WS] "perioddata" array_format _NL+ array_data

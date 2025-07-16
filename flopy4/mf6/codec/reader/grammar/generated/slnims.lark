@@ -1,0 +1,42 @@
+// Generated grammar for MF6 SLN-IMS component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | nonlinear_block | linear_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (print_option | complexity | csv_output_filerecord | csv_outer_output_filerecord | csv_inner_output_filerecord | no_ptcrecord | ats_outer_maximum_fraction)*
+nonlinear_block: "begin"i "nonlinear" [_block_index] _NL nonlinear_content "end"i "nonlinear" [_block_index] _NL+
+nonlinear_content: (outer_hclose | outer_dvclose | outer_rclosebnd | outer_maximum | under_relaxation | under_relaxation_gamma | under_relaxation_theta | under_relaxation_kappa | under_relaxation_momentum | backtracking_number | backtracking_tolerance | backtracking_reduction_factor | backtracking_residual_limit)*
+linear_block: "begin"i "linear" [_block_index] _NL linear_content "end"i "linear" [_block_index] _NL+
+linear_content: (inner_maximum | inner_hclose | inner_dvclose | rcloserecord | linear_acceleration | relaxation_factor | preconditioner_levels | preconditioner_drop_tolerance | number_orthogonalizations | scaling_method | reordering_method)*
+print_option: [WS] "print_option" word _NL+
+complexity: [WS] "complexity" word _NL+
+csv_output_filerecord: [WS] "csv_output_filerecord" array_format _NL+ array_data
+csv_outer_output_filerecord: [WS] "csv_outer_output_filerecord" array_format _NL+ array_data
+csv_inner_output_filerecord: [WS] "csv_inner_output_filerecord" array_format _NL+ array_data
+no_ptcrecord: [WS] "no_ptcrecord" array_format _NL+ array_data
+ats_outer_maximum_fraction: [WS] "ats_outer_maximum_fraction" NUMBER _NL+
+outer_hclose: [WS] "outer_hclose" NUMBER _NL+
+outer_dvclose: [WS] "outer_dvclose" NUMBER _NL+
+outer_rclosebnd: [WS] "outer_rclosebnd" NUMBER _NL+
+outer_maximum: [WS] "outer_maximum" NUMBER _NL+
+under_relaxation: [WS] "under_relaxation" word _NL+
+under_relaxation_gamma: [WS] "under_relaxation_gamma" NUMBER _NL+
+under_relaxation_theta: [WS] "under_relaxation_theta" NUMBER _NL+
+under_relaxation_kappa: [WS] "under_relaxation_kappa" NUMBER _NL+
+under_relaxation_momentum: [WS] "under_relaxation_momentum" NUMBER _NL+
+backtracking_number: [WS] "backtracking_number" NUMBER _NL+
+backtracking_tolerance: [WS] "backtracking_tolerance" NUMBER _NL+
+backtracking_reduction_factor: [WS] "backtracking_reduction_factor" NUMBER _NL+
+backtracking_residual_limit: [WS] "backtracking_residual_limit" NUMBER _NL+
+inner_maximum: [WS] "inner_maximum" NUMBER _NL+
+inner_hclose: [WS] "inner_hclose" NUMBER _NL+
+inner_dvclose: [WS] "inner_dvclose" NUMBER _NL+
+rcloserecord: [WS] "rcloserecord" array_format _NL+ array_data
+linear_acceleration: [WS] "linear_acceleration" word _NL+
+relaxation_factor: [WS] "relaxation_factor" NUMBER _NL+
+preconditioner_levels: [WS] "preconditioner_levels" NUMBER _NL+
+preconditioner_drop_tolerance: [WS] "preconditioner_drop_tolerance" NUMBER _NL+
+number_orthogonalizations: [WS] "number_orthogonalizations" NUMBER _NL+
+scaling_method: [WS] "scaling_method" word _NL+
+reordering_method: [WS] "reordering_method" word _NL+

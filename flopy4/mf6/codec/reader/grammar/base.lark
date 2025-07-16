@@ -1,0 +1,37 @@
+// Base grammar with rules mirroring the MF6 input format's type system
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: "begin"i block_name _NL _content "end"i block_name _NL+
+block_name: CNAME [INT]
+_content: (_scalar | _record | _array | _list)*
+_scalar: [WS] scalar _NL+
+_record: [WS] record _NL+
+_array: [WS] array_control _NL+ array_data
+_list: [WS] _record* NL+
+scalar: integer | double | string | keyword
+integer: NUMBER
+double: NUMBER
+string: ESCAPED_STRING | word
+keyword: word
+record: scalar+
+array_control: word [array_multiplier] [array_format]
+array_multiplier: "(" "constant" scalar_double ")" | "(" "layered" ")"
+array_format: "(" ("internal" | "external") ")"
+array_data: (array_internal | array_external | array_constant | array_layered)
+array_internal: (scalar_type _NL+)+
+array_external: // External files not parsed inline
+array_constant: // Constants handled by multiplier
+array_layered: // Layered arrays handled by multiplier
+word: /[a-zA-Z0-9._'~,-\\(\\)]+/
+
+%import common.NEWLINE -> _NL
+%import common.WS
+%import common.WS_INLINE  
+%import common.CNAME
+%import common.WORD
+%import common.NUMBER
+%import common.INT
+%import common.SH_COMMENT
+%import common.ESCAPED_STRING
+%ignore WS_INLINE
+%ignore SH_COMMENT

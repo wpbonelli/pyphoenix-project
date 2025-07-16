@@ -1,0 +1,45 @@
+// Generated grammar for MF6 GWF-LAK component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | packagedata_block | connectiondata_block | tables_block | outlets_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (auxiliary | boundnames | print_input | print_stage | print_flows | save_flows | stage_filerecord | budget_filerecord | budgetcsv_filerecord | package_convergence_filerecord | timeseries | observations | mover | surfdep | maximum_iterations | maximum_stage_change | time_conversion | length_conversion)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nlakes | noutlets | ntables)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+connectiondata_block: "begin"i "connectiondata" [_block_index] _NL connectiondata_content "end"i "connectiondata" [_block_index] _NL+
+connectiondata_content: recarray_line*
+tables_block: "begin"i "tables" [_block_index] _NL tables_content "end"i "tables" [_block_index] _NL+
+tables_content: recarray_line*
+outlets_block: "begin"i "outlets" [_block_index] _NL outlets_content "end"i "outlets" [_block_index] _NL+
+outlets_content: recarray_line*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: recarray_line*
+auxiliary: [WS] "auxiliary" word _NL+
+boundnames: [WS] "boundnames" _NL+
+print_input: [WS] "print_input" _NL+
+print_stage: [WS] "print_stage" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+stage_filerecord: [WS] "stage_filerecord" array_format _NL+ array_data
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+package_convergence_filerecord: [WS] "package_convergence_filerecord" array_format _NL+ array_data
+timeseries: [WS] "timeseries" array_format _NL+ array_data
+observations: [WS] "observations" array_format _NL+ array_data
+mover: [WS] "mover" _NL+
+surfdep: [WS] "surfdep" NUMBER _NL+
+maximum_iterations: [WS] "maximum_iterations" NUMBER _NL+
+maximum_stage_change: [WS] "maximum_stage_change" NUMBER _NL+
+time_conversion: [WS] "time_conversion" NUMBER _NL+
+length_conversion: [WS] "length_conversion" NUMBER _NL+
+nlakes: [WS] "nlakes" NUMBER _NL+
+noutlets: [WS] "noutlets" NUMBER _NL+
+ntables: [WS] "ntables" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+connectiondata: [WS] "connectiondata" array_format _NL+ array_data
+tables: [WS] "tables" array_format _NL+ array_data
+outlets: [WS] "outlets" array_format _NL+ array_data
+perioddata: [WS] "perioddata" array_format _NL+ array_data

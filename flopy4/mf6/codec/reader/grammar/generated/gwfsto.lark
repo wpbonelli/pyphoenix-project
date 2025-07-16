@@ -1,0 +1,24 @@
+// Generated grammar for MF6 GWF-STO component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (save_flows | storagecoefficient | ss_confined_only | perioddata | export_array_ascii | export_array_netcdf | dev_original_specific_storage | dev_oldstorageformulation)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (iconvert | ss | sy)*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: (steady-state | transient)*
+save_flows: [WS] "save_flows" _NL+
+storagecoefficient: [WS] "storagecoefficient" _NL+
+ss_confined_only: [WS] "ss_confined_only" _NL+
+perioddata: [WS] "perioddata" array_format _NL+ array_data
+export_array_ascii: [WS] "export_array_ascii" _NL+
+export_array_netcdf: [WS] "export_array_netcdf" _NL+
+dev_original_specific_storage: [WS] "dev_original_specific_storage" _NL+
+dev_oldstorageformulation: [WS] "dev_oldstorageformulation" _NL+
+iconvert: [WS] "iconvert" NUMBER _NL+
+ss: [WS] "ss" NUMBER _NL+
+sy: [WS] "sy" NUMBER _NL+
+steady-state: [WS] "steady-state" _NL+
+transient: [WS] "transient" _NL+

@@ -1,0 +1,12 @@
+// Generated grammar for MF6 UTL-SFRTAB component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: dimensions_block | table_block
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nrow | ncol)*
+table_block: "begin"i "table" [_block_index] _NL table_content "end"i "table" [_block_index] _NL+
+table_content: recarray_line*
+nrow: [WS] "nrow" NUMBER _NL+
+ncol: [WS] "ncol" NUMBER _NL+
+table: [WS] "table" array_format _NL+ array_data

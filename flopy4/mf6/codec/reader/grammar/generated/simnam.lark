@@ -1,0 +1,27 @@
+// Generated grammar for MF6 SIM-NAM component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | timing_block | models_block | exchanges_block | solutiongroup_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (continue | nocheck | memory_print_option | profile_option | maxerrors | print_input | hpc_data)*
+timing_block: "begin"i "timing" [_block_index] _NL timing_content "end"i "timing" [_block_index] _NL+
+timing_content: (tdis6)*
+models_block: "begin"i "models" [_block_index] _NL models_content "end"i "models" [_block_index] _NL+
+models_content: recarray_line*
+exchanges_block: "begin"i "exchanges" [_block_index] _NL exchanges_content "end"i "exchanges" [_block_index] _NL+
+exchanges_content: recarray_line*
+solutiongroup_block: "begin"i "solutiongroup" [_block_index] _NL solutiongroup_content "end"i "solutiongroup" [_block_index] _NL+
+solutiongroup_content: recarray_line*
+continue: [WS] "continue" _NL+
+nocheck: [WS] "nocheck" _NL+
+memory_print_option: [WS] "memory_print_option" word _NL+
+profile_option: [WS] "profile_option" word _NL+
+maxerrors: [WS] "maxerrors" NUMBER _NL+
+print_input: [WS] "print_input" _NL+
+hpc_data: [WS] "hpc_data" array_format _NL+ array_data
+tdis6: [WS] "tdis6" word _NL+
+models: [WS] "models" array_format _NL+ array_data
+exchanges: [WS] "exchanges" array_format _NL+ array_data
+mxiter: [WS] "mxiter" NUMBER _NL+
+solutiongroup: [WS] "solutiongroup" array_format _NL+ array_data

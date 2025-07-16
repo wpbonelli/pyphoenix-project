@@ -1,0 +1,34 @@
+// Generated grammar for MF6 GWF-NPF component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (save_flows | print_flows | alternative_cell_averaging | thickstrt | cvoptions | perched | rewet_record | xt3doptions | save_specific_discharge | save_saturation | k22overk | k33overk | perioddata | export_array_ascii | export_array_netcdf | dev_no_newton | dev_omega)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (icelltype | k | k22 | k33 | angle1 | angle2 | angle3 | wetdry)*
+save_flows: [WS] "save_flows" _NL+
+print_flows: [WS] "print_flows" _NL+
+alternative_cell_averaging: [WS] "alternative_cell_averaging" word _NL+
+thickstrt: [WS] "thickstrt" _NL+
+cvoptions: [WS] "cvoptions" array_format _NL+ array_data
+perched: [WS] "perched" _NL+
+rewet_record: [WS] "rewet_record" array_format _NL+ array_data
+xt3doptions: [WS] "xt3doptions" array_format _NL+ array_data
+save_specific_discharge: [WS] "save_specific_discharge" _NL+
+save_saturation: [WS] "save_saturation" _NL+
+k22overk: [WS] "k22overk" _NL+
+k33overk: [WS] "k33overk" _NL+
+perioddata: [WS] "perioddata" array_format _NL+ array_data
+export_array_ascii: [WS] "export_array_ascii" _NL+
+export_array_netcdf: [WS] "export_array_netcdf" _NL+
+dev_no_newton: [WS] "dev_no_newton" _NL+
+dev_omega: [WS] "dev_omega" NUMBER _NL+
+icelltype: [WS] "icelltype" NUMBER _NL+
+k: [WS] "k" NUMBER _NL+
+k22: [WS] "k22" NUMBER _NL+
+k33: [WS] "k33" NUMBER _NL+
+angle1: [WS] "angle1" NUMBER _NL+
+angle2: [WS] "angle2" NUMBER _NL+
+angle3: [WS] "angle3" NUMBER _NL+
+wetdry: [WS] "wetdry" NUMBER _NL+

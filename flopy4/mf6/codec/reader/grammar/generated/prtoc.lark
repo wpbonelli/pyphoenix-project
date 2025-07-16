@@ -1,0 +1,30 @@
+// Generated grammar for MF6 PRT-OC component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | tracktimes_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (budget_filerecord | budgetcsv_filerecord | track_filerecord | trackcsv_filerecord | track_release | track_exit | track_timestep | track_terminate | track_weaksink | track_usertime | track_timesrecord | track_timesfilerecord | dev_dump_event_trace)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (ntracktimes)*
+tracktimes_block: "begin"i "tracktimes" [_block_index] _NL tracktimes_content "end"i "tracktimes" [_block_index] _NL+
+tracktimes_content: recarray_line*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: (saverecord | printrecord)*
+budget_filerecord: [WS] "budget_filerecord" array_format _NL+ array_data
+budgetcsv_filerecord: [WS] "budgetcsv_filerecord" array_format _NL+ array_data
+track_filerecord: [WS] "track_filerecord" array_format _NL+ array_data
+trackcsv_filerecord: [WS] "trackcsv_filerecord" array_format _NL+ array_data
+track_release: [WS] "track_release" _NL+
+track_exit: [WS] "track_exit" _NL+
+track_timestep: [WS] "track_timestep" _NL+
+track_terminate: [WS] "track_terminate" _NL+
+track_weaksink: [WS] "track_weaksink" _NL+
+track_usertime: [WS] "track_usertime" _NL+
+track_timesrecord: [WS] "track_timesrecord" array_format _NL+ array_data
+track_timesfilerecord: [WS] "track_timesfilerecord" array_format _NL+ array_data
+dev_dump_event_trace: [WS] "dev_dump_event_trace" _NL+
+ntracktimes: [WS] "ntracktimes" NUMBER _NL+
+tracktimes: [WS] "tracktimes" array_format _NL+ array_data
+saverecord: [WS] "saverecord" array_format _NL+ array_data
+printrecord: [WS] "printrecord" array_format _NL+ array_data

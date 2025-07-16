@@ -1,0 +1,5 @@
+// Generated grammar for MF6 EXG-GWFPRT component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: 

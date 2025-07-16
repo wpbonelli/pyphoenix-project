@@ -1,0 +1,49 @@
+// Generated grammar for MF6 GWF-CSUB component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | griddata_block | packagedata_block | period_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (boundnames | print_input | save_flows | gammaw | beta | head_based | initial_preconsolidation_head | ndelaycells | compression_indices | update_material_properties | cell_fraction | specified_initial_interbed_state | specified_initial_preconsolidation_stress | specified_initial_delay_head | effective_stress_lag | strainib_filerecord | straincg_filerecord | compaction_filerecord | compaction_elastic_filerecord | compaction_inelastic_filerecord | compaction_interbed_filerecord | compaction_coarse_filerecord | zdisplacement_filerecord | package_convergence_filerecord | timeseries | observations)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (ninterbeds | maxsig0)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (cg_ske_cr | cg_theta | sgm | sgs)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+period_block: "begin"i "period" [_block_index] _NL period_content "end"i "period" [_block_index] _NL+
+period_content: recarray_line*
+boundnames: [WS] "boundnames" _NL+
+print_input: [WS] "print_input" _NL+
+save_flows: [WS] "save_flows" _NL+
+gammaw: [WS] "gammaw" NUMBER _NL+
+beta: [WS] "beta" NUMBER _NL+
+head_based: [WS] "head_based" _NL+
+initial_preconsolidation_head: [WS] "initial_preconsolidation_head" _NL+
+ndelaycells: [WS] "ndelaycells" NUMBER _NL+
+compression_indices: [WS] "compression_indices" _NL+
+update_material_properties: [WS] "update_material_properties" _NL+
+cell_fraction: [WS] "cell_fraction" _NL+
+specified_initial_interbed_state: [WS] "specified_initial_interbed_state" _NL+
+specified_initial_preconsolidation_stress: [WS] "specified_initial_preconsolidation_stress" _NL+
+specified_initial_delay_head: [WS] "specified_initial_delay_head" _NL+
+effective_stress_lag: [WS] "effective_stress_lag" _NL+
+strainib_filerecord: [WS] "strainib_filerecord" array_format _NL+ array_data
+straincg_filerecord: [WS] "straincg_filerecord" array_format _NL+ array_data
+compaction_filerecord: [WS] "compaction_filerecord" array_format _NL+ array_data
+compaction_elastic_filerecord: [WS] "compaction_elastic_filerecord" array_format _NL+ array_data
+compaction_inelastic_filerecord: [WS] "compaction_inelastic_filerecord" array_format _NL+ array_data
+compaction_interbed_filerecord: [WS] "compaction_interbed_filerecord" array_format _NL+ array_data
+compaction_coarse_filerecord: [WS] "compaction_coarse_filerecord" array_format _NL+ array_data
+zdisplacement_filerecord: [WS] "zdisplacement_filerecord" array_format _NL+ array_data
+package_convergence_filerecord: [WS] "package_convergence_filerecord" array_format _NL+ array_data
+timeseries: [WS] "timeseries" array_format _NL+ array_data
+observations: [WS] "observations" array_format _NL+ array_data
+ninterbeds: [WS] "ninterbeds" NUMBER _NL+
+maxsig0: [WS] "maxsig0" NUMBER _NL+
+cg_ske_cr: [WS] "cg_ske_cr" NUMBER _NL+
+cg_theta: [WS] "cg_theta" NUMBER _NL+
+sgm: [WS] "sgm" NUMBER _NL+
+sgs: [WS] "sgs" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+stress_period_data: [WS] "stress_period_data" array_format _NL+ array_data

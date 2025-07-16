@@ -1,0 +1,17 @@
+// Generated grammar for MF6 GWF-GNC component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | gncdata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (print_input | print_flows | explicit)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (numgnc | numalphaj)*
+gncdata_block: "begin"i "gncdata" [_block_index] _NL gncdata_content "end"i "gncdata" [_block_index] _NL+
+gncdata_content: recarray_line*
+print_input: [WS] "print_input" _NL+
+print_flows: [WS] "print_flows" _NL+
+explicit: [WS] "explicit" _NL+
+numgnc: [WS] "numgnc" NUMBER _NL+
+numalphaj: [WS] "numalphaj" NUMBER _NL+
+gncdata: [WS] "gncdata" array_format _NL+ array_data

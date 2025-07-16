@@ -1,0 +1,20 @@
+// Generated grammar for MF6 GWF-VSC component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | packagedata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (viscref | temperature_species_name | thermal_formulation | thermal_a2 | thermal_a3 | thermal_a4 | viscosity_filerecord)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nviscspecies)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+viscref: [WS] "viscref" NUMBER _NL+
+temperature_species_name: [WS] "temperature_species_name" word _NL+
+thermal_formulation: [WS] "thermal_formulation" word _NL+
+thermal_a2: [WS] "thermal_a2" NUMBER _NL+
+thermal_a3: [WS] "thermal_a3" NUMBER _NL+
+thermal_a4: [WS] "thermal_a4" NUMBER _NL+
+viscosity_filerecord: [WS] "viscosity_filerecord" array_format _NL+ array_data
+nviscspecies: [WS] "nviscspecies" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data

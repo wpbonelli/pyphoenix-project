@@ -1,0 +1,17 @@
+// Generated grammar for MF6 EXG-CHFGWF component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | exchangedata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (print_input | print_flows | fixed_conductance | observations)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nexg)*
+exchangedata_block: "begin"i "exchangedata" [_block_index] _NL exchangedata_content "end"i "exchangedata" [_block_index] _NL+
+exchangedata_content: recarray_line*
+print_input: [WS] "print_input" _NL+
+print_flows: [WS] "print_flows" _NL+
+fixed_conductance: [WS] "fixed_conductance" _NL+
+observations: [WS] "observations" array_format _NL+ array_data
+nexg: [WS] "nexg" NUMBER _NL+
+exchangedata: [WS] "exchangedata" array_format _NL+ array_data

@@ -1,0 +1,20 @@
+// Generated grammar for MF6 GWE-EST component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | griddata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (save_flows | zero_order_decay_water | zero_order_decay_solid | density_water | heat_capacity_water | latent_heat_vaporization)*
+griddata_block: "begin"i "griddata" [_block_index] _NL griddata_content "end"i "griddata" [_block_index] _NL+
+griddata_content: (porosity | decay_water | decay_solid | heat_capacity_solid | density_solid)*
+save_flows: [WS] "save_flows" _NL+
+zero_order_decay_water: [WS] "zero_order_decay_water" _NL+
+zero_order_decay_solid: [WS] "zero_order_decay_solid" _NL+
+density_water: [WS] "density_water" NUMBER _NL+
+heat_capacity_water: [WS] "heat_capacity_water" NUMBER _NL+
+latent_heat_vaporization: [WS] "latent_heat_vaporization" NUMBER _NL+
+porosity: [WS] "porosity" NUMBER _NL+
+decay_water: [WS] "decay_water" NUMBER _NL+
+decay_solid: [WS] "decay_solid" NUMBER _NL+
+heat_capacity_solid: [WS] "heat_capacity_solid" NUMBER _NL+
+density_solid: [WS] "density_solid" NUMBER _NL+

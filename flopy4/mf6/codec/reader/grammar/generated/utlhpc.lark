@@ -1,0 +1,12 @@
+// Generated grammar for MF6 UTL-HPC component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | partitions_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (print_table | dev_log_mpi)*
+partitions_block: "begin"i "partitions" [_block_index] _NL partitions_content "end"i "partitions" [_block_index] _NL+
+partitions_content: recarray_line*
+print_table: [WS] "print_table" _NL+
+dev_log_mpi: [WS] "dev_log_mpi" _NL+
+partitions: [WS] "partitions" array_format _NL+ array_data

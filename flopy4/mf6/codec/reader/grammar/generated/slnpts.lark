@@ -1,0 +1,17 @@
+// Generated grammar for MF6 SLN-PTS component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | nonlinear_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (print_option | complexity | csv_output_filerecord | csv_outer_output_filerecord | csv_inner_output_filerecord | no_ptcrecord | ats_outer_maximum_fraction)*
+nonlinear_block: "begin"i "nonlinear" [_block_index] _NL nonlinear_content "end"i "nonlinear" [_block_index] _NL+
+nonlinear_content: (outer_maximum)*
+print_option: [WS] "print_option" word _NL+
+complexity: [WS] "complexity" word _NL+
+csv_output_filerecord: [WS] "csv_output_filerecord" array_format _NL+ array_data
+csv_outer_output_filerecord: [WS] "csv_outer_output_filerecord" array_format _NL+ array_data
+csv_inner_output_filerecord: [WS] "csv_inner_output_filerecord" array_format _NL+ array_data
+no_ptcrecord: [WS] "no_ptcrecord" array_format _NL+ array_data
+ats_outer_maximum_fraction: [WS] "ats_outer_maximum_fraction" NUMBER _NL+
+outer_maximum: [WS] "outer_maximum" NUMBER _NL+

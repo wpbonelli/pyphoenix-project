@@ -1,0 +1,17 @@
+// Generated grammar for MF6 GWE-NAM component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | packages_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (list | print_input | print_flows | save_flows | nc_mesh2d_filerecord | nc_structured_filerecord | nc_filerecord)*
+packages_block: "begin"i "packages" [_block_index] _NL packages_content "end"i "packages" [_block_index] _NL+
+packages_content: recarray_line*
+list: [WS] "list" word _NL+
+print_input: [WS] "print_input" _NL+
+print_flows: [WS] "print_flows" _NL+
+save_flows: [WS] "save_flows" _NL+
+nc_mesh2d_filerecord: [WS] "nc_mesh2d_filerecord" array_format _NL+ array_data
+nc_structured_filerecord: [WS] "nc_structured_filerecord" array_format _NL+ array_data
+nc_filerecord: [WS] "nc_filerecord" array_format _NL+ array_data
+packages: [WS] "packages" array_format _NL+ array_data

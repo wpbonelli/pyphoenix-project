@@ -1,0 +1,18 @@
+// Generated grammar for MF6 SWF-CXS component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: options_block | dimensions_block | packagedata_block | crosssectiondata_block
+options_block: "begin"i "options" [_block_index] _NL options_content "end"i "options" [_block_index] _NL+
+options_content: (print_input)*
+dimensions_block: "begin"i "dimensions" [_block_index] _NL dimensions_content "end"i "dimensions" [_block_index] _NL+
+dimensions_content: (nsections | npoints)*
+packagedata_block: "begin"i "packagedata" [_block_index] _NL packagedata_content "end"i "packagedata" [_block_index] _NL+
+packagedata_content: recarray_line*
+crosssectiondata_block: "begin"i "crosssectiondata" [_block_index] _NL crosssectiondata_content "end"i "crosssectiondata" [_block_index] _NL+
+crosssectiondata_content: recarray_line*
+print_input: [WS] "print_input" _NL+
+nsections: [WS] "nsections" NUMBER _NL+
+npoints: [WS] "npoints" NUMBER _NL+
+packagedata: [WS] "packagedata" array_format _NL+ array_data
+crosssectiondata: [WS] "crosssectiondata" array_format _NL+ array_data

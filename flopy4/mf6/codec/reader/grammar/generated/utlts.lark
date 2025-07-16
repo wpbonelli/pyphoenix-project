@@ -1,0 +1,18 @@
+// Generated grammar for MF6 UTL-TS component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: attributes_block | timeseries_block
+attributes_block: "begin"i "attributes" [_block_index] _NL attributes_content "end"i "attributes" [_block_index] _NL+
+attributes_content: (time_series_namerecord | interpolation_methodrecord | interpolation_methodrecord_single | method | interpolation_method_single | sfacrecord | sfacrecord_single | sfac)*
+timeseries_block: "begin"i "timeseries" [_block_index] _NL timeseries_content "end"i "timeseries" [_block_index] _NL+
+timeseries_content: recarray_line*
+time_series_namerecord: [WS] "time_series_namerecord" array_format _NL+ array_data
+interpolation_methodrecord: [WS] "interpolation_methodrecord" array_format _NL+ array_data
+interpolation_methodrecord_single: [WS] "interpolation_methodrecord_single" array_format _NL+ array_data
+method: [WS] "method" _NL+
+interpolation_method_single: [WS] "interpolation_method_single" word _NL+
+sfacrecord: [WS] "sfacrecord" array_format _NL+ array_data
+sfacrecord_single: [WS] "sfacrecord_single" array_format _NL+ array_data
+sfac: [WS] "sfac" _NL+
+timeseries: [WS] "timeseries" array_format _NL+ array_data

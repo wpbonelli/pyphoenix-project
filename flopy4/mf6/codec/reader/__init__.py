@@ -2,11 +2,11 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
-from flopy4.mf6.codec.reader.parser import make_generic_parser
-from flopy4.mf6.codec.reader.transformer import GenericTransformer
+from flopy4.mf6.codec.reader.parser import make_component_parser, make_generic_parser
+from flopy4.mf6.codec.reader.transformer import ComponentTransformer, GenericTransformer
 
 
-def load(path: str | PathLike) -> Any:
+def load(path: str | PathLike, component_name: str | None = None) -> Any:
     """
     Load and parse an MF6 input file.
 
@@ -14,6 +14,8 @@ def load(path: str | PathLike) -> Any:
     ----------
     path : str | PathLike
         Path to the MF6 input file
+    component : Optional[str]
+        Component name for specialized parsing (e.g., 'chd')
 
     Returns
     -------
@@ -23,10 +25,10 @@ def load(path: str | PathLike) -> Any:
     path = Path(path)
     with open(path, "r") as f:
         data = f.read()
-    return loads(data)
+    return loads(data, component_name=component_name)
 
 
-def loads(data: str) -> Any:
+def loads(data: str, component_name: str | None = None) -> Any:
     """
     Parse MF6 input file content from string.
 
@@ -34,6 +36,8 @@ def loads(data: str) -> Any:
     ----------
     data : str
         MF6 input file content as string
+    component : Optional[str]
+        Component name for type-aware parsing (e.g., 'chd')
 
     Returns
     -------
@@ -41,6 +45,10 @@ def loads(data: str) -> Any:
         Parsed MF6 input file structure
     """
 
-    parser = make_generic_parser()
-    transformer = GenericTransformer()
+    if component_name is None:
+        parser = make_generic_parser()
+        transformer = GenericTransformer()
+    else:
+        parser = make_component_parser(component_name)
+        transformer = ComponentTransformer(component_name)
     return transformer.transform(parser.parse(data))

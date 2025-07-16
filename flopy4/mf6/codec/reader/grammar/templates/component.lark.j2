@@ -1,0 +1,30 @@
+{# Component-specific grammar template #}
+// Generated grammar for MF6 {{ component|upper }} component
+%import "base.lark"
+
+start: [WS] [_NL*] (block [[WS] _NL*])+ [WS]
+block: {% for block_name in blocks.keys() %}{{ block_name }}_block{% if not loop.last %} | {% endif %}{% endfor %}
+
+{% for block_name, block in blocks.items() -%}
+{{ block_name }}_block: "begin"i "{{ block_name }}" [_block_index] _NL {{ block_name }}_content "end"i "{{ block_name }}" [_block_index] _NL+
+{% if block|is_recarray_block -%}
+{{ block_name }}_content: recarray_line*
+{% else -%}
+{{ block_name }}_content: ({% for var in block|get_block_variables %}{{ var }}{% if not loop.last %} | {% endif %}{% endfor %})*
+{% endif -%}
+{% endfor %}
+{% for var_name, var_spec in variables.items() -%}
+{% if var_spec.type == 'keyword' -%}
+{{ var_name }}: [WS] "{{ var_name }}" _NL+
+{% elif var_spec.type in ['integer', 'double precision'] -%}
+{{ var_name }}: [WS] "{{ var_name }}" NUMBER _NL+
+{% elif var_spec.type == 'string' -%}
+{{ var_name }}: [WS] "{{ var_name }}" word _NL+
+{% elif var_spec.shape is not none -%}
+{{ var_name }}: [WS] "{{ var_name }}" array_format _NL+ array_data
+{% elif var_spec.type == 'record' -%}
+{{ var_name }}: [WS] "{{ var_name }}" {% for field_name in var_spec.fields.keys() %}{% set field = var_spec.fields[field_name] %}{% if field.type in ['integer', 'double precision'] %}NUMBER{% elif field.type == 'string' %}word{% else %}word{% endif %}{% if not loop.last %} {% endif %}{% endfor %} _NL+
+{% else -%}
+{{ var_name }}: [WS] "{{ var_name }}" word* _NL+
+{% endif -%}
+{% endfor %}
