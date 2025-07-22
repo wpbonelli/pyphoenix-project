@@ -32,7 +32,6 @@ class Drn(Package):
         dims=("nper", "nnodes"),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
-        reader="urword",
         on_setattr=update_maxbound,
     )
     cond: Optional[NDArray[np.float64]] = array(
@@ -40,7 +39,6 @@ class Drn(Package):
         dims=("nper", "nnodes"),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
-        reader="urword",
         on_setattr=update_maxbound,
     )
     aux: Optional[NDArray[np.float64]] = array(
@@ -51,7 +49,6 @@ class Drn(Package):
         ),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
-        reader="urword",
         on_setattr=update_maxbound,
     )
     boundname: Optional[NDArray[np.str_]] = array(
@@ -62,7 +59,6 @@ class Drn(Package):
         ),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
-        reader="urword",
         on_setattr=update_maxbound,
     )
 

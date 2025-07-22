@@ -18,7 +18,6 @@ angrot: [WS] "angrot" NUMBER _NL+
 export_array_ascii: [WS] "export_array_ascii" _NL+
 export_array_netcdf: [WS] "export_array_netcdf" _NL+
 crs: [WS] "crs" word _NL+
-packagedata: [WS] "packagedata" array_format _NL+ array_data
 nlay: [WS] "nlay" NUMBER _NL+
 nrow: [WS] "nrow" NUMBER _NL+
 ncol: [WS] "ncol" NUMBER _NL+

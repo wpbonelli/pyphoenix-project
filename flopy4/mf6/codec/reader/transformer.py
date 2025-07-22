@@ -2,7 +2,6 @@ from typing import Any
 
 from lark import Token, Transformer
 
-from flopy4.mf6.codec.reader.grammar.type_mapping import get_field_types
 from flopy4.mf6.component import COMPONENTS
 
 
@@ -26,7 +25,8 @@ class BaseTransformer(Transformer):
 class GenericTransformer(BaseTransformer):
     """
     Generic transformer for MF6 input files. Works only with the generic
-    grammar. Returns structures of blocks consisting of lines of tokens.
+    grammar. Returns structures of blocks consisting of lists of tokens,
+    one for each line in the block.
     """
 
     def line(self, items: list[Any]) -> list[Any]:
@@ -66,9 +66,12 @@ class ComponentTransformer(BaseTransformer):
 
     def __init__(self, component_name: str):
         super().__init__()
-        self._cls = COMPONENTS[component_name]
+        self._cls = COMPONENTS.get(component_name, None)
+        if self._cls is None:
+            raise ValueError(
+                f"Component '{component_name}' not found, registered components include: {list(COMPONENTS.keys())}"
+            )
         self._dfn = self._cls.get_dfn()
-        self._field_types = get_field_types(self._dfn)
 
     def record(self, items: list[Any]) -> list[Any]:
         return items

@@ -281,23 +281,21 @@ def get_blocks(dfn: Dfn) -> dict[str, Block]:
     )
 
 
+def is_array_field(field: Field) -> bool:
+    """Check if a field is an array field."""
+    return field["type"] in ["integer", "double precision", "string"] and "shape" in field
+
+
 def is_list_field(field: Field) -> bool:
     """
     Check if a field is a list field, which is a recarray
     field that uses list input. This is determined by the
     reader being "readarray" and the type being "recarray".
     """
-    return field["type"] == "recarray" and field["reader"] != "readarray"
+    return field["type"] == "recarray"
 
 
 def is_list_block(block: Block) -> bool:
-    return (
-        len(block) == 1
-        and (field := next(iter(block.values()))).metadata.get("type") == "recarray"
-        and field.metadata.get("reader") != "readarray"
-    ) or (
-        all(
-            f.metadata.get("type") == "recarray" and f.metadata.get("reader") != "readarray"
-            for f in block.values()
-        )
+    return (len(block) == 1 and next(iter(block.values())).metadata["type"] == "recarray") or (
+        all(f.metadata["type"] == "recarray" for f in block.values())
     )

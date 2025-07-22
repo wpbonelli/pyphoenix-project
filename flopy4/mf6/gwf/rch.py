@@ -33,7 +33,6 @@ class GwfRch(Package):
         ),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
-        reader="urword",
         on_setattr=update_maxbound,
     )
     aux: Optional[NDArray[np.float64]] = array(
@@ -44,7 +43,6 @@ class GwfRch(Package):
         ),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
-        reader="urword",
         on_setattr=update_maxbound,
     )
     boundname: Optional[NDArray[np.str_]] = array(
@@ -55,7 +53,6 @@ class GwfRch(Package):
         ),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
-        reader="urword",
         on_setattr=update_maxbound,
     )
 
