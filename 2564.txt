@@ -1,0 +1,1660 @@
+
+ ▐▛███▜▌   Claude Code v2.0.5
+▝▜█████▛▘  Sonnet 4.5 · Claude Pro
+  ▘▘ ▝▝    /Users/wes/dev/pyphoenix-project
+
+> Have a look at the discussions, issues, and pull requests on this repository on GitHub: https://github.com/modflowpy/pyphoenix-project. Try and get a feel for the general direction and approach. Then have a look at 
+https://github.com/modflowpy/flopy/pull/2564 and evaluate how aligned these two thrusts of effort are, and what might be done bring the latter into more alignment with this repository. This repository represents an initial prototype of flopy 
+4.x, as you know. The pull request aims to provide some mf6 netcdf support to flopy 3.x in the meantime. It's not meant to be a faithful preview of the future, but it should at least aim to be as consistent as possible with the target 
+approach, while making accomodations for flopy 3.x's quirks and limitations. 
+
+⏺ I'll research the pyphoenix-project repository and the flopy PR to analyze their alignment and provide recommendations.
+
+⏺ Task(Research GitHub repos and analyze alignment)
+  ⎿  Done (33 tool uses · 81.4k tokens · 6m 4s)                                                                                                                                                                                                  
+
+⏺ I'll examine the architecture of this repository to provide a more concrete comparison.
+
+⏺ Read(flopy4/uio.py)
+  ⎿  Read 122 lines (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/component.py)
+  ⎿  Read 199 lines (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/converter.py)
+  ⎿  Read 308 lines (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/codec)
+  ⎿  Error: EISDIR: illegal operation on a directory, read
+
+⏺ Bash(ls -la flopy4/mf6/codec/)
+  ⎿  total 8                                       
+     drwxr-xr-x   5 wes  staff  160 Oct  9 09:26 .
+     drwxr-xr-x  22 wes  staff  704 Oct  9 09:26 ..
+     … +3 lines (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/spec.py)
+  ⎿  Read 302 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "flopy4/mf6/codec/*.py")
+  ⎿  Found 1 file (ctrl+o to expand)
+
+⏺ Search(pattern: "flopy4/mf6/codec/writer/*")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+⏺ Search(pattern: "flopy4/mf6/codec/reader/*")
+  ⎿  Found 3 files (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/indexes.py)
+  ⎿  Read 58 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "flopy4/mf6/gwf/*.py")
+  ⎿  Found 10 files (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/codec/writer/__init__.py)
+  ⎿  Read 40 lines (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/gwf/dis.py)
+  ⎿  Read 128 lines (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/gwf/wel.py)
+  ⎿  Read 63 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "flopy4/mf6/codec/writer/templates/*.jinja")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/simulation.py)
+  ⎿  Read 55 lines (ctrl+o to expand)
+
+⏺ Read(flopy4/mf6/model.py)
+  ⎿  Read 12 lines (ctrl+o to expand)
+
+⏺ Based on examining the pyphoenix-project architecture, here's a detailed comparison with the FloPy PR #2564 approach:
+
+  Architectural Deep Dive: PyPhoenix vs FloPy PR #2564
+
+  PyPhoenix-Project (FloPy 4) Architecture
+
+  1. Three-Layer IO System
+
+  Layer 1: Unified IO (flopy4/uio.py)
+  - Registry-based system inspired by astropy
+  - Loader and Writer descriptors attached to Component base class
+  - Components get component.load(format="...") and component.write(format="...") methods
+  - Format-agnostic: NetCDF would be just another registered format
+  - Clean separation: user calls sim.write(format="netcdf"), registry handles dispatch
+
+  Layer 2: Conversion (flopy4/mf6/converter.py)
+  - Uses cattrs for bidirectional transformation: Component ↔ dict
+  - Handles structural transformations:
+    - Period slicing: nper dimension split into per-period blocks
+    - Binding records: child components → tuples for namefiles
+    - Path records: Path → ("BOTM", "FILEOUT", "path.nc")
+    - Sparse/dense conversion: automatic COO arrays when size > SPARSE_THRESHOLD
+  - unstructure_component(): Component → nested dict organized by block
+  - Output format: {block_name: {field_name: value}}
+
+  Layer 3: Serialization (flopy4/mf6/codec/)
+  - Writer: Jinja2 templates (blocks.jinja, macros.jinja)
+  - Reader: Lark parser with typed grammar
+  - MF6-specific: handles CONSTANT, INTERNAL, OPEN/CLOSE, NETCDF keywords
+  - Input: nested dicts from converter layer
+  - Output: MF6 text format or other formats
+
+  2. Object Model
+
+  Component Definition (e.g., Dis package):
+  @xattree
+  class Dis(Package):
+      export_array_netcdf: bool = field(block="options", default=False)
+      nlay: int = dim(block="dimensions", coord="lay", scope="gwf", default=1)
+      ncol: int = dim(block="dimensions", coord="col", scope="gwf", default=2)
+      nrow: int = dim(block="dimensions", coord="row", scope="gwf", default=2)
+      top: NDArray[np.float64] = array(
+          block="griddata",
+          dims=("nrow", "ncol"),
+          converter=Converter(dict_to_array, takes_self=True, takes_field=True),
+      )
+
+  Key Features:
+  - @xattree decorator combines attrs + xarray.DataTree
+  - Fields have both Python type hints and xarray metadata
+  - block metadata organizes fields into MF6 input file blocks
+  - dims metadata specifies array shapes using dimension names
+  - Converters handle dict ↔ array transformations
+  - Components implement MutableMapping for dict-style access
+
+  Period Data (e.g., Wel package):
+  q: Optional[NDArray[np.float64]] = array(
+      block="period",
+      dims=("nper", "nodes"),  # Explicit nper dimension
+      converter=Converter(dict_to_array, takes_self=True, takes_field=True),
+      on_setattr=update_maxbound,
+  )
+
+  - Arrays with nper dimension stored internally
+  - Converter automatically slices by period during unstructuring
+  - update_maxbound callback computes max non-default values
+
+  3. Dimension Strategy
+
+  Storage Dimensions:
+  - nlay, nrow, ncol, nodes, nper (size-based, matches MF6)
+  - Stored in xarray DataArray: DataArray(data, dims=("nlay", "nrow", "ncol"))
+
+  Access Dimensions:
+  - lay, row, col, node, per (user-friendly aliases)
+  - Provided via custom xarray indexes (indexes.py):
+  def grid_index(dataset: xr.Dataset) -> MetaIndex:
+      return MetaIndex({
+          "lay": alias(dataset, "nlay", "lay"),
+          "col": alias(dataset, "ncol", "col"),
+          "row": alias(dataset, "nrow", "row"),
+      })
+
+  Philosophy: Store with MF6 names, access with user-friendly aliases
+
+  4. Component Hierarchy
+
+  Simulation (Context)
+  ├── tdis: Tdis
+  ├── models: dict[str, Model]
+  │   └── Model (Context)
+  │       └── packages: dict[str, Package]
+  │           └── Package (Component)
+  ├── exchanges: dict[str, Exchange]
+  └── solutions: dict[str, Solution]
+
+  - Hierarchy managed via xattree's DataTree integration
+  - Components can be created independently, then attached
+  - Parent/child relationships: component.parent, component.children
+  - Dictionary-style access: sim["gwf1"]["wel"]
+
+  5. DFN-Driven Specification
+
+  - Component.get_dfn() reconstructs specification from class definition
+  - Field metadata → DFN Field:
+  def to_dfn_field(attribute: Attribute) -> Field:
+      return Field(
+          name=attribute.name,
+          type=get_dfn_field_type(attribute),
+          shape=xatmeta.get("dims", None),
+          block=attribute.metadata.get("block", None),
+          reader=attribute.metadata.get("reader", "urword"),
+      )
+  - DFN used for validation, code generation, and IO
+
+  ---
+  FloPy PR #2564 Architecture
+
+  1. Dataset Creation Pattern
+
+  Manual Dataset Building:
+  ds = gwf.modelgrid.dataset(modeltime=gwf.modeltime)  # Base dataset
+  ds = dis.update_dataset(ds)  # Add DIS variables
+  ds = npf.update_dataset(ds)  # Add NPF variables
+  ds.to_netcdf("model.nc")
+
+  Key Characteristics:
+  - User orchestrates dataset assembly
+  - Packages provide update_dataset(ds) method
+  - Metadata via netcdf_meta() method
+  - Incremental building pattern
+  - Tight coupling to modelgrid and modeltime objects
+
+  2. Naming Conventions
+
+  Variables: {package_name}_{field_name}
+  - Examples: wel-1_q, ghb-2_bhead, dis_botm
+  - Lowercase package names with instance numbers
+
+  Dimensions: x, y, z, time
+  - CF-conventions style
+  - Mapping: {"nlay": "z", "nrow": "y", "ncol": "x"}
+  - No distinction between storage and access
+
+  Attributes:
+  - modflow_input: "UZF01/DIS/BOTM"
+  - modflow_grid: "STRUCTURED" or "VERTEX"
+  - longname: Human-readable description
+  - _FillValue: Fill value for sparse data
+
+  3. Period Data Handling
+
+  for p in pkg.field.get_data():  # Manual loop
+      istp = sum(gwf.modeltime.nstp[0:p])  # Manual time index
+      ds[varname][istp, ...] = field_value
+
+  - Manual iteration over stress periods
+  - User computes time step indices
+  - Package data organized as dict keyed by period
+
+  ---
+  Key Architectural Differences
+
+  | Aspect           | PyPhoenix (FloPy 4)                | FloPy PR #2564                       |
+  |------------------|------------------------------------|--------------------------------------|
+  | IO Pattern       | sim.write(format="netcdf")         | ds = build_dataset(); ds.to_netcdf() |
+  | Orchestration    | Framework-driven (registry)        | User-driven (manual)                 |
+  | Dimension Names  | nlay/nrow/ncol (storage) + aliases | z/y/x (CF-style)                     |
+  | Variable Names   | Component-centric                  | Instance-centric                     |
+  | Period Handling  | Automatic (converter)              | Manual (user loops)                  |
+  | Metadata Source  | DFN from class definition          | Dict from netcdf_meta()              |
+  | Sparse Arrays    | Automatic (threshold-based)        | Manual (full grid + fill)            |
+  | Grid Integration | Grid → Component → NetCDF          | Grid → Dataset directly              |
+  | Extensibility    | Registry + plugins                 | Static methods per package           |
+
+  ---
+  Recommendations Updated with Architectural Context
+
+  For FloPy PR #2564
+
+  1. Align with FloPy 4's Dimension Strategy
+  # Instead of CF-style dims:
+  dims = {"time": nper, "z": nlay, "y": nrow, "x": ncol}
+
+  # Use MF6-style with coordinate aliases:
+  dims = {"nper": nper, "nlay": nlay, "nrow": nrow, "ncol": ncol}
+  ds = ds.assign_coords({
+      "z": ("nlay", layer_elevations),
+      "y": ("nrow", row_centers),
+      "x": ("ncol", col_centers),
+  })
+
+  Rationale: Maintains MF6 terminology as primary, adds spatial coordinates as secondary
+
+  2. Consider Registry Pattern for Future
+  # Current:
+  ds = dis.update_dataset(ds)
+
+  # Future-compatible (FloPy 4 style):
+  # Internal implementation could use registry behind the scenes
+  gwf.write(format="netcdf", filename="model.nc")
+
+  Rationale: Prepares for FloPy 4's unified IO approach
+
+  3. Add DFN-Like Metadata Structure
+  # Instead of flat metadata dict:
+  nc_meta = {
+      "varname": "dis_botm",
+      "nc_shape": ["z", "y", "x"],
+      "attrs": {"modflow_input": "UZF01/DIS/BOTM"}
+  }
+
+  # Use structured metadata aligned with DFN:
+  nc_meta = {
+      "varname": "botm",
+      "component": "dis",
+      "block": "griddata",
+      "dims": ["nlay", "nrow", "ncol"],
+      "mf6_path": "uzf01/dis/botm",
+  }
+
+  Rationale: Enables DFN-based validation and easier FloPy 4 compatibility
+
+  For PyPhoenix-Project (FloPy 4)
+
+  1. Support Both Manual and Automatic Modes
+  # Automatic (simple):
+  sim.write(format="netcdf", filename="model.nc")
+
+  # Manual (advanced, for FloPy 3.x compatibility):
+  ds = sim.to_dataset()  # Component → xr.Dataset
+  ds = customize(ds)     # User modifications
+  ds.to_netcdf("model.nc")
+
+  Rationale: FloPy 3.x showed value in both patterns; FloPy 4 can support both
+
+  2. Flexible Dimension Style via Write Options
+  # MF6-style (default):
+  sim.write(format="netcdf", dim_style="mf6")
+
+  # CF-style (for compatibility):
+  sim.write(format="netcdf", dim_style="cf")
+
+  # Both (with aliases):
+  sim.write(format="netcdf", dim_style="both")
+
+  Rationale: Accommodates different use cases and maintains compatibility
+
+  3. NetCDF Writer Implementation
+
+  Based on the existing converter, a NetCDF writer would:
+  def write_netcdf(component: Component, path: Path, **options) -> None:
+      # Use existing converter to unstructure
+      blocks = COMPONENT_CONVERTER.unstructure(component)
+
+      # Convert blocks to xarray Dataset
+      ds = blocks_to_dataset(blocks, **options)
+
+      # Write NetCDF
+      ds.to_netcdf(path)
+
+  Register in unified IO:
+  DEFAULT_REGISTRY.register_writer(Component, "netcdf", write_netcdf)
+
+  4. Read FloPy 3.x NetCDF Files
+  def read_netcdf_legacy(component: Component, path: Path) -> None:
+      ds = xr.open_dataset(path)
+
+      # Detect FloPy 3.x vs 4.x via attributes
+      if "flopy_version" in ds.attrs and ds.attrs["flopy_version"].startswith("3"):
+          ds = convert_flopy3_to_flopy4_dims(ds)
+
+      # Convert dataset to component via converter
+      data = dataset_to_blocks(ds)
+      component = COMPONENT_CONVERTER.structure(data, type(component))
+
+  ---
+  Summary
+
+  PyPhoenix-Project has a sophisticated, layered architecture with:
+  - Clear separation of concerns (IO/Conversion/Serialization)
+  - DFN-driven specifications integrated into class definitions
+  - Automatic handling of complex transformations (period slicing, sparse arrays, binding records)
+  - Registry-based extensibility
+  - MF6-aligned dimension naming with user-friendly aliases
+
+  FloPy PR #2564 takes a pragmatic approach:
+  - Manual dataset building gives users control
+  - CF-conventions for broader compatibility
+  - Works within FloPy 3.x constraints
+  - Metadata-driven but not specification-driven
+
+  Alignment Path:
+  1. FloPy 3.x adopts MF6 dimension names + coordinate aliases
+  2. FloPy 3.x adds DFN-structured metadata
+  3. FloPy 4 implements NetCDF support with both automatic and manual modes
+  4. FloPy 4 provides conversion utilities for FloPy 3.x files
+  5. Both versions document format versions for compatibility
+
+  This creates a migration path while maintaining both projects' distinct value propositions.
+
+> Ok. I like your ideas about converging on the same spec, and using MF6 dimension names, in flopy 3.x. I think we could also simplify the API some though. For instance, the `update_dataset` seems like it could just be `xarray.Dataset.merge` 
+right? 
+
+⏺ Yes, excellent observation! You're absolutely right - update_dataset is essentially reimplementing what xarray.Dataset.merge already does well.
+
+  The API could be much simpler:
+
+  # Instead of:
+  ds = gwf.modelgrid.dataset(modeltime=gwf.modeltime)
+  ds = dis.update_dataset(ds)
+  ds = npf.update_dataset(ds)
+  ds = wel.update_dataset(ds)
+
+  # Just use xarray's merge:
+  ds = xr.merge([
+      gwf.modelgrid.dataset(modeltime=gwf.modeltime),
+      dis.to_dataset(),
+      npf.to_dataset(),
+      wel.to_dataset(),
+  ])
+
+  Or even cleaner with a comprehension:
+  base_ds = gwf.modelgrid.dataset(modeltime=gwf.modeltime)
+  package_datasets = [pkg.to_dataset() for pkg in gwf.get_packages()]
+  ds = xr.merge([base_ds] + package_datasets)
+
+  Benefits:
+
+  1. More idiomatic xarray - Users already know merge
+  2. Less custom code - No need to maintain update_dataset pattern
+  3. Built-in conflict handling - merge has options for handling overlapping variables
+  4. Composability - Can merge any combination of packages
+  5. Easier testing - Each package's to_dataset() can be tested independently
+
+  The only requirement is that each package just needs a method that returns its own self-contained Dataset:
+
+  def to_dataset(self) -> xr.Dataset:
+      """Return package data as xarray Dataset with proper dims/coords."""
+      # Build dataset from package fields
+      # Add metadata attributes
+      return ds
+
+  This also aligns better with FloPy 4's philosophy - each component is self-describing and independent. In FloPy 4, the converter already transforms each component independently into a dict representation. A NetCDF writer would do the same
+  thing - convert each component to a Dataset independently, then merge.
+
+  The modelgrid.dataset() call could even be optional - if packages include their own coordinate information, you might not need it at all.
+
+> Tell me more about that last point about not needing `dataset()` 
+
+⏺ Great question! This gets to a key architectural insight: dimensions are data that belong to specific components, not some external "grid" concept.
+
+  Where Dimensions Actually Come From
+
+  In MODFLOW 6's structure:
+  - Spatial dimensions (nlay, nrow, ncol) are defined by the discretization package (DIS/DISV/DISU)
+  - Temporal dimensions (nper) are defined by TDIS
+  - Other packages just reference these dimensions
+
+  So logically:
+
+  # DIS defines spatial dimensions AND coordinates
+  dis.to_dataset() → Dataset with:
+    - Dimensions: nlay=3, nrow=10, ncol=10
+    - Coordinates: x(ncol), y(nrow), z(nlay)
+    - Variables: delr(ncol), delc(nrow), top(nrow, ncol), botm(nlay, nrow, ncol)
+
+  # TDIS defines temporal dimension (could be sim-level or passed to model)
+  tdis.to_dataset() → Dataset with:
+    - Dimension: nper=5
+    - Coordinate: time(nper) or per(nper)
+
+  # NPF just uses those dimensions
+  npf.to_dataset() → Dataset with:
+    - Variables: k(nlay, nrow, ncol), k33(nlay, nrow, ncol)
+    - (no dimension definitions needed)
+
+  # WEL uses spatial + temporal
+  wel.to_dataset() → Dataset with:
+    - Variables: q(nper, nodes) or q(nper, nlay, nrow, ncol)
+    - (no dimension definitions needed)
+
+  Then merge just works:
+  ds = xr.merge([
+      dis.to_dataset(),      # Defines nlay, nrow, ncol + coords
+      npf.to_dataset(),      # Uses nlay, nrow, ncol
+      wel.to_dataset(),      # Uses nper, nlay, nrow, ncol
+  ])
+
+  What was modelgrid.dataset() doing?
+
+  Looking at the FloPy 3.x pattern, modelgrid.dataset() was creating:
+  - Empty dimension scaffolding
+  - Coordinate arrays (x centers, y centers, etc.)
+
+  But this is exactly what DIS should provide! The discretization package already has:
+  - delr, delc → can compute x, y centers
+  - top, botm → can compute z coordinates/elevations
+  - nlay, nrow, ncol → dimension sizes
+
+  FloPy 4 Already Does This
+
+  In pyphoenix-project, look at Dis:
+
+  @xattree
+  class Dis(Package):
+      nlay: int = dim(block="dimensions", coord="lay", scope="gwf", default=1)
+      ncol: int = dim(block="dimensions", coord="col", scope="gwf", default=2)
+      nrow: int = dim(block="dimensions", coord="row", scope="gwf", default=2)
+      delr: NDArray[np.float64] = array(dims=("ncol",), ...)
+      delc: NDArray[np.float64] = array(dims=("nrow",), ...)
+      top: NDArray[np.float64] = array(dims=("nrow", "ncol"), ...)
+      botm: NDArray[np.float64] = array(dims=("nlay", "nrow", "ncol"), ...)
+
+  The scope="gwf" means "this dimension is available to all packages in this model." DIS is the source of spatial dimensions.
+
+  Similarly, in Simulation:
+  class Simulation(Context):
+      tdis: Tdis = field(converter=convert_time, block="timing")
+
+  TDIS is the source of temporal dimensions.
+
+  Simplified FloPy 3.x Pattern
+
+  # Simple case - just merge packages
+  ds = xr.merge([pkg.to_dataset() for pkg in gwf.get_packages()])
+
+  # Or explicit:
+  ds = xr.merge([
+      gwf.dis.to_dataset(),  # Provides nlay, nrow, ncol, x, y, z
+      gwf.npf.to_dataset(),  # Provides k, k33, etc.
+      gwf.wel.to_dataset(),  # Provides q
+  ])
+
+  # If you need time dimension and it's not in a package:
+  ds = xr.merge([
+      gwf.dis.to_dataset(),
+      gwf.get_tdis_dataset(),  # Or however FloPy 3.x accesses this
+      ...
+  ])
+
+  Benefits
+
+  1. Self-describing packages - each knows what it provides
+  2. Mirrors MF6 structure - DIS defines grid, TDIS defines time
+  3. No special base dataset - just merge everything
+  4. Testable in isolation - dis.to_dataset() fully specifies its own data
+  5. Aligns with FloPy 4 - components define their own dimensions
+
+  The Only Gotcha: Multiple Packages of Same Type
+
+  If you have wel-1 and wel-2, their variables need different names:
+  # Option 1: Include instance in variable name
+  wel1.to_dataset() → {"wel_1_q": ...}
+  wel2.to_dataset() → {"wel_2_q": ...}
+
+  # Option 2: Use xarray groups (requires xarray 2024.06+)
+  wel1.to_dataset(group="wel_1") → Dataset in group "wel_1"
+  wel2.to_dataset(group="wel_2") → Dataset in group "wel_2"
+
+  But either way, you still just merge them all.
+
+  ---
+  Bottom line: modelgrid.dataset() is redundant if dis.to_dataset() does its job properly. The discretization package should be the authoritative source of spatial dimensions and coordinates.
+
+> I agree with pretty much everything you're saying. Where is `to_dataset()` coming from though? I don't see that in the flopy PR. Are you suggesting that be supported in a base package class? 
+
+⏺ You're absolutely right - to_dataset() is not in the PR. The PR uses update_dataset(ds) which takes an existing dataset and mutates/returns it.
+
+  I'm proposing to_dataset() as a cleaner alternative. Yes, it would go in the base Package class in FloPy 3.x.
+
+  What's Actually in PR #2564
+
+  class MFPackage:
+      def update_dataset(self, ds: xr.Dataset) -> xr.Dataset:
+          """Add this package's variables to the dataset."""
+          meta = self.netcdf_meta()
+          for var_spec in meta:
+              # Add variable to ds
+              ds[var_spec["varname"]] = ...
+          return ds
+
+  Pattern:
+  ds = gwf.modelgrid.dataset(modeltime=gwf.modeltime)  # Create base
+  ds = dis.update_dataset(ds)  # Mutate and return
+  ds = npf.update_dataset(ds)  # Mutate and return
+
+  What I'm Suggesting Instead
+
+  class MFPackage:
+      def to_dataset(self) -> xr.Dataset:
+          """Return this package's data as a self-contained Dataset."""
+          meta = self.netcdf_meta()
+          data_vars = {}
+          for var_spec in meta:
+              data_vars[var_spec["varname"]] = ...
+          return xr.Dataset(data_vars)
+
+  Pattern:
+  ds = xr.merge([
+      dis.to_dataset(),
+      npf.to_dataset(),
+      wel.to_dataset(),
+  ])
+
+  Why This is Better
+
+  1. Separation of Concerns
+  - Each package creates its own dataset
+  - No dependency on external "base dataset"
+  - No mutation - functional style
+
+  2. More Testable
+  # Test each package independently
+  def test_dis_dataset():
+      dis = Dis(...)
+      ds = dis.to_dataset()
+      assert "dis_botm" in ds
+      assert ds.dims["nlay"] == 3
+
+  3. Simpler Mental Model
+  - to_dataset() = "give me your data"
+  - xr.merge() = "combine all the data"
+  - No need to track what's in ds as you build it up
+
+  4. Aligns with FloPy 4
+
+  In FloPy 4, the NetCDF writer would essentially do:
+  def write_netcdf(component: Component, path: Path):
+      blocks = COMPONENT_CONVERTER.unstructure(component)
+      ds = blocks_to_dataset(blocks)  # Component → Dataset
+      ds.to_netcdf(path)
+
+  Each component independently converts to a dataset representation.
+
+  Implementation in Base Class
+
+  class MFPackage:
+      def to_dataset(self) -> xr.Dataset:
+          """
+          Convert package data to xarray Dataset.
+          
+          Returns a self-contained Dataset with:
+          - Dimension definitions (if this package defines them, e.g., DIS)
+          - Coordinate arrays (if applicable)
+          - Data variables
+          - Metadata attributes
+          """
+          meta = self.netcdf_meta()
+          data_vars = {}
+          coords = {}
+          dims = {}
+
+          for var_spec in meta:
+              varname = var_spec["varname"]
+              data = self._get_netcdf_data(var_spec)
+
+              # Build DataArray with proper dims/coords
+              data_vars[varname] = xr.DataArray(
+                  data,
+                  dims=var_spec["nc_shape"],
+                  attrs=var_spec["attrs"],
+              )
+
+          # Special handling for dimension-defining packages (DIS, TDIS, etc.)
+          if isinstance(self, (MFDis, MFDisv, MFDisu)):
+              coords = self._get_grid_coordinates()
+
+          return xr.Dataset(data_vars, coords=coords, attrs=self._get_global_attrs())
+
+  Then DIS would override or extend to provide coordinates:
+  class MFDis(MFPackage):
+      def _get_grid_coordinates(self) -> dict:
+          """Provide grid coordinates."""
+          return {
+              "x": ("ncol", self.get_xcellcenters()),
+              "y": ("nrow", self.get_ycellcenters()),
+              "z": ("nlay", self.get_layer_elevations()),
+          }
+
+  Migration Path
+
+  The PR could support both patterns:
+
+  class MFPackage:
+      def to_dataset(self) -> xr.Dataset:
+          """Return package data as Dataset."""
+          # New, clean approach
+          ...
+
+      def update_dataset(self, ds: xr.Dataset) -> xr.Dataset:
+          """Legacy method - add package data to existing dataset."""
+          # Deprecated but kept for compatibility
+          return ds.merge(self.to_dataset())
+
+  Then users can choose:
+  # Old way (still works)
+  ds = base_ds
+  ds = pkg1.update_dataset(ds)
+  ds = pkg2.update_dataset(ds)
+
+  # New way (recommended)
+  ds = xr.merge([pkg1.to_dataset(), pkg2.to_dataset()])
+
+  ---
+  So yes: I'm suggesting to_dataset() be added to the base Package class in FloPy 3.x as a cleaner alternative to update_dataset(). It makes each package self-describing and leverages xarray's existing merge capabilities.
+
+> I don't think we need to keep `update_dataset` if we go with the new pattern. Do I understand correctly that, with `merge`, the dim-defining packages need to come first in the merge call? or can they be in any order? 
+
+⏺ Excellent question! With xr.merge(), order doesn't matter for dimensions. xarray is smart about this.
+
+  Here's why:
+
+  How xarray.merge Handles Dimensions
+
+  # DIS provides dimensions + coordinates
+  ds_dis = xr.Dataset(
+      {"dis_botm": (["nlay", "nrow", "ncol"], botm_data)},
+      coords={
+          "nlay": [0, 1, 2],
+          "nrow": range(10),
+          "ncol": range(10),
+          "x": ("ncol", x_centers),
+          "y": ("nrow", y_centers),
+      }
+  )
+
+  # NPF just has variables using those dimension names
+  ds_npf = xr.Dataset({
+      "npf_k": (["nlay", "nrow", "ncol"], k_data)
+  })
+
+  # Either order works:
+  xr.merge([ds_dis, ds_npf])  # ✓ Works
+  xr.merge([ds_npf, ds_dis])  # ✓ Also works
+
+  When merging:
+  1. xarray looks at dimension names and sizes from all datasets
+  2. If multiple datasets use the same dimension name, xarray checks sizes match
+  3. Coordinates get merged - the one that's defined wins
+  4. No conflicts as long as coordinates are compatible
+
+  The Key Insight
+
+  When you create a DataArray, you specify dimension names, not dimension objects:
+
+  # NPF doesn't need to "know about" the dimensions
+  # It just names them and provides appropriately-shaped data
+  npf_k = xr.DataArray(
+      k_data,  # Shape (3, 10, 10)
+      dims=["nlay", "nrow", "ncol"],  # Just names
+  )
+
+  The dimension names are just strings. The actual dimension size comes from the data shape. Coordinates are optional.
+
+  Order Only Matters for Conflicts
+
+  Order would only matter if you have conflicting coordinates:
+
+  ds1 = xr.Dataset(coords={"x": [0, 1, 2]})
+  ds2 = xr.Dataset(coords={"x": [0, 2, 4]})  # Different values!
+
+  xr.merge([ds1, ds2])  # Error: conflicting values
+  xr.merge([ds1, ds2], compat="override")  # ds1's coords win
+  xr.merge([ds2, ds1], compat="override")  # ds2's coords win
+
+  But in the MF6 case:
+  - Only DIS/DISV/DISU define spatial coordinates
+  - Only TDIS defines temporal coordinates
+  - Other packages just use those dimension names
+  - No conflicts → order doesn't matter
+
+  Practical Example
+
+  # All equivalent:
+  ds = xr.merge([dis.to_dataset(), npf.to_dataset(), wel.to_dataset()])
+  ds = xr.merge([wel.to_dataset(), dis.to_dataset(), npf.to_dataset()])
+  ds = xr.merge([npf.to_dataset(), wel.to_dataset(), dis.to_dataset()])
+
+  So you could even do:
+  ds = xr.merge([pkg.to_dataset() for pkg in gwf.get_packages()])
+
+  Without worrying about order.
+
+  ---
+  TL;DR: Order doesn't matter. xarray merges dimensions by name and checks compatibility. As long as only one package defines coordinates for each dimension (which is true in MF6's design), everything just works regardless of merge order.
+
+> Excellent. Can you inspect the PR closely again and write up a detailed development plan to do move the approach toward what you are suggesting? 
+
+⏺ Task(Detailed analysis of FloPy PR #2564)
+  ⎿  Done (26 tool uses · 76.7k tokens · 5m 51s)                                                                                                                                                                                                 
+
+⏺ Based on my detailed analysis of PR #2564, here's a comprehensive development plan to refactor it toward the cleaner to_dataset() + xr.merge() approach with MF6-aligned dimensions:
+
+  ---
+  Development Plan: Refactor FloPy PR #2564 NetCDF Implementation
+
+  Overview
+
+  Current State:
+  - modelgrid.dataset() creates base dataset
+  - package.update_dataset(ds) mutates and returns dataset
+  - CF-style dimensions: x, y, z, time
+  - Variable names: {package-instance}_{field} (e.g., wel-1_q)
+  - Manual period iteration in user code
+
+  Target State:
+  - package.to_dataset() creates self-contained dataset
+  - xr.merge([...]) combines datasets
+  - MF6-style dimensions: ncol, nrow, nlay, nper with coordinate aliases
+  - Structured metadata aligned with DFN
+  - Automatic period handling
+  - Simpler API
+
+  ---
+  Phase 1: Add to_dataset() Alongside Existing API
+
+  Goal: Introduce the new pattern without breaking existing code. Both APIs coexist initially.
+
+  Task 1.1: Implement Base to_dataset() Method
+
+  File: /flopy/mf6/mfpackage.py
+
+  Add new method:
+  def to_dataset(self, mesh=None) -> xr.Dataset:
+      """
+      Convert package data to a self-contained xarray Dataset.
+      
+      Parameters
+      ----------
+      mesh : str, optional
+          Mesh type: None for structured, "LAYERED" for layered mesh
+      
+      Returns
+      -------
+      xr.Dataset
+          Self-contained dataset with package variables, coordinates,
+          and metadata attributes.
+      """
+      import xarray as xr
+
+      # Get metadata for this package
+      nc_info = self.netcdf_info(mesh=mesh)
+
+      # Build dimension mapping (MF6 style, not CF style)
+      modelgrid = self.model_or_sim.modelgrid
+      modeltime = self.model_or_sim.modeltime if hasattr(self.model_or_sim, 'modeltime') else None
+
+      dimmap = self._get_dimension_map(modelgrid, modeltime, mesh)
+
+      # Create data variables
+      data_vars = {}
+      coords = {}
+
+      for field_key in nc_info:
+          if field_key == "attrs":
+              continue
+
+          var_info = nc_info[field_key]
+          varname = var_info["varname"]
+
+          # Convert dimension names from CF to MF6 style
+          mf6_shape = self._cf_to_mf6_dims(var_info["nc_shape"], mesh)
+
+          # Get actual data
+          field_name = var_info["attrs"]["modflow_input"].rsplit("/", 1)[1].lower()
+          if hasattr(self, field_name):
+              field_obj = getattr(self, field_name)
+              data = self._get_field_data(field_obj, mf6_shape, dimmap, var_info)
+          else:
+              # Create empty array with fill value
+              shape = [dimmap[d] for d in mf6_shape]
+              data = np.full(shape, var_info["attrs"]["_FillValue"], dtype=var_info["nc_type"])
+
+          # Create DataArray
+          data_vars[varname] = xr.DataArray(
+              data,
+              dims=mf6_shape,
+              attrs=var_info["attrs"]
+          )
+
+      # Create dataset
+      ds = xr.Dataset(data_vars, coords=coords)
+
+      # Add package-level attributes
+      if "attrs" in nc_info:
+          ds.attrs.update(nc_info["attrs"])
+
+      return ds
+
+  def _get_dimension_map(self, modelgrid, modeltime, mesh):
+      """Build MF6-style dimension mapping."""
+      dimmap = {}
+
+      # Spatial dimensions
+      if mesh is None:
+          dimmap["nlay"] = modelgrid.nlay
+          dimmap["nrow"] = modelgrid.nrow
+          dimmap["ncol"] = modelgrid.ncol
+          dimmap["nodes"] = modelgrid.nnodes
+      elif mesh.upper() == "LAYERED":
+          dimmap["nlay"] = modelgrid.nlay
+          dimmap["nmesh_face"] = modelgrid.ncpl
+
+      # Temporal dimension
+      if modeltime:
+          dimmap["nper"] = modeltime.nper
+
+      return dimmap
+
+  def _cf_to_mf6_dims(self, cf_shape, mesh):
+      """Convert CF dimension names to MF6 names."""
+      mapping = {
+          "time": "nper",
+          "x": "ncol",
+          "y": "nrow",
+          "z": "nlay",
+      }
+      # nmesh_face stays the same
+
+      mf6_shape = []
+      for dim in cf_shape:
+          mf6_shape.append(mapping.get(dim, dim))
+
+      return mf6_shape
+
+  def _get_field_data(self, field_obj, mf6_shape, dimmap, var_info):
+      """Extract and reshape field data."""
+      data = field_obj.get_data()
+
+      # Handle period data (dict keyed by period)
+      if isinstance(data, dict):
+          # Build full array across all periods
+          shape = [dimmap[d] for d in mf6_shape]
+          full_data = np.full(shape, var_info["attrs"]["_FillValue"], dtype=var_info["nc_type"])
+
+          for period_idx, period_data in data.items():
+              # Determine time index (support both 0-based and "kper" style)
+              if isinstance(period_idx, str) and period_idx.startswith("kper"):
+                  kper = int(period_idx.replace("kper", "")) - 1
+              else:
+                  kper = period_idx
+
+              # Assign period data to appropriate slice
+              if "nper" in mf6_shape:
+                  nper_idx = mf6_shape.index("nper")
+                  slices = [slice(None)] * len(mf6_shape)
+                  slices[nper_idx] = kper
+                  full_data[tuple(slices)] = period_data
+
+          return full_data
+      else:
+          return data
+
+  Rationale:
+  - Introduces new pattern without touching existing update_dataset()
+  - Uses existing netcdf_info() machinery
+  - Converts CF dims to MF6 dims internally
+  - Self-contained - no external dataset needed
+
+  Testing:
+  def test_package_to_dataset():
+      """Test individual package to_dataset() method."""
+      sim = flopy.mf6.MFSimulation.load(sim_ws=test_ws)
+      gwf = sim.get_model()
+
+      # Test DIS
+      dis = gwf.get_package("dis")
+      ds_dis = dis.to_dataset()
+
+      assert "dis_botm" in ds_dis
+      assert ds_dis.dims["nlay"] == 3
+      assert ds_dis.dims["nrow"] == 10
+      assert ds_dis.dims["ncol"] == 10
+      assert "modflow_input" in ds_dis["dis_botm"].attrs
+
+      # Test NPF
+      npf = gwf.get_package("npf")
+      ds_npf = npf.to_dataset()
+
+      assert "npf_k" in ds_npf
+      assert ds_npf.dims["nlay"] == 3
+
+  ---
+  Task 1.2: Implement Grid Coordinate Provision
+
+  File: /flopy/mf6/modflow/mfdis.py (and mfdisv.py)
+
+  Override/extend to_dataset() in DIS package to provide coordinates:
+
+  class ModflowGwfdis(MFPackage):
+      def to_dataset(self, mesh=None) -> xr.Dataset:
+          """
+          Create dataset with spatial coordinates.
+          
+          DIS defines the spatial dimension sizes and coordinates.
+          """
+          # Get base package dataset
+          ds = super().to_dataset(mesh=mesh)
+
+          # Add spatial coordinates
+          modelgrid = self.model_or_sim.modelgrid
+
+          if mesh is None:
+              # Structured grid - add coordinate variables
+              coords = {
+                  "x": ("ncol", modelgrid.xoffset + modelgrid.xycenters[0]),
+                  "y": ("nrow", modelgrid.yoffset + modelgrid.xycenters[1]),
+                  "z": ("nlay", np.arange(1, modelgrid.nlay + 1, dtype=float)),
+              }
+
+              # Add coordinate attributes
+              coord_attrs = {
+                  "x": {
+                      "standard_name": "projection_x_coordinate",
+                      "long_name": "x-coordinate in Cartesian system",
+                      "units": "m",
+                      "axis": "X",
+                  },
+                  "y": {
+                      "standard_name": "projection_y_coordinate",
+                      "long_name": "y-coordinate in Cartesian system",
+                      "units": "m",
+                      "axis": "Y",
+                  },
+                  "z": {
+                      "long_name": "layer number",
+                      "units": "1",
+                      "axis": "Z",
+                  },
+              }
+
+              ds = ds.assign_coords(coords)
+              for coord_name, attrs in coord_attrs.items():
+                  ds[coord_name].attrs.update(attrs)
+
+          elif mesh.upper() == "LAYERED":
+              # Vertex/layered - add mesh coordinates
+              coords = {
+                  "mesh_face_x": ("nmesh_face", modelgrid.xcellcenters),
+                  "mesh_face_y": ("nmesh_face", modelgrid.ycellcenters),
+              }
+              ds = ds.assign_coords(coords)
+
+          return ds
+
+  File: /flopy/mf6/modflow/mftdis.py (if accessible at package level)
+
+  Add temporal coordinates:
+
+  class ModflowTdis(MFPackage):
+      def to_dataset(self, mesh=None) -> xr.Dataset:
+          """Create dataset with temporal coordinates."""
+          ds = super().to_dataset(mesh=mesh)
+
+          # Add time coordinate
+          modeltime = self.simulation.modeltime
+          coords = {
+              "time": ("nper", modeltime.totim),
+              "per": ("nper", np.arange(modeltime.nper)),
+          }
+
+          coord_attrs = {
+              "time": {
+                  "standard_name": "time",
+                  "long_name": "simulation time",
+                  "units": f"days since {modeltime.start_datetime}",
+                  "calendar": "standard",
+                  "axis": "T",
+              },
+              "per": {
+                  "long_name": "stress period number",
+                  "units": "1",
+              },
+          }
+
+          ds = ds.assign_coords(coords)
+          for coord_name, attrs in coord_attrs.items():
+              ds[coord_name].attrs.update(attrs)
+
+          return ds
+
+  Rationale:
+  - DIS/DISV/DISU are the authoritative source of spatial dimensions
+  - TDIS is the source of temporal dimensions
+  - Each package provides what it defines
+  - Coordinates are CF-compliant secondary coordinates, not dimension replacements
+
+  Testing:
+  def test_dis_provides_coordinates():
+      """Test that DIS provides spatial coordinates."""
+      sim = flopy.mf6.MFSimulation.load(sim_ws=test_ws)
+      gwf = sim.get_model()
+      dis = gwf.get_package("dis")
+
+      ds = dis.to_dataset()
+
+      # Check coordinates exist
+      assert "x" in ds.coords
+      assert "y" in ds.coords
+      assert "z" in ds.coords
+
+      # Check they're associated with correct dimensions
+      assert ds["x"].dims == ("ncol",)
+      assert ds["y"].dims == ("nrow",)
+      assert ds["z"].dims == ("nlay",)
+
+      # Check CF attributes
+      assert "standard_name" in ds["x"].attrs
+      assert ds["x"].attrs["axis"] == "X"
+
+  ---
+  Task 1.3: Add Model-Level to_dataset() Using Merge
+
+  File: /flopy/mf6/mfmodel.py
+
+  Add method:
+  def to_dataset(self, mesh=None) -> xr.Dataset:
+      """
+      Create complete model dataset by merging all package datasets.
+      
+      Parameters
+      ----------
+      mesh : str, optional
+          Mesh type: None for structured, "LAYERED" for layered
+      
+      Returns
+      -------
+      xr.Dataset
+          Complete dataset with all model data
+      """
+      import xarray as xr
+
+      # Collect datasets from all packages
+      package_datasets = []
+      for package in self.packagelist:
+          # Skip packages that don't support NetCDF
+          if package.package_type == "obs":
+              continue
+          if not (self.structure.pkg_spec[package.package_type].read_as_arrays or
+                  self.structure.pkg_spec[package.package_type].read_array_grid):
+              continue
+
+          pkg_ds = package.to_dataset(mesh=mesh)
+          package_datasets.append(pkg_ds)
+
+      # Merge all package datasets
+      ds = xr.merge(package_datasets)
+
+      # Add model-level attributes
+      model_attrs = {
+          "modflow_model": f"{self.name}: MODFLOW 6 {self.model_type.upper()} model",
+          "modflow_grid": "STRUCTURED" if mesh is None else "VERTEX",
+          "title": self.name,
+          "source": f"MODFLOW 6 {self.model_type.upper()} model, generated by FloPy",
+          "history": f"Created on {datetime.datetime.now().isoformat()}",
+      }
+
+      if mesh:
+          model_attrs["mesh"] = mesh.upper()
+
+      # Add CF/UGRID conventions
+      conventions = ["CF-1.11"]
+      if mesh and mesh.upper() == "LAYERED":
+          conventions.append("UGRID-1.0")
+      model_attrs["Conventions"] = " ".join(conventions)
+
+      ds.attrs.update(model_attrs)
+
+      return ds
+
+  Rationale:
+  - Simple - just merge all package datasets
+  - Order doesn't matter (xarray handles it)
+  - Model-level attributes added at the end
+  - No manual iteration needed
+
+  Testing:
+  def test_model_to_dataset_merge():
+      """Test that model.to_dataset() merges packages correctly."""
+      sim = flopy.mf6.MFSimulation.load(sim_ws=test_ws)
+      gwf = sim.get_model()
+
+      ds = gwf.to_dataset()
+
+      # Should have variables from multiple packages
+      assert "dis_botm" in ds
+      assert "npf_k" in ds
+      assert "ic_strt" in ds
+
+      # Should have consistent dimensions across packages
+      assert ds["dis_botm"].dims == ("nlay", "nrow", "ncol")
+      assert ds["npf_k"].dims == ("nlay", "nrow", "ncol")
+
+      # Should have model-level attributes
+      assert "modflow_model" in ds.attrs
+      assert "Conventions" in ds.attrs
+
+  ---
+  Task 1.4: Update High-Level Write Methods
+
+  File: /flopy/mf6/mfmodel.py
+
+  Modify _write_netcdf() to use new pattern:
+
+  def _write_netcdf(self, mesh=None):
+      """Write model NetCDF file using to_dataset() pattern."""
+      import xarray as xr
+      from pathlib import Path
+
+      # Get NetCDF filename
+      nc_fname = self.name_file.nc_filerecord.get_data()
+      if not nc_fname:
+          nc_fname = f"{self.name}.nc"
+
+      nc_path = Path(self.model_ws) / nc_fname
+
+      # Create dataset using new pattern
+      ds = self.to_dataset(mesh=mesh)
+
+      # Get encoding settings from NCF package (if present)
+      encoding = self._get_netcdf_encoding()
+
+      # Write to NetCDF
+      ds.to_netcdf(nc_path, format="NETCDF4", engine="netcdf4", encoding=encoding)
+
+      return ds
+
+  Rationale:
+  - Replaces complex manual dataset building
+  - Much simpler - just call to_dataset() and write
+  - Existing write_simulation() API unchanged from user perspective
+
+  ---
+  Phase 2: Update Metadata to Use MF6 Dimension Names
+
+  Goal: Change internal dimension handling from CF-style to MF6-style, eliminating the need for conversion.
+
+  Task 2.1: Update Dimension Mapping in netcdf_info()
+
+  File: /flopy/mf6/data/mfstructure.py and /flopy/mf6/mfpackage.py
+
+  Current code:
+  dimmap = {"nlay": "z", "nrow": "y", "ncol": "x"}
+
+  Change to:
+  # No mapping needed - use MF6 names directly
+  # dimmap removed
+
+  In _add_netcdf_entries():
+
+  # Current (CF style):
+  if data_item.shape[0] == 'nodes':
+      if data_item.block_name == "griddata":
+          dims += ["x", "y", "z"]
+      elif data_item.block_name == "period":
+          dims += ["x", "y", "z", "time"]
+
+  nc_shape = dims[::-1]  # Reverse
+
+  # New (MF6 style):
+  if data_item.shape[0] == 'nodes':
+      if data_item.block_name == "griddata":
+          dims += ["nlay", "nrow", "ncol"]
+      elif data_item.block_name == "period":
+          dims += ["nper", "nlay", "nrow", "ncol"]
+
+  nc_shape = dims  # No reversal needed - keep MF6 order
+
+  Rationale:
+  - Eliminates dimension name translation
+  - Matches MF6 native ordering
+  - Simpler mental model
+  - Aligns with FloPy 4
+
+  Testing:
+  def test_mf6_dimension_names():
+      """Test that metadata uses MF6 dimension names."""
+      sim = flopy.mf6.MFSimulation.load(sim_ws=test_ws)
+      gwf = sim.get_model()
+      dis = gwf.get_package("dis")
+
+      nc_info = dis.netcdf_info()
+
+      # Check shape uses MF6 names
+      assert nc_info["botm"]["nc_shape"] == ["nlay", "nrow", "ncol"]
+      assert "x" not in nc_info["botm"]["nc_shape"]
+      assert "z" not in nc_info["botm"]["nc_shape"]
+
+  ---
+  Task 2.2: Update Grid dataset() Methods
+
+  File: /flopy/discretization/structuredgrid.py
+
+  Current:
+  ds = ds.assign({
+      "time": (["time"], modeltime.totim),
+      "z": (["z"], z),
+      "y": (["y"], y),
+      "x": (["x"], x),
+  })
+
+  Change to (if keeping this method):
+  ds = ds.assign({
+      "nper": (["nper"], np.arange(modeltime.nper)),
+      "nlay": (["nlay"], np.arange(1, nlay + 1)),
+      "nrow": (["nrow"], np.arange(nrow)),
+      "ncol": (["ncol"], np.arange(ncol)),
+  })
+
+  # Add spatial/temporal coordinates as secondary coordinates
+  ds = ds.assign_coords({
+      "time": ("nper", modeltime.totim),
+      "z": ("nlay", z_elevations),
+      "y": ("nrow", y_centers),
+      "x": ("ncol", x_centers),
+  })
+
+  However: Since we're moving to package.to_dataset(), this grid.dataset() method may become deprecated. Consider marking it as such.
+
+  ---
+  Task 2.3: Update Variable Naming Convention
+
+  File: /flopy/mf6/mfpackage.py and package-specific files
+
+  Current:
+  varname = f"{package_name}_{field_name}"  # e.g., "wel-1_q"
+
+  Change to:
+  # Option 1: Underscore separator
+  varname = f"{package_type}_{instance}_{field_name}"  # e.g., "wel_1_q"
+
+  # Option 2: Store instance in attributes
+  varname = f"{package_type}_{field_name}"  # e.g., "wel_q"
+  attrs["package_instance"] = instance_number
+
+  Recommendation: Option 1 (underscore) for consistency, but document in attributes:
+
+  def _get_varname(self, field_name):
+      """Generate NetCDF variable name."""
+      ptype = self.package_type.replace("g", "")  # Remove 'g' suffix if grid-based
+
+      # Get instance number for multi-instance packages
+      if hasattr(self.parent_file, "package_type"):
+          # Extract instance from package name (e.g., "wel_0" -> 0)
+          instance = self.package_name.split("_")[-1] if "_" in self.package_name else None
+          if instance and instance.isdigit():
+              varname = f"{ptype}_{instance}_{field_name}"
+          else:
+              varname = f"{ptype}_{field_name}"
+      else:
+          varname = f"{ptype}_{field_name}"
+
+      return varname
+
+  Rationale:
+  - Consistent separator (underscore, not hyphen)
+  - Clear structure: type_instance_field
+  - Parseable programmatically
+
+  ---
+  Task 2.4: Add DFN-Aligned Metadata Attributes
+
+  File: /flopy/mf6/mfpackage.py
+
+  Current attributes:
+  attrs = {
+      "modflow_input": "MODEL/PACKAGE/FIELD",
+      "_FillValue": fill_value,
+      "longname": description,
+  }
+
+  Add structured metadata:
+  attrs = {
+      # Existing
+      "modflow_input": "model/package/field",  # Lowercase for consistency
+      "_FillValue": fill_value,
+      "long_name": description,  # CF-compliant (underscore not camelCase)
+
+      # New - DFN-aligned
+      "mf6_component": package_type,
+      "mf6_block": block_name,
+      "mf6_variable": field_name,
+      "mf6_path": f"{model_name}/{package_type}/{field_name}",
+      "mf6_type": dfn_field_type,  # e.g., "double precision", "integer"
+
+      # Instance tracking
+      "package_instance": instance_number,  # If multi-instance
+
+      # Existing layered/aux metadata
+      "layer": layer_num,  # If layered
+      "modflow_iaux": aux_index,  # If auxiliary
+  }
+
+  Rationale:
+  - Structured metadata enables programmatic DFN lookup
+  - Separates concerns: MF6 semantics vs NetCDF structure
+  - Aligns with FloPy 4's DFN-driven approach
+  - Maintains backward compatibility (keeps old attributes)
+
+  ---
+  Phase 3: Simplify and Document API
+
+  Task 3.1: Add Version Metadata
+
+  File: /flopy/mf6/mfmodel.py
+
+  Add to global attributes:
+  import flopy
+
+  ds.attrs.update({
+      "flopy_version": flopy.__version__,
+      "flopy_netcdf_format_version": "1.0",
+      "generator": "flopy",
+      "created": datetime.datetime.now().isoformat(),
+  })
+
+  Rationale:
+  - Enables version detection for compatibility
+  - Migration path to FloPy 4
+  - Debugging and provenance tracking
+
+  ---
+  Task 3.2: Deprecate Old Pattern (Optional)
+
+  File: /flopy/mf6/mfpackage.py
+
+  Mark update_dataset() as deprecated:
+  import warnings
+
+  def update_dataset(self, dataset, netcdf_info=None, mesh=None, update_data=True):
+      """
+      Update an existing dataset with package data.
+      
+      .. deprecated:: 3.x.x
+          Use :meth:`to_dataset` with :func:`xarray.merge` instead.
+          This method will be removed in a future version.
+      
+      Examples
+      --------
+      Old pattern:
+          >>> ds = gwf.modelgrid.dataset(modeltime=gwf.modeltime)
+          >>> ds = dis.update_dataset(ds)
+          >>> ds = npf.update_dataset(ds)
+      
+      New pattern:
+          >>> ds = xr.merge([dis.to_dataset(), npf.to_dataset()])
+      """
+      warnings.warn(
+          "update_dataset() is deprecated. Use to_dataset() with xr.merge() instead.",
+          FutureWarning,
+          stacklevel=2
+      )
+      return dataset.merge(self.to_dataset(mesh=mesh))
+
+  Rationale:
+  - Provides migration path
+  - Doesn't break existing code
+  - Can be removed in future major version
+
+  ---
+  Task 3.3: Update Documentation and Examples
+
+  Files: Tutorial notebook, docstrings
+
+  Add examples showing new pattern:
+
+  # Example 1: Simple automatic workflow
+  sim = flopy.mf6.MFSimulation.load(sim_ws=ascii_ws)
+  sim.set_sim_path(netcdf_ws)
+  sim.write_simulation(netcdf="structured")
+
+  # Example 2: Model-level dataset creation
+  gwf = sim.get_model()
+  ds = gwf.to_dataset()  # Merge all packages automatically
+  ds.to_netcdf("model.nc")
+
+  # Example 3: Manual package selection
+  ds = xr.merge([
+      gwf.get_package("dis").to_dataset(),
+      gwf.get_package("npf").to_dataset(),
+      gwf.get_package("wel").to_dataset(),
+  ])
+  ds.to_netcdf("custom.nc")
+
+  # Example 4: Modify before writing
+  ds = gwf.to_dataset()
+  # Custom modifications
+  ds.attrs["custom_field"] = "custom_value"
+  ds["custom_var"] = (["nlay"], custom_data)
+  ds.to_netcdf("modified.nc")
+
+  ---
+  Phase 4: Testing and Validation
+
+  Task 4.1: Update Existing Tests
+
+  File: /autotest/regression/test_model_netcdf.py
+
+  Update tests to use new pattern:
+  def test_uzf01_to_dataset_pattern():
+      """Test new to_dataset() + merge pattern."""
+      sim = get_uzf_model("uzf01")
+      gwf = sim.get_model()
+
+      # Test individual package datasets
+      dis_ds = gwf.get_package("dis").to_dataset()
+      assert "dis_botm" in dis_ds
+      assert dis_ds.dims["nlay"] == 3
+      assert "x" in dis_ds.coords  # Coordinate, not dimension
+
+      # Test model-level merge
+      model_ds = gwf.to_dataset()
+      assert "dis_botm" in model_ds
+      assert "npf_k" in model_ds
+
+      # Test manual merge
+      manual_ds = xr.merge([
+          gwf.get_package("dis").to_dataset(),
+          gwf.get_package("npf").to_dataset(),
+      ])
+      assert manual_ds.dims == model_ds.dims
+
+  Task 4.2: Add Dimension Name Tests
+
+  def test_mf6_dimensions():
+      """Verify MF6 dimension names throughout."""
+      sim = get_uzf_model("uzf01")
+      gwf = sim.get_model()
+      ds = gwf.to_dataset()
+
+      # Check dimensions are MF6-style
+      assert "nlay" in ds.dims
+      assert "nrow" in ds.dims
+      assert "ncol" in ds.dims
+      assert "nper" in ds.dims
+
+      # CF-style names should be coordinates, not dimensions
+      assert "x" not in ds.dims
+      assert "y" not in ds.dims
+      assert "z" not in ds.dims
+      assert "time" not in ds.dims
+
+      # But they should exist as coordinates
+      assert "x" in ds.coords
+      assert "y" in ds.coords
+      assert "z" in ds.coords
+      assert "time" in ds.coords
+
+  Task 4.3: Add Metadata Structure Tests
+
+  def test_dfn_aligned_metadata():
+      """Verify DFN-aligned metadata attributes."""
+      sim = get_uzf_model("uzf01")
+      gwf = sim.get_model()
+      ds = gwf.to_dataset()
+
+      # Check variable has structured metadata
+      var_attrs = ds["npf_k"].attrs
+      assert "mf6_component" in var_attrs
+      assert var_attrs["mf6_component"] == "npf"
+      assert "mf6_block" in var_attrs
+      assert var_attrs["mf6_block"] == "griddata"
+      assert "mf6_variable" in var_attrs
+      assert var_attrs["mf6_variable"] == "k"
+
+      # Check global attributes
+      assert "flopy_version" in ds.attrs
+      assert "flopy_netcdf_format_version" in ds.attrs
+
+  Task 4.4: Test MODFLOW 6 Compatibility
+
+  Add test that writes NetCDF and runs MF6:
+  def test_mf6_reads_netcdf():
+      """Test that MODFLOW 6 can read generated NetCDF files."""
+      import subprocess
+
+      sim = get_uzf_model("uzf01")
+      gwf = sim.get_model()
+
+      # Write with NetCDF
+      sim.write_simulation(netcdf="structured")
+
+      # Run MF6
+      result = subprocess.run(
+          ["mf6"],
+          cwd=sim.simulation_data.mfpath,
+          capture_output=True
+      )
+
+      assert result.returncode == 0, "MF6 failed to run with NetCDF input"
+
+      # Check that MF6 read from NetCDF
+      # (check list file for "READING FROM NETCDF" messages)
+
+  ---
+  Phase 5: FloPy 4 Alignment Considerations
+
+  Task 5.1: Document Alignment Strategy
+
+  Create document: /docs/netcdf_format_spec.md
+
+  Contents:
+  - Dimension naming: MF6 style (nlay, nrow, ncol, nper)
+  - Coordinate conventions: CF-compliant secondary coordinates
+  - Variable naming: {type}{instance}{field}
+  - Metadata structure: DFN-aligned attributes
+  - Format version: Semantic versioning
+  - FloPy 4 compatibility notes
+
+  Task 5.2: Add Conversion Utilities (Future)
+
+  File: /flopy/utils/netcdf_utils.py
+
+  def convert_flopy3_to_flopy4_netcdf(ds: xr.Dataset) -> xr.Dataset:
+      """
+      Convert FloPy 3.x NetCDF to FloPy 4.x compatible format.
+      
+      This is a placeholder for future compatibility work.
+      """
+      # Check version
+      if "flopy_version" not in ds.attrs:
+          raise ValueError("Not a FloPy-generated NetCDF file")
+
+      version = ds.attrs["flopy_version"]
+      if version.startswith("3"):
+          # Already in compatible format if following this spec
+          return ds
+      else:
+          raise ValueError(f"Unknown FloPy version: {version}")
+
+  ---
+  Implementation Order Summary
+
+  Week 1-2: Foundation
+  1. ✅ Task 1.1: Add to_dataset() to base package class
+  2. ✅ Task 1.2: Override in DIS/TDIS for coordinates
+  3. ✅ Task 1.3: Add model-level to_dataset()
+  4. ✅ Task 1.4: Update _write_netcdf() to use new pattern
+  5. ✅ Basic testing
+
+  Week 3: Dimension Alignment
+  6. ✅ Task 2.1: Update dimension mapping in metadata
+  7. ✅ Task 2.2: Update grid dataset methods
+  8. ✅ Task 2.3: Update variable naming
+  9. ✅ Task 2.4: Add DFN-aligned metadata
+  10. ✅ Dimension name tests
+
+  Week 4: Polish
+  11. ✅ Task 3.1: Add version metadata
+  12. ✅ Task 3.2: Deprecate old pattern (optional)
+  13. ✅ Task 3.3: Update documentation
+  14. ✅ Task 4.1-4.4: Comprehensive testing
+  15. ✅ Task 5.1: Document format spec
+
+  Week 5: Validation
+  16. ✅ MF6 compatibility testing
+  17. ✅ Performance testing
+  18. ✅ Documentation review
+  19. ✅ PR updates and review
+
+  ---
+  Success Criteria
+
+  - All existing tests pass
+  - New to_dataset() API works for all packages
+  - xr.merge() pattern demonstrated in examples
+  - Dimensions use MF6 names (nlay, nrow, ncol, nper)
+  - Coordinates use CF names (x, y, z, time) as secondary coords
+  - Variables have DFN-aligned metadata
+  - Format version documented
+  - MODFLOW 6 can read generated NetCDF files
+  - Tutorial notebook updated
+  - Migration guide written
+
+  ---
+  Risk Mitigation
+
+  1. Breaking Changes: Keep both APIs during transition period
+  2. Testing Coverage: Add tests before refactoring
+  3. MF6 Compatibility: Test with actual MF6 executable frequently
+  4. Performance: Benchmark merge vs manual building
+  5. Community Feedback: Release as beta/RC before final
+
+  This plan provides a clear, incremental path from the current implementation to the cleaner, MF6-aligned architecture while maintaining compatibility and providing a migration path.
+
+
+
+
