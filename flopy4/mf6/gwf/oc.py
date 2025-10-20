@@ -22,19 +22,6 @@ class Oc(Package):
         digits: int = field(default=4)
         format: Literal["exponential", "fixed", "general", "scientific"] = field(default="general")
 
-    @define(slots=False)
-    class Steps:
-        all: bool = field(default=True)
-        first: bool | None = field(default=None)
-        last: bool | None = field(default=None)
-        steps: list[int] | None = field(default=None)
-        frequency: int | None = field(default=None)
-
-    @define(slots=False)
-    class Period:
-        rtype: str = field()
-        steps: "Oc.Steps" = field()
-
     budget_file: Optional[Path] = field(
         block="options",
         converter=to_path,
@@ -55,6 +42,7 @@ class Oc(Package):
     save_head: Optional[NDArray[np.object_]] = array(
         object,
         block="period",
+        table="period",
         default=None,
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
@@ -62,6 +50,7 @@ class Oc(Package):
     save_budget: Optional[NDArray[np.object_]] = array(
         object,
         block="period",
+        table="period",
         default=None,
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
@@ -69,6 +58,7 @@ class Oc(Package):
     print_head: Optional[NDArray[np.object_]] = array(
         object,
         block="period",
+        table="period",
         default=None,
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
@@ -76,6 +66,7 @@ class Oc(Package):
     print_budget: Optional[NDArray[np.object_]] = array(
         object,
         block="period",
+        table="period",
         default=None,
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),

@@ -81,7 +81,7 @@ def test_gwf_chd01(function_tmpdir):
     sim.run()
 
 
-def test_gwf_npf01(function_tmpdir):
+def test_gwf_npf01(function_tmpdir, test_data_path):
     # mf6 test_gwf_npf01_75X75
     sim_name = "npf01"
     gwf_name = "npf01_75x75"
@@ -140,8 +140,8 @@ def test_gwf_npf01(function_tmpdir):
         print_budget=["last", None, None],
     )
 
-    k = np.loadtxt("data/npf01_75x75.k").flatten()
-    k33 = np.loadtxt("data/npf01_75x75.k33").flatten()
+    k = np.loadtxt(test_data_path / "npf01_75x75.k").flatten()
+    k33 = np.loadtxt(test_data_path / "npf01_75x75.k33").flatten()
     # k = np.loadtxt("data/npf01_75x75.k")
     # k33 = np.loadtxt("data/npf01_75x75.k33")
 
@@ -164,7 +164,7 @@ def test_gwf_npf01(function_tmpdir):
 
     chd_data = {}
     chd_data[0] = {}
-    with open("data/npf01_75x75.head", "r") as f:
+    with open(test_data_path / "npf01_75x75.head", "r") as f:
         chddata = json.load(f)
         keys = list(chddata["0"])
         for k in keys:

@@ -1,5 +1,5 @@
 from abc import ABC
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -180,21 +180,24 @@ class Component(ABC, MutableMapping):
             blocks=blocks,
         )
 
-    def _preio(self, format: str = MF6) -> None:
-        # prep for io operations
-        if not self.filename:
-            self.filename = self.default_filename()
-
     def load(self, format: str = MF6) -> None:
         """Load the component and any children."""
-        self._preio(format=format)
+        # TODO: setting filename is a temp hack to get the parent's
+        # name as this component's filename stem, if it has one. an
+        # actual solution is to auto-set the filename when children
+        # are attached to parents.
+        self.filename = self.filename or self.default_filename()
         self._load(format=format)
         for child in self.children.values():  # type: ignore
             child.load(format=format)
 
     def write(self, format: str = MF6) -> None:
         """Write the component and any children."""
-        self._preio(format=format)
+        # TODO: setting filename is a temp hack to get the parent's
+        # name as this component's filename stem, if it has one. an
+        # actual solution is to auto-set the filename when children
+        # are attached to parents.
+        self.filename = self.filename or self.default_filename()
         self._write(format=format)
         for child in self.children.values():  # type: ignore
             child.write(format=format)
@@ -203,7 +206,7 @@ class Component(ABC, MutableMapping):
         """Convert the component to a dictionary representation."""
         data = xattree_asdict(self)
         data.pop("filename")
-        data.pop("workspace", None)
+        data.pop("workspace", None)  # might be a Context
         data.pop("nodes", None)  # TODO: find a better way to omit
         if blocks:
             blocks_ = {}  # type: ignore
@@ -214,3 +217,12 @@ class Component(ABC, MutableMapping):
                 blocks_[block_name][field_name] = field_value
             return blocks_
         return data
+
+
+def _try_get_structured_grid_dims(component: Component) -> Mapping | None:
+    # temporary hack! TODO remove once we have a structured grid index
+    if "nlay" in component.data.dims:  # type: ignore
+        return component.data.dims  # type: ignore
+    if component.data.parent is not None and "nlay" in component.data.parent.dims:  # type: ignore
+        return component.data.parent.dims  # type: ignore
+    return None

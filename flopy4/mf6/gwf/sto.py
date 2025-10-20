@@ -39,8 +39,9 @@ class Sto(Package):
         default=0.15,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
     )
-    storage: Optional[NDArray[np.str_]] = array(
+    storage: Optional[NDArray[np.object_]] = array(
         block="period",
+        table="period",
         dims=("nper",),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),

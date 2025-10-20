@@ -1,6 +1,16 @@
 {% set inset = " " %}
 
 {% macro field(name, value) %}
+{#
+Render a field.
+
+Dispatches to macros specific to each field type, as defined in the v2 DFN schema.
+If the value does not match any recognized v2 field type, an error will be raised.
+
+Parameters:
+name: the field's name
+value: the field's value
+#}
 {% set type = value|field_type %}
 {% if type in ['keyword', 'integer', 'double', 'string'] %}
 {{ scalar(name, value) }}
@@ -9,20 +19,44 @@
 {% elif type == 'array' %}
 {{ array(name, value, how=value|array_how) }}
 {% elif type == 'list' %}
-{{ list(name, value) }}
+{{ list(value) }}
 {% endif %}
 {% endmacro %}
 
 {% macro scalar(name, value) %}
+{#
+Render a scalar field. The field value must a bool, str, int or float. If the
+value is a bool, the field is a keyword and will be rendered as its name only,
+and only if it is true, otherwise rendering nothing. If the value is any other
+type of scalar, it will be rendered as: name value.
+
+Parameters:
+name: the scalar field's name
+value: the scalar field's value
+...
+#}
 {% set type = value|field_type %}
 {% if value is not none %}{{ inset ~ name.upper() }}{% if type != 'keyword' %} {{ value }}{% endif %}{% endif %}
 {% endmacro %}
 
 {% macro record(value) %}
+{#
+Render a record field. The field value must be an iterable (preferably tuple)
+of strings. The record is rendered simply by joining its elements with spaces.
+
+If the record is "tagged" (as defined in the v1 DFN schema) its first element
+must be its name.
+
+Parameters:
+value: an iterable representing the record field's value
+#}
 {{ inset ~ value|join(" ") -}}
 {% endmacro %}
 
-{% macro list(name, value) %}
+{% macro list(value) %}
+{#
+Render a list field. The field value must be a list or xr.Dataset.
+#}
 {% for row in (value|data2list) %}
 {{ record(row) }}{% if not loop.last %}{{ "\n" }}{% endif %}
 {%- endfor %}

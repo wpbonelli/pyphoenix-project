@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 import numpy as np
-from attrs import Converter, define
+from attrs import Converter
 from flopy.discretization.modeltime import ModelTime
 from numpy.typing import NDArray
 from xattree import ROOT, xattree
@@ -14,29 +14,26 @@ from flopy4.mf6.spec import array, dim, field
 
 @xattree
 class Tdis(Package):
-    @define
-    class PeriodData:
-        perlen: float
-        nstp: int
-        tsmult: float
-
     nper: int = dim(block="dimensions", coord="per", default=1, scope=ROOT)
     time_units: Optional[str] = field(block="options", default=None)
     start_date_time: Optional[datetime] = field(block="options", default=None)
     perlen: NDArray[np.float64] = array(
         block="perioddata",
+        table="perioddata",
         default=1.0,
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
     )
     nstp: NDArray[np.integer] = array(
         block="perioddata",
+        table="perioddata",
         default=1,
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
     )
     tsmult: NDArray[np.float64] = array(
         block="perioddata",
+        table="perioddata",
         default=1.0,
         dims=("nper",),
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),

@@ -14,7 +14,7 @@ from xattree import get_xatspec
 
 from flopy4.adapters import get_nn
 from flopy4.mf6.binding import Binding
-from flopy4.mf6.component import Component
+from flopy4.mf6.component import Component, _try_get_structured_grid_dims
 from flopy4.mf6.config import SPARSE_THRESHOLD
 from flopy4.mf6.constants import FILL_DNODATA, PERIOD
 from flopy4.mf6.context import Context
@@ -59,21 +59,21 @@ def get_binding_blocks(value: Component) -> dict[str, dict[str, list[tuple[str, 
     return blocks
 
 
-def has_structured_grid_dims(value: xr.DataArray) -> bool:
+def has_structured_grid_dims(value: xr.DataArray | xr.Dataset) -> bool:
     """
     Check if the DataArray has structured grid dimensions: 'nlay', 'nrow', and 'ncol'.
     """
     return all(dim in value.dims for dim in ["nlay", "nrow", "ncol"])
 
 
-def has_grid_dims(value: xr.DataArray) -> bool:
+def has_grid_dims(value: xr.DataArray | xr.Dataset) -> bool:
     """
     Check if the DataArray has spatial dimensions: 'nodes' and/or 'nlay', 'nrow', and 'ncol'.
     """
     return "nodes" in value.dims or has_structured_grid_dims(value)
 
 
-def has_tdis_dims(value: xr.DataArray) -> bool:
+def has_tdis_dims(value: xr.DataArray | xr.Dataset) -> bool:
     """
     Check if the DataArray has a time dimensions 'nper'.
     """
@@ -173,8 +173,9 @@ def unstructure_field(
                 if structured_grid_dims is None:
                     raise ValueError("Need structured grid dimension sizes")
                 value = _hack_structured_grid_dims(value, structured_grid_dims=structured_grid_dims)
-            if has_tdis_dims(value):
-                value = {kper: value.isel(nper=kper) for kper in range(value.sizes["nper"])}
+            # if has_tdis_dims(value) and name not in ["perlen", "nstp", "tsmult"]:
+            #     # slice by stress period
+            #     value = {kper: value.isel(nper=kper) for kper in range(value.sizes["nper"])}
             return name, value
         case _:
             return name, value
@@ -186,31 +187,39 @@ def unstructure_block(
     structured_grid_dims: Mapping | None,
 ) -> dict[str, Any]:
     """Unstructure a block of data, converting fields to a suitable format."""
-    return dict(
-        [
-            unstructure_field(
-                name=field_name,
-                value=block.get(field_name, None),
-                structured_grid_dims=structured_grid_dims,
-            )
-            for field_name in block.keys()
-        ]
-    )
+    fields = [
+        unstructure_field(
+            name=field_name,
+            value=block.get(field_name, None),
+            structured_grid_dims=structured_grid_dims,
+        )
+        for field_name in block.keys()
+    ]
+    return {k: v for k, v in fields if v is not None}
 
 
-def _hack_field_metadata(
-    dataset: xr.Dataset, component_type: type, field_names: Iterable[str]
-) -> None:
-    # TODO: attach metadata to array attrs instead of dataset attrs
-    field_metadata = {}
-    component_fields = fields_dict(component_type)
-    for field_name in field_names:
-        if field_name in component_fields:
-            field_metadata[field_name] = component_fields[field_name].metadata
-    dataset.attrs["field_metadata"] = field_metadata
+def try_combine_table_data(
+    block: dict[str, xr.DataArray], cls: type[Component]
+) -> dict[str, xr.Dataset | dict[str, xr.Dataset]]:
+    field_spec = fields_dict(cls)
+    table_names = [field_spec[n].get("table", None) for n in block.keys()]
+    if not any(table_names):
+        return block
+
+    table_name = table_names[0]
+    if not all(table_name == n for n in table_names):
+        raise ValueError("All arrays in the same block must share the same table specification")
+
+    ds = xr.Dataset(block)
+
+    if has_tdis_dims(ds) and cls.__name__.lower() != "tdis":  # dirty hack, do better
+        # slice by stress period
+        return {table_name: {kper: ds.isel(nper=kper) for kper in range(ds.sizes["nper"])}}
+
+    return {table_name: ds}
 
 
-def segment_period_data(block: dict[str, Any], cls: type[Component]) -> dict[str, dict[str, Any]]:
+def unstructure_period_data(block: dict[str, xr.Dataset]) -> dict[str, dict[str, Any]]:
     """Partition period data by stress period"""
     arrays = {}  # type: ignore
     blocks = {}  # type: ignore
@@ -222,10 +231,8 @@ def segment_period_data(block: dict[str, Any], cls: type[Component]) -> dict[str
                 arrays[kper] = {}
             arrays[kper][arr_name] = arr
 
-    for kper, arrs in arrays.items():
-        dataset = xr.Dataset(arrs)
-        _hack_field_metadata(dataset, cls, arrs.keys())
-        blocks[f"{period} {kper + 1}"] = {period: dataset}
+    for kper, data in periods.items():
+        blocks[f"{period} {kper + 1}"] = data
 
     return blocks
 
@@ -237,27 +244,18 @@ def unstructure_component(value: Component) -> dict[str, Any]:
     data = value.to_dict(blocks=True)
     blocks: dict[str, dict[str, Any]] = {}
     blocks.update(binding_blocks := get_binding_blocks(value))
-
-    # temporary hack! TODO remove once we have a structured grid index
-    if "nlay" in value.data.dims:  # type: ignore
-        structured_grid_dims = value.data.dims  # type: ignore
-    elif value.data.parent is not None and "nlay" in value.data.parent.dims:  # type: ignore
-        structured_grid_dims = value.data.parent.dims  # type: ignore
-    else:
-        structured_grid_dims = None
-
     blocks.update(
         {
             block_name: unstructure_block(
-                data[block_name], structured_grid_dims=structured_grid_dims
+                data[block_name], structured_grid_dims=_try_get_structured_grid_dims(value)
             )
             for block_name in dfn.blocks.keys()
             if block_name not in binding_blocks
         }
     )
+    blocks = {k: try_combine_table_data(v, cls) for k, v in blocks.items()}
     if period_block := blocks.pop(PERIOD, None):
-        period_block = {k: v for k, v in period_block.items() if v is not None}
-        blocks.update(segment_period_data(period_block, cls))
+        blocks.update(unstructure_period_data(period_block))
 
     # total temporary hack! manually set solutiongroup 1.
     # TODO support multiple solution groups

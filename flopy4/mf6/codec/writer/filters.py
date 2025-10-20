@@ -25,16 +25,17 @@ def field_type(value: Any) -> FieldType:
     if isinstance(value, tuple):
         return "record"
     if isinstance(value, xr.DataArray):
+        # TODO: why would we get an array of dtype object (string) here?
         if value.dtype == "object":
             return "list"
         return "array"
-    if isinstance(value, (list, dict, xr.Dataset)):
+    if isinstance(value, (list, xr.Dataset)):
         return "list"
     raise ValueError(f"Unsupported field type: {type(value)}")
 
 
 def array_how(value: xr.DataArray) -> str:
-    # TODO above certain size, use external?
+    # TODO above certain size threshold, use external?
     if value.max() == value.min():
         return "constant"
     return "internal"
@@ -137,45 +138,16 @@ def array2const(value: xr.DataArray) -> Scalar:
     return value.ravel()[0]
 
 
-def data2list(value: list | dict | xr.Dataset | xr.DataArray):
+def data2list(value: list | xr.Dataset):
     """
-    Yield records (tuples) from data in a `list`, `dict`, `DataArray` or `Dataset`.
+    Yield records (tuples) from data in a `list` or `Dataset`.
     """
 
-    if isinstance(value, list):
-        for rec in value:
-            if not isinstance(rec, tuple):
-                raise ValueError(f"Unsupported record type: {type(rec)}")
-            yield rec
-        return
-
-    if isinstance(value, dict):
-        for name, val in value.items():
-            yield (name, val)
-        return
-
-    if isinstance(value, xr.Dataset):
-        yield from dataset2list(value)
-        return
-
-    # otherwise we have a DataArray
-    if value.ndim == 0:  # handle scalar
-        if not np.isnan(value.item()) and value.item() is not None:
-            yield (value.item(),)
-        return
-
-    spatial_dims = [d for d in value.dims if d in ("nlay", "nrow", "ncol", "nodes")]
-    has_spatial_dims = len(spatial_dims) > 0
-    mask = nonempty(value)
-    indices = np.where(mask)
-    values = value.values[mask]
-    for i, val in enumerate(values):
-        if has_spatial_dims:
-            cellid = tuple(idx[i] + 1 for idx in indices)
-            rec = cellid + (val,)
-        else:
-            rec = (val,)
-        yield rec
+    match value:
+        case list():
+            yield from value
+        case xr.Dataset():
+            yield from dataset2list(value)
 
 
 def dataset2list(value: xr.Dataset):
@@ -188,11 +160,9 @@ def dataset2list(value: xr.Dataset):
     if no spatial dimensions, or (*cellid, *value) when spatial
     dimensions are present.
     """
-    if value is None or not any(value.data_vars):
-        return
 
     first = next(iter(value.data_vars.values()))
-    is_union = first.dtype.type is np.str_
+    is_union = first.dtype.type is np.object_
 
     if first.ndim == 0:  # handle scalar
         if is_union:

@@ -27,6 +27,7 @@ class Rch(Package):
     maxbound: Optional[int] = field(block="dimensions", default=None, init=False)
     recharge: Optional[NDArray[np.float64]] = array(
         block="period",
+        table="period",
         dims=(
             "nper",
             "nodes",
@@ -37,6 +38,7 @@ class Rch(Package):
     )
     aux: Optional[NDArray[np.float64]] = array(
         block="period",
+        table="period",
         dims=(
             "nper",
             "nodes",
@@ -45,8 +47,9 @@ class Rch(Package):
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
         on_setattr=update_maxbound,
     )
-    boundname: Optional[NDArray[np.str_]] = array(
+    boundname: Optional[NDArray[np.object_]] = array(
         block="period",
+        table="period",
         dims=(
             "nper",
             "nodes",

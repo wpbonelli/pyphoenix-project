@@ -1,11 +1,19 @@
 from pathlib import Path
 
+import pytest
+
 pytest_plugins = ["modflow_devtools.fixtures"]
 
 PROJ_ROOT_PATH = Path(__file__).parents[1]
+TEST_PATH = PROJ_ROOT_PATH / "test"
 DOCS_PATH = PROJ_ROOT_PATH / "docs"
 EXAMPLES_PATH = DOCS_PATH / "examples"
 EXCLUDED_EXAMPLES = []
+
+
+@pytest.fixture
+def test_data_path() -> Path:
+    return TEST_PATH / "data"
 
 
 def pytest_generate_tests(metafunc):

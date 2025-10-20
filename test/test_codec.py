@@ -113,7 +113,8 @@ def test_dumps_tdis():
     dumped = dumps(COMPONENT_CONVERTER.unstructure(tdis))
     print("TDIS dump:")
     print(dumped)
-    assert dumped
+    assert "1.0 1 1.0" in dumped  # period 1
+    assert "2.0 2 1.0" in dumped  # period 2
 
     loaded = loads(dumped)
     print("TDIS load:")

@@ -29,6 +29,7 @@ class Drn(Package):
     maxbound: Optional[int] = field(block="dimensions", default=None, init=False)
     elev: Optional[NDArray[np.float64]] = array(
         block="period",
+        table="period",
         dims=("nper", "nodes"),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
@@ -36,6 +37,7 @@ class Drn(Package):
     )
     cond: Optional[NDArray[np.float64]] = array(
         block="period",
+        table="period",
         dims=("nper", "nodes"),
         default=None,
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
@@ -43,6 +45,7 @@ class Drn(Package):
     )
     aux: Optional[NDArray[np.float64]] = array(
         block="period",
+        table="period",
         dims=(
             "nper",
             "nodes",
@@ -51,8 +54,9 @@ class Drn(Package):
         converter=Converter(dict_to_array, takes_self=True, takes_field=True),
         on_setattr=update_maxbound,
     )
-    boundname: Optional[NDArray[np.str_]] = array(
+    boundname: Optional[NDArray[np.object_]] = array(
         block="period",
+        table="period",
         dims=(
             "nper",
             "nodes",

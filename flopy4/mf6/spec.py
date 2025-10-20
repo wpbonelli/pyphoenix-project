@@ -106,11 +106,13 @@ def array(
     metadata=None,
     on_setattr=None,
     block: str | None = None,
+    table: bool | str | None = None,
 ):
     """Define an array field."""
     if block:
         metadata = metadata or {}
         metadata["block"] = block
+        metadata["table"] = table
     return flopy_array(
         cls=cls,
         dims=dims,
@@ -164,7 +166,7 @@ def fields_dict(cls) -> dict[str, Attribute]:
 
 def to_field_type(t: type) -> FieldType:
     match t:
-        case builtins.str | np.str_:
+        case builtins.str | np.object_:
             return "string"
         case builtins.bool | np.bool:
             return "keyword"
@@ -178,7 +180,7 @@ def to_field_type(t: type) -> FieldType:
             args = get_args(t)
             if args[-1] is types.NoneType:
                 match args[0]:
-                    case builtins.str | np.str_:
+                    case builtins.str | np.object_:
                         return "string"
                     case builtins.bool | np.bool:
                         return "keyword"
