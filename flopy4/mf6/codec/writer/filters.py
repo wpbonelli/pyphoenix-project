@@ -1,6 +1,6 @@
 from collections.abc import Hashable, Mapping
 from io import StringIO
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -34,8 +34,20 @@ def field_type(value: Any) -> FieldType:
     raise ValueError(f"Unsupported field type: {type(value)}")
 
 
-def array_how(value: xr.DataArray) -> str:
-    # TODO above certain size threshold, use external?
+ArrayHow = Literal["constant", "internal", "external"]
+
+
+def array_how(value: xr.DataArray) -> ArrayHow:
+    """
+    Determine how an array should be represented in MF6 input.
+    Options are "constant", "internal", or "external". If the
+    array dask-backed, assumed it's big and return "external".
+    Otherwise there is no materialization cost to check if all
+    values are the same, so return "constant" or "internal" as
+    appropriate.
+    """
+    if hasattr(value.data, "blocks"):
+        return "external"
     if value.max() == value.min():
         return "constant"
     return "internal"

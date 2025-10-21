@@ -202,7 +202,7 @@ def try_combine_table_data(
     block: dict[str, xr.DataArray], cls: type[Component]
 ) -> dict[str, xr.Dataset | dict[str, xr.Dataset]]:
     field_spec = fields_dict(cls)
-    table_names = [field_spec[n].get("table", None) for n in block.keys()]
+    table_names = [field_spec[n].metadata.get("table", None) for n in block.keys()]
     if not any(table_names):
         return block
 
