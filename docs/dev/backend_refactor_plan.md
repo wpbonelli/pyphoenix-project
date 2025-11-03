@@ -12,7 +12,9 @@ Move from xattree's magic attribute proxying to explicit attrs-based components 
 
 ### Components
 
-Leaf nodes (packages with no children) get an `xr.Dataset` method or property, provided by a mixin which implements a runtime-checkable protocol. Internal nodes (packages with subpackages, models, simulations) get an `xr.DataTree` method or property, provided again by a mixin implementing a protocol.
+Leaf nodes (packages with no children) get a `to_dataset()` method provided by a mixin which implements a runtime-checkable protocol. Internal nodes (packages with subpackages, models, simulations) get a `to_datatree()` method provided by a mixin. Both expose a temporary `.data` property during migration for backward compatibility with xattree (`.data` will be removed once migration is complete).
+
+Base classes implement `MutableMapping` to provide dict-like access to children (e.g., `model["dis"]` accesses `model.dis`).
 
 #### Field decorators/metadata
 
@@ -24,7 +26,7 @@ The `flopy4/spec.py` module currently wraps `xattree` field decorators. These ar
 - `array(...)`
 - `path(...)`
 
-These set metadata keys like: `"kind"`, `"dims"`, `"dtype"`, `"coord"`, `"scope"`.
+These set metadata keys like: `"kind"`, `"dims"`, `"dtype"`, `"coord"`, `"scope"`, `"child"` (for component relationships).
 
 And continue wrapping them in the `flopy4.mf6.spec` module with any MF6-specific metadata, like block name. The only difference will be that metadata attributes can live at the top level of the metadata dictionary, instead of inside a top-level "xattree" entry.
 
@@ -40,32 +42,44 @@ And continue wrapping them in the `flopy4.mf6.spec` module with any MF6-specific
 #### Xarray type conversion
 
 - `DatasetConvertible`: provides an `xr.Dataset` view
-  - `to_dataset() -> xr.Dataset` method, temporary (?) `.data` property
+  - `to_dataset() -> xr.Dataset` method
   - `from_dataset(ds) -> Self` classmethod
+  - Temporary `.data` property for backward compatibility (alias for `to_dataset()`)
 - `DataTreeConvertible`: provides an `xr.DataTree` view
-  - `to_datatree() -> xr.DataTree` method, temporary (?) `.data` property
+  - `to_datatree() -> xr.DataTree` method
   - `from_datatree(dt) -> Self` classmethod
+  - Temporary `.data` property for backward compatibility (alias for `to_datatree()`)
 
 ### Mixin classes
 
 #### Dimension resolution
 
-- `DimensionProviderMixin`: components that provide dimensions (dis/tdis)
-- `DimensionRegistryMixin`: components to which dimensions are scoped (model/sim)
-  - `register(component: DimensionProvider)`
-  - `resolve(dim_name: str, scope: str | type) -> int | None`
-  - `get_all_dims(scope: str | type) -> dict[str, int]`
+`DimensionRegistryMixin`: containers that aggregate dimensions at a specific scope (model/sim)
+  - Each registry handles a single scope (set via `_dimension_scope` class attribute)
+  - `register_dimension_provider(provider: DimensionProvider)`: accepts providers matching its scope, forwards others to parent
+  - `resolve_dimension(dim_name: str) -> int | None`: checks local cache, walks up parent chain if not found
+  - `get_all_dimensions() -> dict[str, int]`: returns locally registered dimensions
+  - Auto-registers dimension providers in `__setattr__` when components are assigned
+  - Sets `parent` field automatically in `__setattr__` (raises error if component already has different parent)
 
-Resolution walks up the parent chain to resolve dimensions as needed.
+Design notes:
+- Components implement `DimensionProvider` protocol directly (no mixin needed)
+- Model registries handle "model"-scoped dimensions (nlay, nrow, ncol)
+- Simulation registries handle "global"-scoped dimensions (nper, time steps)
+- Scope enforcement happens naturally via registry hierarchy (no explicit checking needed)
+- Resolution walks up parent chain, allowing packages to access both model and global dimensions
+- Dimension fields are immutable after initialization (`on_setattr=attrs.setters.frozen`)
 
 #### Xarray conversion
 
 - `DatasetConvertibleMixin`: leaf node components
-  - `.data` property calls `attrs_to_dataset(self)`
-  - `.from_dataset(ds)` calls `dataset_to_attrs`
+  - `to_dataset()` method calls `attrs_to_dataset(self)`
+  - `from_dataset(ds)` classmethod calls `dataset_to_attrs(cls, ds)`
+  - Temporary `.data` property (alias for `to_dataset()`)
 - `DataTreeConvertibleMixin`: internal node components
-  - `.data` property calls `attrs_to_datatree(self)`
-  - `.from_datatree(dt)` calls `datatree_to_attrs`
+  - `to_datatree()` method calls `attrs_to_datatree(self)`
+  - `from_datatree(dt)` classmethod calls `datatree_to_attrs(cls, dt)`
+  - Temporary `.data` property (alias for `to_datatree()`)
 
 These `xr.Dataset`/`DataTree` conversion mixins can be implemented with some generic conversion functions under the hood:
 
@@ -74,12 +88,21 @@ These `xr.Dataset`/`DataTree` conversion mixins can be implemented with some gen
   - Arrays → data_vars (shared references)
   - Scalars → attrs (copied)
   - Handles dims, coords via field metadata
+  - Validates array shapes lazily by resolving dimensions from parent registry
 - `dataset_to_attrs(cls, ds) -> Self`
   - Reconstructs leaf node `attrs` component from `xr.Dataset`
 - `attrs_to_datatree(obj) -> xr.DataTree`
-  - Recursively builds tree from object + children
+  - Recursively builds tree from object + children (identified via `"child"` metadata)
 - `datatree_to_attrs(cls, dt) -> Self`
   - Reconstructs internal node `attrs` component from `xr.DataTree`
+
+### Module organization
+
+- `flopy4/protocols.py`: Protocol definitions (`DimensionProvider`, `DimensionRegistry`, `DatasetConvertible`, `DataTreeConvertible`)
+- `flopy4/mixins.py`: Mixin implementations (`DimensionRegistryMixin`, `DatasetConvertibleMixin`, `DataTreeConvertibleMixin`)
+- `flopy4/xarray.py`: Generic conversion functions (`attrs_to_dataset`, `attrs_to_datatree`, etc.)
+- `flopy4/spec.py`: Field decorator functions (`dim`, `array`, `coord`, `field`, `path`)
+- `flopy4/mf6/spec.py`: MF6-specific field decorator extensions (adds `"block"` metadata, etc.)
 
 ## Migration Strategy
 
@@ -89,18 +112,24 @@ Containers continue to define the existing `xattree` interface contract (an `xr.
 
 ### 1. Implement foundations
 
-Move field decorator metadata system from `xattree` to `flopy4.spec` module. Implement protocols and mixins. Add dimension validation via array field decorator validation mechanism.
+Move field decorator metadata system from `xattree` to `flopy4.spec` module (remove top-level "xattree" key, store metadata directly). Add `"child"` metadata for component relationships.
+
+Implement protocols in `flopy4/protocols.py` (`DimensionProvider`, `DimensionRegistry`, `DatasetConvertible`, `DataTreeConvertible`).
+
+Implement mixins in `flopy4/mixins.py` (`DimensionRegistryMixin`, `DatasetConvertibleMixin`, `DataTreeConvertibleMixin`). Auto-set `parent` field and auto-register dimension providers in `__setattr__` (with error if reassigning to different parent).
+
+Implement generic conversion functions in `flopy4/xarray.py` (`attrs_to_dataset`, `attrs_to_datatree`, etc.) with lazy dimension validation.
 
 ### 2. Update internal nodes
 
-Refactor `Context` base class, use `@define` instead of `@xattree`, inherit `DimensionRegistryMixin` and `DataTreeConvertibleMixin`.
+Refactor `Context` base class, use `@define` instead of `@xattree`, inherit `DimensionRegistryMixin`, `DataTreeConvertibleMixin`, and `MutableMapping`.
 
-Refactor `Simulation` class, use `@define` instead of `@xattree`, continue exposing `xr.DataTree` under `.data`.
+Refactor `Simulation` class, use `@define` instead of `@xattree`, set `_dimension_scope = "global"`, continue exposing `xr.DataTree` under `.data` (temporary, calls `to_datatree()`).
 
-Refactor base `Model` class and `Gwf` concrete class, use `@define` instead of `@xattree`, inherit `DataTreeConvertibleMixin`. Continue exposing `xr.DataTree` under `.data`.
+Refactor base `Model` class and `Gwf` concrete class, use `@define` instead of `@xattree`, set `_dimension_scope = "model"`, inherit `DataTreeConvertibleMixin`. Add `parent` field linking to `Simulation` (set automatically in parent's `__setattr__`). Continue exposing `xr.DataTree` under `.data` (temporary).
 
 ### 3. Update leaf nodes
 
-Refactor `Package` base class, using `@define` instead of `@xattree` and inheriting `DatasetConvertibleMixin`. Continue exposing `xr.Dataset` under `.data`. Add a `parent` field.
+Refactor `Package` base class, using `@define` instead of `@xattree` and inheriting `DatasetConvertibleMixin`. Continue exposing `xr.Dataset` under `.data` (temporary, calls `to_dataset()`). Add a `parent` field linking to containing model (set automatically in parent's `__setattr__`).
 
-Migrate packages one at a time, starting with those with no dimension dependencies (e.g. `Tdis`).
+Migrate packages one at a time, starting with dimension providers (`Tdis`, `Dis`), then dimension consumers (`Npf`, `Sto`, etc.). Dimension-providing packages implement `DimensionProvider` protocol directly (no mixin needed) and have immutable dimension fields (`on_setattr=attrs.setters.frozen`). They auto-register when assigned to parent via parent's `__setattr__`.
