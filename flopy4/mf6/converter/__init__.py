@@ -27,12 +27,12 @@ def _make_converter() -> Converter:
     converter = Converter(unstruct_strat=cattr.UnstructureStrategy.AS_TUPLE)
     converter.register_unstructure_hook_factory(xattree.has, lambda _: xattree.asdict)
     converter.register_unstructure_hook(Component, unstructure_component)
-    converter.register_unstructure_hook(
-        Oc.PrintSaveSetting, make_hetero_tuple_unstructure_fn(Oc.PrintSaveSetting, converter)
-    )
-    converter.register_unstructure_hook(
-        Oc.Steps, make_hetero_tuple_unstructure_fn(Oc.Steps, converter)
-    )
+    # converter.register_unstructure_hook(
+    #     Oc.PrintSaveSetting, make_hetero_tuple_unstructure_fn(Oc.PrintSaveSetting, converter)
+    # )
+    # converter.register_unstructure_hook(
+    #     Oc.Steps, make_hetero_tuple_unstructure_fn(Oc.Steps, converter)
+    # )
     return converter
 
 

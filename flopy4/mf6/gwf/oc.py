@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, NamedTuple, Optional
 
 import attrs
 import numpy as np
@@ -10,6 +10,27 @@ from flopy4.mf6.converter import structure_array
 from flopy4.mf6.package import Package
 from flopy4.mf6.spec import array, field, path
 from flopy4.utils import to_path
+
+
+@attrs.define(slots=False)
+class All:
+    all: Literal["all"] = "all"
+
+@attrs.define(slots=False)
+class First:
+    first: Literal["first"] = "first"
+
+@attrs.define(slots=False)
+class Last:
+    last: Literal["last"] = "last"
+
+@attrs.define(slots=False)
+class Steps:
+    steps: tuple[int, ...] = (1,)
+
+@attrs.define(slots=False)
+class Frequency:
+    frequency: int = 1
 
 
 @xattree
@@ -31,21 +52,31 @@ class Oc(Package):
     class SaveRecord:
         save: Literal["save"] = attrs.field(init=False, default="save")
         rtype: str = attrs.field()
-        steps: "Oc.Steps" = attrs.field()
+        steps: All | First | Last | Steps | Frequency = attrs.field()
 
     @attrs.define(slots=False)
     class PrintRecord:
         print: Literal["print"] = attrs.field(init=False, default="print")
         rtype: str = attrs.field()
-        steps: "Oc.Steps" = attrs.field()
+        steps: All | First | Last | Steps | Frequency = attrs.field()
 
     @attrs.define(slots=False)
     class Steps:
-        all: bool = attrs.field(default=True)
+        all: bool | None = attrs.field(default=None)
         first: bool | None = attrs.field(default=None)
         last: bool | None = attrs.field(default=None)
         steps: tuple[int, ...] | None = attrs.field(default=None)
         frequency: int | None = attrs.field(default=None)
+
+    # class Steps(NamedTuple):
+    #     all: bool | None = True
+    #     first: bool | None = None
+    #     last: bool | None = None
+    #     steps: tuple[int, ...] | None = None
+    #     frequency: int | None = None
+
+    
+
 
     budget_file: Optional[Path] = path(
         block="options", converter=to_path, default=None, inout="fileout"
