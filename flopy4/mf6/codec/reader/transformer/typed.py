@@ -4,7 +4,11 @@ from typing import Any
 import numpy as np
 import xarray as xr
 from lark import Token, Transformer
+<<<<<<< HEAD
 from modflow_devtools.dfn import Dfn
+=======
+from modflow_devtools.dfns import Component
+>>>>>>> 4221103 (adapt wip)
 
 from flopy4.utils import parse_number
 
@@ -12,6 +16,7 @@ from flopy4.utils import parse_number
 class TypedTransformer(Transformer):
     """Type-aware transformer for MF6 input files."""
 
+<<<<<<< HEAD
     def __init__(self, visit_tokens=False, dfn: Dfn = None):
         super().__init__(visit_tokens)
         self.dfn = dfn
@@ -63,6 +68,14 @@ class TypedTransformer(Transformer):
                     # This shouldn't happen for well-formed input
                     pass
         return merged
+=======
+    def __init__(self, visit_tokens=False, dfn: Component = None):
+        super().__init__(visit_tokens)
+        self.dfn = dfn
+
+    def start(self, items: list[Any]) -> dict:
+        return items[0]
+>>>>>>> 4221103 (adapt wip)
 
     def block(self, items: list[Any]) -> dict:
         return items[0]
@@ -79,6 +92,7 @@ class TypedTransformer(Transformer):
             }
         return arrs
 
+<<<<<<< HEAD
     def single_array(self, items: list[Any]) -> dict:
         netcdf = items[0]
         arr = items[-1]
@@ -95,6 +109,24 @@ class TypedTransformer(Transformer):
             if netcdf:
                 arr["netcdf"] = netcdf
             layers.append(TypedTransformer.try_create_dataarray(arr))
+=======
+    def single_array(self, items: list[Any]) -> xr.DataArray:
+        netcdf = items[0]
+        array = items[-1]
+        if netcdf:
+            array["netcdf"] = netcdf
+        return TypedTransformer.try_create_dataarray(array)
+
+    def layered_array(self, items: list[Any]) -> list[xr.DataArray]:
+        netcdf = items[0]
+        layers = []
+        for layer in items[2:]:
+            if layer is None:
+                continue
+            if netcdf:
+                layer["netcdf"] = netcdf
+            layers.append(TypedTransformer.try_create_dataarray(layer))
+>>>>>>> 4221103 (adapt wip)
         return layers
 
     def readarray(self, items: list[Any]) -> dict[str, Any]:
@@ -169,6 +201,7 @@ class TypedTransformer(Transformer):
     def netcdf(self, _) -> dict[str, bool]:
         return {"netcdf": True}
 
+<<<<<<< HEAD
     def block_index(self, items: list[Any]) -> int:
         """Extract block index (e.g., period number)."""
         return items[0]
@@ -187,10 +220,17 @@ class TypedTransformer(Transformer):
         The parser gives us stress_token trees plus a NEWLINE token.
         Extract values from stress_token trees and filter out the NEWLINE token.
         """
+=======
+    def block_label(self, items: list[Any]) -> int:
+        return items[0]
+
+    def record(self, items: list[Any]) -> list[Any]:
+>>>>>>> 4221103 (adapt wip)
         values = []
         for item in items:
             if self._is_newline_token(item):
                 continue
+<<<<<<< HEAD
             # Item is a stress_token tree - extract its value
             if hasattr(item, "children") and len(item.children) > 0:
                 # stress_token contains either a number tree or a _stress_word
@@ -200,6 +240,13 @@ class TypedTransformer(Transformer):
                     values.append(token_child.children[0])
                 else:
                     # This is a direct value (string)
+=======
+            if hasattr(item, "children") and len(item.children) > 0:
+                token_child = item.children[0]
+                if hasattr(token_child, "children") and len(token_child.children) > 0:
+                    values.append(token_child.children[0])
+                else:
+>>>>>>> 4221103 (adapt wip)
                     values.append(token_child)
             else:
                 values.append(item)
@@ -211,6 +258,7 @@ class TypedTransformer(Transformer):
         return isinstance(item, Token) and item.type == "NEWLINE"
 
     @staticmethod
+<<<<<<< HEAD
     def try_create_dataarray(array_info: dict) -> dict:
         control = array_info["control"]
         match control["type"]:
@@ -318,3 +366,15 @@ class TypedTransformer(Transformer):
                 # (arrays have already been transformed by the array method)
                 return data, children[0] if len(children) == 1 else children
         return super().__default__(data, children, meta)
+=======
+    def try_create_dataarray(array: dict) -> xr.DataArray:
+        control = array["control"]
+        match control["type"]:
+            case "constant":
+                return xr.DataArray(data=control["value"], attrs={"control": control})
+            case "internal":
+                return xr.DataArray(data=array["data"], attrs={"control": control})
+            case "external":
+                pass
+        raise ValueError(f"Invalid array type: {control['type']}")
+>>>>>>> 4221103 (adapt wip)

@@ -11,6 +11,11 @@ def to_path(value: Any) -> Optional[Path]:
     return Path(value) if value else None
 
 
+def is_union(obj):
+    origin = typing.get_origin(obj)
+    return origin is typing.Union or (hasattr(types, "UnionType") and origin is types.UnionType)
+
+
 def parse_number(value: str) -> int | float:
     """Parse a string into int or float based on its content."""
     try:
@@ -20,8 +25,3 @@ def parse_number(value: str) -> int | float:
             return int(value)
     except ValueError:
         return float(value)
-
-
-def is_union(obj):
-    origin = typing.get_origin(obj)
-    return origin is typing.Union or (hasattr(types, "UnionType") and origin is types.UnionType)

@@ -1,203 +1,68 @@
-"""
-Python-side filters for MF6 code generation.
-
-Converts modflow_devtools.dfns Dfn/Field dataclasses to the context
-dicts consumed by Jinja templates. Keeping computation here (rather
-than in Jinja macros) makes edge-case handling easier to test and debug.
-"""
-
 import builtins
+from functools import singledispatch
 import keyword
-from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-from modflow_devtools.dfns import Dfn
-from modflow_devtools.dfns.schema.field import Field
+from jinja2 import pass_context
 
-from .overrides import apply as apply_override
-
-# DFN-level routing helpers
-
-# Components whose model prefix maps to the flopy4/mf6/ root (no subdir).
-_ROOT_PREFIXES = {"sim", "sln"}
+from modflow_devtools.dfns import Component, Field
 
 
-def model_abbr(dfn_name: str) -> str | None:
-    """Return the model prefix of a DFN name, or None for top-level components.
-
-    Examples
-    --------
-    "gwf-ic"  -> "gwf"
-    "sln-ims" -> None
-    "sim-nam" -> None
-    """
-    prefix = dfn_name.split("-")[0]
-    return None if prefix in _ROOT_PREFIXES else prefix
+def class_name(dfn: Component) -> str:
+    if dfn.type == "simulation":
+        return "Sim"
+    elif dfn.type == "model":
+        return dfn.name.split("-")[0].capitalize()
+    elif dfn.type == "package":
+        return dfn.name.split("-")[2].capitalize()
 
 
-def pkg_abbr(dfn_name: str) -> str:
-    """Return the package suffix of a DFN name.
-
-    Examples
-    --------
-    "gwf-ic"  -> "ic"
-    "sln-ims" -> "ims"
-    """
-    return dfn_name.split("-")[-1]
+def module_name(dfn: Component) -> str:
+    return class_name(dfn).lower()
 
 
-def class_name(dfn_name: str) -> str:
-    """Return the Python class name for a DFN.
-
-    Examples
-    --------
-    "gwf-ic"  -> "Ic"
-    "sln-ims" -> "Ims"
-    """
-    return pkg_abbr(dfn_name).capitalize()
+def rel_path(dfn: Component) -> Path:
+    module = module_name(dfn)
+    if dfn.type in ["simulation", "model"]:
+        return f"{module}.py"
+    return dfn.parent / f"{module}.py"
 
 
-def module_name(dfn_name: str) -> str:
-    """Return the Python module (file) name for a DFN.
-
-    Examples
-    --------
-    "gwf-ic"  -> "ic"
-    """
-    return pkg_abbr(dfn_name)
-
-
-def output_path(dfn_name: str, root: Path) -> Path:
-    """Compute the output file path for a DFN's generated module."""
-    abbr = model_abbr(dfn_name)
-    mod = module_name(dfn_name)
-    if abbr is None:
-        return root / f"{mod}.py"
-    return root / abbr / f"{mod}.py"
-
-
-# DFN block-level helpers
-
-
-def has_period_block(dfn: Dfn) -> bool:
-    """True if the DFN defines a period block (stress package)."""
+def has_period_block(dfn: Component) -> bool:
     return "period" in (dfn.blocks or {})
 
 
-def has_dimensions_block(dfn: Dfn) -> bool:
-    """True if the DFN has a dimensions block with a 'maxbound' field.
-
-    Only packages with a field literally named 'maxbound' use the
-    auto-computed pattern (init=False, on_setattr=update_maxbound).
-    Packages like MVR/BUY/VSC have user-specified dimension scalars
-    (maxmvr, maxpackages, nrhospecies) that must NOT be init=False.
-    """
-    dim_block = (dfn.blocks or {}).get("dimensions", {})
-    return "maxbound" in dim_block
+def has_dimensions_block(dfn: Component) -> bool:
+    return "dimensions" in (dfn.blocks or {})
 
 
-# Field classification
-
-# v2 TOML uses "double" for what v1 called "double precision"
-_SCALAR_TYPES = {"keyword", "integer", "double precision", "double", "string"}
-_ARRAY_BASE_TYPES = {"double precision", "double", "integer", "string"}
-
-# DFN dimension name → flopy4 canonical dimension name.
-# Applied when converting DFN shape strings to dims tuples.
-_DIM_ALIASES: dict[str, str] = {
-    "nnodes": "nodes",
-}
-
-# Alternative-grid shape tokens: each key is a raw DFN token that appears in
-# shape strings and contains * or ; (making it look "complex"), but maps to a
-# single well-known flopy4 dimension. Substituted before complexity checks.
-# "ncol*nrow; ncpl": cells per layer — ncol*nrow for DIS, ncpl for DISV.
-_ALT_DIM_TOKENS: dict[str, str] = {
-    "ncol*nrow; ncpl": "ncpl",
-}
-
-# DFN dimension names that are dropped from dims tuples entirely.
-# naux: auxiliary variable count is not tracked as an xattree dim —
-# auxiliary data is stored flattened into the primary node dimension.
-# nseg-1: number of ET segment values per row (EVT list-based input);
-# repeated columns per row like naux, not a separate array dimension.
-_DROP_DIMS: frozenset[str] = frozenset({"naux", "nseg-1"})
-
-# dtype expression for the boundname array field.  Used in both the Python type
-# annotation and the array() spec call so both stay in sync if LENBOUNDNAME changes.
-_BOUNDNAME_DTYPE = 'f"<U{LENBOUNDNAME}"'
-
-
-def _has_file_child(f: Field) -> bool:
-    if f.children:
-        return "filein" in f.children or "fileout" in f.children
-    # v1 DFN fields encode subfields in the type string, e.g.
-    # "record ts6 filein ts6_filename" — check there instead.
-    return " filein " in f.type or " fileout " in f.type
-
-
-def _has_file_child_of(f: Field, kind: str) -> bool:
-    """True if the record has a child of the given kind ('filein' or 'fileout')."""
-    if f.children:
-        return kind in f.children
-    return f" {kind} " in f.type
-
-
-def _file_record_subfield_names(f: Field) -> frozenset[str]:
-    """Return the subfield names encoded in a v1 DFN record type string."""
-    if f.children:
-        return frozenset(f.children)
-    # type string format: "record name1 name2 ..."
-    parts = f.type.split()
-    return frozenset(parts[1:]) if len(parts) > 1 else frozenset()
-
-
-def _resolve_alt_grid(shape: str) -> str:
-    """Replace known alternative-grid tokens with their canonical names."""
-    for token, canonical in _ALT_DIM_TOKENS.items():
-        shape = shape.replace(token, canonical)
-    return shape
-
-
-def _has_complex_shape(f: Field) -> bool:
-    """True for shapes with unsupported alternative-grid or arithmetic notation."""
-    if not f.shape:
-        return False
-    resolved = _resolve_alt_grid(f.shape)
-    return "*" in resolved or ";" in resolved
+def uses_maxbound(dfn: Component) -> bool:
+    return has_dimensions_block(dfn) and "maxbound" in (dfn.blocks or {}).get("dimensions", {})
 
 
 def is_scalar(f: Field) -> bool:
-    """True for simple scalar fields (no shape)."""
-    return f.type in _SCALAR_TYPES and not f.shape
+    return f.type in ["keyword", "integer", "double", "string"]
 
 
-_STRING_LENGTH_DIMS = frozenset({"lenbigline", "linelength"})
+@pass_context
+def is_inline_array(ctx, f: Field) -> bool:
+    dfn = ctx.get("dfn") 
+    # TODO add/use Dfns.get_block(f: Field) method
+    return f.type == "array" and len(f.shape) <= 1
 
 
-def is_array(f: Field) -> bool:
-    """True for array fields (numeric or string type with a shape).
-
-    Excludes auxiliary variable lists, which are handled by is_aux_list_field.
-    """
-    # TODO: emit string fields shaped only by lenbigline/linelength as field(Optional[str]);
-    # for now exclude so they fall to scalar handling (see ncf.py Ncf.wkt for the pattern).
-    if f.type == "string" and f.shape and all(s in _STRING_LENGTH_DIMS for s in f.shape):
-        return False
-    return (
-        f.type in _ARRAY_BASE_TYPES
-        and bool(f.shape)
-        and not _has_complex_shape(f)
-        and not is_aux_list_field(f)
-    )
+def is_self_sizing_array(f: Field) -> bool:
+    return f.type == "array" and not f.shape
 
 
-def is_keyword_array(f: Field) -> bool:
-    """True for boolean-array fields (keyword type with shape)."""
-    return f.type == "keyword" and bool(f.shape) and not _has_complex_shape(f)
+@pass_context
+def is_dimension(ctx, f: Field) -> bool:
+    dfn = ctx.get("dfn")
+    return f.name in dfn.dims
 
 
+<<<<<<< HEAD
 def is_file_record(f: Field) -> bool:
     """True for record fields whose children include filein or fileout."""
     return f.type.startswith("record") and _has_file_child(f)
@@ -424,15 +289,16 @@ def flat_fields(dfn: Dfn, *, developmode: bool = False) -> list[Field]:
 # Python type annotations
 
 _SCALAR_PY_TYPES: dict[str, str] = {
+=======
+_SCALAR_PRIMITIVES: dict[str, str] = {
+>>>>>>> 4221103 (adapt wip)
     "keyword": "bool",
     "integer": "int",
-    "double precision": "float",
     "double": "float",
     "string": "str",
 }
 
-ARRAY_NUMPY_DTYPES: dict[str, str] = {
-    "double precision": "np.float64",
+_ARRAY_DTYPES: dict[str, str] = {
     "double": "np.float64",
     "integer": "np.int64",
     "string": "np.object_",
@@ -442,36 +308,29 @@ ARRAY_NUMPY_DTYPES: dict[str, str] = {
 
 def py_type(f: Field) -> str:
     """Return the Python type annotation string for a field."""
-    if is_aux_list_field(f):
-        return "Optional[list[str]]"
-    if is_file_record(f):
-        base = "Path"
-    elif is_boundname_field(f):
-        base = "NDArray[np.str_]"
-    elif is_keyword_array(f):
-        base = "NDArray[np.bool_]"
-    elif is_array(f):
-        dtype = ARRAY_NUMPY_DTYPES.get(f.type, "np.object_")
-        base = f"NDArray[{dtype}]"
-    elif is_dimensions_scalar(f):
-        # dimensions fields are computed (init=False) and always nullable
-        base = _SCALAR_PY_TYPES.get(f.type, "Any")
-        return f"Optional[{base}]"
-    elif is_scalar(f):
+    
+    if is_scalar(f):
         # Keywords are always bool (not Optional[bool]) regardless of optional flag.
         if f.type == "keyword":
             return "bool"
-        base = _SCALAR_PY_TYPES.get(f.type, "Any")
+        base = _SCALAR_PRIMITIVES.get(f.type, "Any")
+    elif f.type == "file":
+        base = "Path"
+    elif is_inline_array(f):
+        base = f"[list[{scalar_type(f.dtype)}]]"
+    elif f.type == "array":
+        dtype = _ARRAY_DTYPES.get(f.type, "np.object_")
+        base = f"NDArray[{dtype}]"
+    elif f.type == "record":
+        pass # TODO
+    elif f.type == "union":
+        pass # TODO
+    elif f.type == "list":
+        pass # TODO
     else:
         base = "Any"
-
-    # Period-block arrays can be absent for a given stress period, so they're
-    # implicitly nullable at the Python level even when the DFN marks them required.
-    is_nullable = f.optional or is_period_array(f)
-    return f"Optional[{base}]" if is_nullable else base
-
-
-# Python name sanitisation
+    
+    return f"Optional[{base}]" if f.optional else base
 
 
 def safe_name(name: str) -> str:
@@ -482,18 +341,10 @@ def safe_name(name: str) -> str:
     return name
 
 
-# spec() call strings
-
-
-def _dims_tuple(shape: str, *, keep: frozenset[str] | None = None) -> str:
+def dims_tuple(shape: str) -> str:
     """Convert a DFN shape string to a Python dims tuple literal.
 
     Applies _ALT_DIM_TOKENS, then _DIM_ALIASES to normalise dimension names.
-
-    Parameters
-    ----------
-    keep : frozenset[str], optional
-        Dimension names to preserve even if they are in _DROP_DIMS.
 
     Examples
     --------
@@ -501,340 +352,72 @@ def _dims_tuple(shape: str, *, keep: frozenset[str] | None = None) -> str:
     "(nper, nnodes)"            -> '("nper", "nodes")'
     "(nper, ncol*nrow; ncpl)"   -> '("nper", "ncpl")'
     """
-    resolved = _resolve_alt_grid(shape)
-    inner = resolved.strip().strip("()")
-    raw = [_DIM_ALIASES.get(p.strip(), p.strip()) for p in inner.split(",") if p.strip()]
-    drop = _DROP_DIMS - (keep or frozenset())
-    parts = [p for p in raw if p not in drop]
-    quoted = ", ".join(f'"{p}"' for p in parts)
-    suffix = "," if len(parts) == 1 else ""
-    return f"({quoted}{suffix})"
+    return str(
+        tuple(
+            [
+                p.strip() for p in shape.strip().strip("()").split(",")
+                if p.strip()
+            ]
+        )
+    )
 
 
-def _longname_repr(longname: str | None) -> str | None:
+def try_repr(longname: str | None) -> str | None:
     if not longname:
         return None
     return repr(longname)
 
 
-def _default_repr(f: Field) -> str:
+def default_repr(f: Field) -> str:
     """Return the Python repr of a field's default value."""
-    if f.default is None:
-        # Scalar keywords default to False (absent == not set).
-        # Arrays (including keyword arrays) default to None.
-        if f.type == "keyword" and not f.shape:
-            return "False"
-        return "None"
-    if isinstance(f.default, str):
-        return repr(f.default)
+    if f.default is None and f.type == "keyword":
+        return "False"
     return repr(f.default)
 
 
-def _array_args(f: Field, *, has_maxbound: bool = False) -> list[str]:
-    """Build the argument list for an array() spec call.
-
-    Shared by both is_array and is_keyword_array branches. The only
-    difference between them is that is_array prepends _BOUNDNAME_DTYPE for
-    the boundname field; everything else (dims, netcdf, converter,
-    on_setattr, longname) is identical.
-    """
-    shape = f.shape
-    # G/A variant period aux: DFN shape omits naux (one readarray block per aux
-    # variable), but the array still needs a trailing naux dimension.
-    if f.name == "aux" and f.block == "period" and shape and "naux" not in shape:
-        shape = shape.rstrip(")").rstrip() + ", naux)"
-    _keep = frozenset({"naux"}) if shape and "naux" in shape else None
-    dims = _dims_tuple(shape, keep=_keep) if shape else '("nodes",)'
-    args = [
-        f'block="{f.block}"',
-        f"dims={dims}",
-        f"default={_default_repr(f)}",
-    ]
-    if f.netcdf:
-        args.append("netcdf=True")
-    args.append("converter=Converter(structure_array, takes_self=True, takes_field=True)")
-    if is_period_array(f) and has_maxbound:
-        args.append("on_setattr=update_maxbound")
-    if is_boundname_field(f):
-        args.insert(0, f"dtype={_BOUNDNAME_DTYPE}")
-    if ln := _longname_repr(f.longname):
-        args.append(f"longname={ln}")
-    return args
-
-
-def spec_call(f: Field, *, has_maxbound: bool = False) -> str:
-    """Return the spec function call string for a field.
-
-    Parameters
-    ----------
-    f :
-        The DFN field.
-    has_maxbound :
-        True when the containing package has a dimensions block with maxbound.
-        Enables ``on_setattr=update_maxbound`` on period block arrays.
-
-    The call is intentionally kept as a single line so that ruff
-    can reformat it to the project's style.
-    """
-    if is_aux_list_field(f):
-        args = [f'block="{f.block}"', f"default={_default_repr(f)}"]
-        if ln := _longname_repr(f.longname):
-            args.append(f"longname={ln}")
-        return f"array({', '.join(args)})"
-
-    if is_file_record(f):
-        inout = "filein" if _has_file_child_of(f, "filein") else "fileout"
-        args = [
-            f'block="{f.block}"',
-            f"default={_default_repr(f)}",
-            "converter=to_path",
-            f'inout="{inout}"',
-        ]
-        return f"path({', '.join(args)})"
-
-    if is_keyword_array(f) or is_array(f):
-        return f"array({', '.join(_array_args(f, has_maxbound=has_maxbound))})"
-
-    # scalar field
-    if is_dimensions_scalar(f):
-        if has_maxbound and f.name == "maxbound":
-            # Only maxbound itself is auto-computed from data, so init=False.
-            # Other dimension scalars in the same block (e.g. nseg in EVT) are
-            # user-specified and must remain in __init__.
-            args = [f'block="{f.block}"', f"default={_default_repr(f)}", "init=False"]
-            if f.longname:
-                args.append(f"longname={repr(f.longname)}")
-            return f"field({', '.join(args)})"
-        else:
-            # User-specified dims (nseg, nrhospecies, maxmvr, maxpackages, …):
-            # use dim(coord=False) so xattree includes the value in its
-            # dimension resolution when expanding array fields.
-            args = [f'block="{f.block}"', "coord=False", f"default={_default_repr(f)}"]
-            if f.longname:
-                args.append(f"longname={repr(f.longname)}")
-            return f"dim({', '.join(args)})"
-    # Required scalar with no DFN default: omit default= entirely so the field is
-    # positional-required at construction.  Matches MF6 semantics (the user MUST
-    # supply a value) and avoids the float/int annotation contradicting default=None.
-    if is_scalar(f) and not f.optional and f.default is None and f.type != "keyword":
-        args = [f'block="{f.block}"']
-        if ln := _longname_repr(f.longname):
-            args.append(f"longname={ln}")
-        return f"field({', '.join(args)})"
-    args = [f'block="{f.block}"', f"default={_default_repr(f)}"]
-    if ln := _longname_repr(f.longname):
-        args.append(f"longname={ln}")
-    return f"field({', '.join(args)})"
-
-
-# Import computation
-
-
-def needed_imports(
-    generatable_fields: list[Field],
-    *,
-    base_class: str = "Package",
-    multi: bool = False,
-    slntype: bool = False,
-    has_maxbound: bool = False,
-    has_list_cols: bool = False,
-    has_inner_classes: bool = False,
-    has_oc_fields: bool = False,
-    has_extra_dims: bool = False,
-    has_injected_paths: bool = False,
-    has_period_keystring: bool = False,
-    has_block_properties: bool = False,
-    has_period_col_map: bool = False,
-) -> dict[str, list[str]]:
-    """Compute the import lines needed for a generated module.
-
-    Returns a dict with keys 'stdlib', 'third_party', 'flopy4'.
-    """
-    has_array = (
-        any(is_array(f) or is_keyword_array(f) for f in generatable_fields)
-        or has_list_cols
-        or has_oc_fields
-    )
-    has_aux_list = any(is_aux_list_field(f) for f in generatable_fields)
-    has_path = any(is_file_record(f) for f in generatable_fields) or has_injected_paths
-    has_optional = any(
-        (f.optional or is_period_array(f)) and f.type != "keyword" for f in generatable_fields
-    )
-    has_dimensions = any(is_dimensions_scalar(f) for f in generatable_fields)
-    has_stress_arrays = any(is_period_array(f) for f in generatable_fields)
-    has_boundname = any(is_boundname_field(f) for f in generatable_fields)
-    has_classvar = (
-        multi or slntype or has_inner_classes or has_block_properties or has_period_col_map
-    )
-
-    # dimensions, aux list, list-expansion columns, inner class parents,
-    # and injected paths are always Optional
-    if has_dimensions or has_aux_list or has_list_cols or has_inner_classes or has_injected_paths:
-        has_optional = True
-
-    stdlib: list[str] = []
-    if has_path:
-        stdlib.append("from pathlib import Path")
-    typing_parts: list[str] = []
-    if has_classvar:
-        typing_parts.append("ClassVar")
-    if has_optional:
-        typing_parts.append("Optional")
-    if typing_parts:
-        stdlib.append(f"from typing import {', '.join(sorted(typing_parts))}")
-
-    third_party: list[str] = []
-    if has_inner_classes or has_block_properties:
-        third_party.append("import attrs")
-    if has_array:
-        third_party.append("import numpy as np")
-        third_party.append("from attrs import Converter")
-        third_party.append("from numpy.typing import NDArray")
-    third_party.append("from xattree import xattree")
-
-    _base_imports = {
-        "Package": "from flopy4.mf6.package import Package",
-        "Solution": "from flopy4.mf6.solution import Solution",
-        "Context": "from flopy4.mf6.context import Context",
-    }
-
-    has_user_dims = (
-        any(is_dimensions_scalar(f) and f.name != "maxbound" for f in generatable_fields)
-        or has_extra_dims
-    )
-
-    spec_funcs: list[str] = ["field"]
-    if has_array or has_aux_list:
-        spec_funcs.append("array")
-    if has_period_keystring:
-        spec_funcs.append("embedded_keystring")
-    if has_oc_fields:
-        spec_funcs.append("keystring")
-    if has_path:
-        spec_funcs.append("path")
-    if has_user_dims:
-        spec_funcs.append("dim")
-    spec_funcs = sorted(set(spec_funcs))
-
-    flopy4: list[str] = []
-    if has_boundname:
-        flopy4.append("from flopy4.mf6.constants import LENBOUNDNAME")
-    if has_array:
-        flopy4.append("from flopy4.mf6.converter import structure_array")
-    flopy4.append(_base_imports.get(base_class, _base_imports["Package"]))
-    if has_inner_classes:
-        flopy4.append("from flopy4.mf6.record import Record")
-    flopy4.append(f"from flopy4.mf6.spec import {', '.join(spec_funcs)}")
-    if has_path:
-        flopy4.append("from flopy4.utils import to_path")
-    if has_stress_arrays and has_maxbound:
-        flopy4.append("from flopy4.mf6.utils.grid import update_maxbound")
-
-    return {"stdlib": stdlib, "third_party": third_party, "flopy4": flopy4}
-
-
-# ---------------------------------------------------------------------------
-# v1 DFN block schema utilities
-# ---------------------------------------------------------------------------
-# These functions derive recarray block column schemas from v1 DFN data.
-# Used by make.py to auto-detect list blocks and build BlockPropertySpec.
-# ---------------------------------------------------------------------------
-
-
-def _as_bool(val) -> bool:
+def as_bool(val: Any) -> bool:
     """Normalize a v1 DFN attribute that may be bool or string 'true'/'false'."""
     if isinstance(val, bool):
         return val
     return str(val).lower() == "true"
 
 
-@dataclass
-class ColumnSpec:
-    """Schema for one column in a v1 DFN recarray block."""
-
-    name: str
-    type: str
-    longname: str
-    is_cellid: bool  # shape=(ncelldim) — stored as object-dtype tuple attr
-    is_prefix: bool  # tagged non-optional keyword — write-side token only, no attr
-    is_row_keyword: bool  # optional keyword — stored as bool attr
-    numeric_index: bool  # 0-based index written as 1-based (+1 at write time)
-
-
-def block_schema(v1_dfn: Dfn, block_name: str) -> list[ColumnSpec]:
-    """Derive column schema for a recarray block from a v1 DFN.
-
-    Skips the recarray header field (in_record=False). Returns one
-    ColumnSpec per in_record=True field in DFN order.
-    """
-    v1_block = (v1_dfn.blocks or {}).get(block_name) or {}
-    result = []
-    for name, f in v1_block.items():
-        if not getattr(f, "in_record", False):
-            continue
-        ftype = getattr(f, "type", "") or ""
-        optional = _as_bool(getattr(f, "optional", False))
-        tagged = _as_bool(getattr(f, "tagged", False))
-        shape = str(getattr(f, "shape", "") or "")
-        is_keyword = ftype.lower() == "keyword"
-        result.append(
-            ColumnSpec(
-                name=name,
-                type=ftype,
-                longname=getattr(f, "longname", "") or "",
-                is_cellid="(ncelldim)" in shape,
-                is_prefix=is_keyword and tagged and not optional,
-                is_row_keyword=is_keyword and optional,
-                numeric_index=bool(getattr(f, "numeric_index", False)),
-            )
-        )
-    return result
+def base_class(dfn: Component) -> str | None:
+    """Determine the Python base class for a component."""
+    if dfn.type == "simulation":
+        return None
+    if dfn.type == "model":
+        return "Model"
+    if dfn.subtype == "solution":
+        return "Solution"
+    if dfn.subtype == "exchange":
+        return "Exchange"
+    return "Package"
 
 
-def list_block_names(dfn: Dfn) -> list[str]:
-    """Return block names that contain list-type (recarray) fields, in DFN order."""
-    seen: set[str] = set()
-    result = []
-    for f in flat_fields(dfn):
-        if is_list_field(f) and f.block not in seen:
-            seen.add(f.block)
-            result.append(f.block)
-    return result
+@singledispatch
+def scalar_type(obj: Any) -> str | None:
+    raise ValueError(f"Cannot infer scalar type from {type(obj)}")
 
 
-def v1_list_block_names(v1_dfn: Dfn) -> list[str]:
-    """Return recarray block names from a v1 DFN, in order.
-
-    A block is a recarray when it contains a header field whose ``type``
-    starts with ``"recarray"``.  This is more precise than checking
-    ``in_record=True``, which also matches sub-fields of compound records
-    (filerecord entries) inside scalar options blocks.
-    Used to discover blocks that dfn2toml dropped from the v2 TOML.
-    """
-    seen: set[str] = set()
-    result = []
-    for block_name, block in (v1_dfn.blocks or {}).items():
-        if block_name in seen:
-            continue
-        if any(
-            str(getattr(f, "type", "") or "").lower().startswith("recarray") for f in block.values()
-        ):
-            result.append(block_name)
-            seen.add(block_name)
-    return result
+@scalar_type.register(Field)
+def _(field: Field) -> str | None:
+    return scalar_type(field.type)
 
 
-def collision_names(
-    block_schemas: dict[str, list[ColumnSpec]],
-    reserved: frozenset[str] = frozenset(),
-) -> set[str]:
-    """Column names that require block-prefixed Python attr names.
+@scalar_type.register(str)
+def _(s: str) -> str | None:
+    return {
+        "keyword": "bool",
+        "integer": "int",
+        "double precision": "float",
+        "double": "float",
+        "string": "str",
+    }.get(s, None)
 
-    A name is a collision when it appears in more than one static list block,
-    OR when it appears in any block AND is reserved by a period field.  The
-    latter ensures that static block attrs never shadow bare period field names.
-    Prefix columns are excluded since they produce no attr.
-    """
-    names = [col.name for cols in block_schemas.values() for col in cols if not col.is_prefix]
-    counts = Counter(names)
-    return {name for name, count in counts.items() if count > 1 or name in reserved}
+
+def slntype(dfn: Component) -> str | None:
+    """Return the slntype string for solution DFNs, or None."""
+    if dfn.subtype == "solution":
+        return dfn.name.split("-")[1]
+    return None

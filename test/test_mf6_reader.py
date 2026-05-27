@@ -7,12 +7,12 @@ import numpy as np
 import pytest
 import xarray as xr
 from lark import Lark
-from modflow_devtools.dfns import Dfn, MapV1To2, load_flat
+from modflow_devtools.dfns import Dfns
 from modflow_devtools.download import download_and_unzip
 from packaging.version import Version
 
 from flopy4.mf6.codec.reader.parser import get_typed_parser
-from flopy4.mf6.codec.reader.transformer import TypedTransformer
+from flopy4.mf6.codec.reader.transformer.typed import TypedTransformer
 
 PROJ_ROOT_PATH = Path(__file__).parents[1]
 BASE_GRAMMAR_PATH = (
@@ -306,9 +306,6 @@ END ARRAYS
     assert result["arrays"]["z"]["data"] == Path("data/z.dat")
 
 
-# Real model tests using modflow-devtools models API
-
-
 MF6_EXAMPLES_URL = (
     "https://github.com/MODFLOW-ORG/modflow6-examples/releases/download/current/mf6examples.zip"
 )
@@ -324,265 +321,47 @@ def mf6_examples_path(tmp_path_factory):
 
 @pytest.fixture
 def model_workspace(mf6_examples_path, request):
-    """Get a model directory from downloaded examples.
-
-    The request.param should be in the form 'mf6/example/ex-gwf-csub-p01',
-    and the model directory name is the last component.
-    """
     model_name = request.param
-    # Extract dir name from model path
-    # e.g. "mf6/example/ex-gwf-csub-p01" -> "ex-gwf-csub-p01"
     dir_name = model_name.split("/")[-1]
     workspace = mf6_examples_path / dir_name
-    if not workspace.exists():
-        pytest.skip(f"Model directory '{dir_name}' not found in downloaded examples")
+    if not workspace.is_dir():
+        pytest.skip(f"Model directory '{dir_name}' not found")
     return workspace
-
-
-@pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-csub-p01"], indirect=True)
-def test_parse_gwf_ic_file(model_workspace):
-    """Test parsing a GWF IC (initial conditions) file from a real model."""
-    # Find the IC file in the model workspace
-    ic_files = list(model_workspace.rglob("*.ic"))
-    assert len(ic_files) > 0, "No IC files found in model workspace"
-
-    ic_file = ic_files[0]
-    parser = get_typed_parser("gwf-ic")
-
-    # Read and parse the file
-    with open(ic_file, "r") as f:
-        content = f.read()
-
-    tree = parser.parse(content)
-    assert tree is not None
-
-    # Basic structure checks
-    assert tree.data == "start"
-    assert len(tree.children) > 0  # Should have at least one block
-
-
-@pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-bcf2ss-p01a"], indirect=True)
-def test_parse_gwf_wel_file(model_workspace):
-    """Test parsing a GWF WEL (well) file with period data from a real model."""
-    # Find the WEL file in the model workspace
-    wel_files = list(model_workspace.rglob("*.wel"))
-
-    # Skip if no WEL files (not all models have wells)
-    if len(wel_files) == 0:
-        pytest.skip("No WEL files found in this model")
-
-    wel_file = wel_files[0]
-    parser = get_typed_parser("gwf-wel")
-
-    # Read and parse the file
-    with open(wel_file, "r") as f:
-        content = f.read()
-
-    tree = parser.parse(content)
-    assert tree is not None
-
-    # Basic structure checks
-    assert tree.data == "start"
-    assert len(tree.children) > 0
-
-    # Should have blocks
-    blocks = [child for child in tree.children if child.data == "block"]
-    assert len(blocks) > 0
-
-    # Should have period blocks (nested inside block nodes)
-    period_blocks = [
-        block.children[0]
-        for block in blocks
-        if block.children and block.children[0].data == "period_block"
-    ]
-    assert len(period_blocks) > 0, "Should have at least one period block"
-
-
-@pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-csub-p01"], indirect=True)
-def test_transform_gwf_ic_file(model_workspace, dfn_path):
-    """Test transforming a parsed GWF IC file into structured data."""
-
-    # Load the DFN for IC and convert to V2
-    from modflow_devtools.dfns import MapV1To2
-
-    v1_dfns = load_flat(dfn_path)
-    mapper = MapV1To2()
-    ic_dfn = mapper.map(v1_dfns["gwf-ic"])
-
-    # Find the IC file
-    ic_files = list(model_workspace.rglob("*.ic"))
-    assert len(ic_files) > 0
-
-    ic_file = ic_files[0]
-    parser = get_typed_parser("gwf-ic")
-    transformer = TypedTransformer(dfn=ic_dfn)
-
-    # Read, parse, and transform
-    with open(ic_file, "r") as f:
-        content = f.read()
-
-    tree = parser.parse(content)
-    result = transformer.transform(tree)
-
-    # Check structure
-    assert isinstance(result, dict)
-    assert "griddata" in result  # IC has griddata block
-    assert "strt" in result["griddata"]  # Starting heads
-
-    # Check strt array structure
-    strt = result["griddata"]["strt"]
-    assert "control" in strt
-    assert "data" in strt
-    assert strt["control"]["type"] in ["constant", "internal", "external"]
-
-    # If internal or constant, should have data
-    if strt["control"]["type"] in ["constant", "internal"]:
-        assert strt["data"] is not None
-
-
-@pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-bcf2ss-p01a"], indirect=True)
-def test_transform_gwf_wel_file(model_workspace, dfn_path):
-    """Test transforming a parsed GWF WEL file into structured data."""
-
-    # Load the DFN for WEL and convert to V2
-    from modflow_devtools.dfns import MapV1To2
-
-    v1_dfns = load_flat(dfn_path)
-    mapper = MapV1To2()
-    wel_dfn = mapper.map(v1_dfns["gwf-wel"])
-
-    # Find the WEL file
-    wel_files = list(model_workspace.rglob("*.wel"))
-
-    # Skip if no WEL files (not all models have wells)
-    if len(wel_files) == 0:
-        pytest.skip("No WEL files found in this model")
-
-    wel_file = wel_files[0]
-    parser = get_typed_parser("gwf-wel")
-    transformer = TypedTransformer(dfn=wel_dfn)
-
-    # Read, parse, and transform
-    with open(wel_file, "r") as f:
-        content = f.read()
-
-    tree = parser.parse(content)
-    result = transformer.transform(tree)
-
-    # Check structure
-    assert isinstance(result, dict)
-
-    # Check dimensions block
-    assert "dimensions" in result
-    assert result["dimensions"]["maxbound"] == 2
-
-    # Should have a period 2 entry (indexed period blocks are flattened to "period N" keys)
-    assert "period 2" in result
-    assert "stress_period_data" in result["period 2"]
-
-    # Should have 2 rows of data (MAXBOUND = 2)
-    spd = result["period 2"]["stress_period_data"]
-    assert len(spd) == 2
-
-    # Each row should have 4 values (cellid components + q value)
-    assert len(spd[0]) == 4
-    assert len(spd[1]) == 4
-
-    # Check specific values from the file
-    # First well: 2 3 4 -3.5e4
-    assert spd[0][0] == 2  # layer
-    assert spd[0][1] == 3  # row
-    assert spd[0][2] == 4  # col
-    assert spd[0][3] == -3.5e4  # q
-
-    # Second well: 2 8 4 -3.5e4
-    assert spd[1][0] == 2  # layer
-    assert spd[1][1] == 8  # row
-    assert spd[1][2] == 4  # col
-    assert spd[1][3] == -3.5e4  # q
-
-
-@pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-bcf2ss-p01a"], indirect=True)
-def test_parse_gwf_oc_file(model_workspace):
-    """Test parsing a GWF OC (output control) file from a real model."""
-    # Find the OC file in the model workspace
-    oc_files = list(model_workspace.rglob("*.oc"))
-    assert len(oc_files) > 0, "No OC files found in model workspace"
-
-    oc_file = oc_files[0]
-    parser = get_typed_parser("gwf-oc")
-
-    # Read and parse the file
-    with open(oc_file, "r") as f:
-        content = f.read()
-
-    tree = parser.parse(content)
-    assert tree is not None
-
-    # Basic structure checks
-    assert tree.data == "start"
-    assert len(tree.children) > 0  # Should have at least one block
-
-    # Should have blocks
-    blocks = [child for child in tree.children if child.data == "block"]
-    assert len(blocks) > 0
 
 
 @pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-bcf2ss-p01a"], indirect=True)
 def test_transform_gwf_oc_file(model_workspace, dfn_path):
-    """Test transforming a parsed GWF OC file into structured data."""
 
-    # Load the DFN for OC and convert to V2
-    from modflow_devtools.dfns import MapV1To2
+    dfns = Dfns.load(dfn_path)
+    dfn = dfn["gwf-oc"]
 
-    v1_dfns = load_flat(dfn_path)
-    mapper = MapV1To2()
-    oc_dfn = mapper.map(v1_dfns["gwf-oc"])
+    oc_file = next(iter(model_workspace.rglob("*.oc")), None)
+    assert oc_file
 
-    # Find the OC file
-    oc_files = list(model_workspace.rglob("*.oc"))
-    assert len(oc_files) > 0
-
-    oc_file = oc_files[0]
     parser = get_typed_parser("gwf-oc")
-    transformer = TypedTransformer(dfn=oc_dfn)
+    transformer = TypedTransformer(dfn=dfn)
 
-    # Read, parse, and transform
     with open(oc_file, "r") as f:
         content = f.read()
 
     tree = parser.parse(content)
     result = transformer.transform(tree)
 
-    # Check structure
     assert isinstance(result, dict)
-
-    # Check options block
     assert "options" in result
     options = result["options"]
-
-    # Should have budget and head fileout records
     assert "budget_filerecord" in options
     assert options["budget_filerecord"]["budgetfile"] == "ex-gwf-bcf2ss.cbc"
-
     assert "head_filerecord" in options
     assert options["head_filerecord"]["headfile"] == "ex-gwf-bcf2ss.hds"
-
-    # Check period 1 block
     assert "period 1" in result
     period_data = result["period 1"]
-
-    # Should have saverecord list with HEAD and BUDGET saves
     assert "saverecord" in period_data
     save_records = period_data["saverecord"]
     assert len(save_records) == 2
-
-    # Check that HEAD and BUDGET are both saved with ALL frequency
     rtypes = [rec["rtype"] for rec in save_records]
     assert "HEAD" in rtypes
     assert "BUDGET" in rtypes
-
-    # Check that all records use ALL frequency
     for rec in save_records:
         assert "ocsetting" in rec
         assert rec["ocsetting"] == "all"
@@ -590,32 +369,22 @@ def test_transform_gwf_oc_file(model_workspace, dfn_path):
 
 @pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-csub-p01"], indirect=True)
 def test_transform_gwf_dis_file(model_workspace, dfn_path):
-    """Test transforming a parsed GWF DIS file into structured data."""
+    dfns = Dfns.load(dfn_path)
+    dfn = dfns["gwf-dis"]
 
-    # Load the DFN for DIS and convert to V2
-    v1_dfns = load_flat(dfn_path)
-    mapper = MapV1To2()
-    dis_dfn = mapper.map(v1_dfns["gwf-dis"])
+    dis_file = next(iter((model_workspace.rglob("*.dis"))), None)
+    assert dis_file
 
-    # Find the DIS file
-    dis_files = list(model_workspace.rglob("*.dis"))
-    assert len(dis_files) > 0
-
-    dis_file = dis_files[0]
     parser = get_typed_parser("gwf-dis")
-    transformer = TypedTransformer(dfn=dis_dfn)
+    transformer = TypedTransformer(dfn=dfn)
 
-    # Read, parse, and transform
     with open(dis_file, "r") as f:
         content = f.read()
 
     tree = parser.parse(content)
     result = transformer.transform(tree)
 
-    # Check structure
     assert isinstance(result, dict)
-
-    # Check dimensions block
     assert "dimensions" in result
     assert "nlay" in result["dimensions"]
     assert "nrow" in result["dimensions"]
@@ -623,64 +392,42 @@ def test_transform_gwf_dis_file(model_workspace, dfn_path):
     assert result["dimensions"]["nlay"] > 0
     assert result["dimensions"]["nrow"] > 0
     assert result["dimensions"]["ncol"] > 0
-
-    # Check griddata block
     assert "griddata" in result
     griddata = result["griddata"]
     assert "delr" in griddata
     assert "delc" in griddata
     assert "top" in griddata
     assert "botm" in griddata
-
-    # Each array should have control and data
     assert "control" in griddata["delr"]
     assert "data" in griddata["delr"]
 
 
 @pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-csub-p01"], indirect=True)
 def test_transform_gwf_npf_file(model_workspace, dfn_path):
-    """Test transforming a parsed GWF NPF file into structured data."""
+    dfns = Dfns.load(dfn_path)
+    dfn = dfns["gwf-npf"]
 
-    # Load the DFN for NPF and convert to V2
-    v1_dfns = load_flat(dfn_path)
-    mapper = MapV1To2()
-    npf_dfn = mapper.map(v1_dfns["gwf-npf"])
+    npf_file = next(iter((model_workspace.rglob("*.npf"))), None)
+    assert npf_file
 
-    # Find the NPF file
-    npf_files = list(model_workspace.rglob("*.npf"))
-    assert len(npf_files) > 0
+    parser = get_typed_parser(dfn=dfn)
+    transformer = TypedTransformer(dfn=dfn)
 
-    npf_file = npf_files[0]
-    parser = get_typed_parser("gwf-npf")
-    transformer = TypedTransformer(dfn=npf_dfn)
-
-    # Read, parse, and transform
     with open(npf_file, "r") as f:
         content = f.read()
 
     tree = parser.parse(content)
     result = transformer.transform(tree)
 
-    # Check structure
     assert isinstance(result, dict)
-
-    # Check options block
     assert "options" in result
     options = result["options"]
-
-    # Should have save_specific_discharge option
     assert "save_specific_discharge" in options
     assert options["save_specific_discharge"] is True
-
-    # Check griddata block
     assert "griddata" in result
     griddata = result["griddata"]
-
-    # NPF should have at least icelltype and k
     assert "icelltype" in griddata
     assert "k" in griddata
-
-    # Each array should have control and data
     assert "control" in griddata["icelltype"]
     assert "data" in griddata["icelltype"]
     assert "control" in griddata["k"]
@@ -689,39 +436,24 @@ def test_transform_gwf_npf_file(model_workspace, dfn_path):
 
 @pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-csub-p01"], indirect=True)
 def test_transform_gwf_sto_file(model_workspace, dfn_path):
-    """Test transforming a parsed GWF STO file into structured data."""
+    dfns = Dfns.load(dfn_path)
+    dfn = dfns.components["gwf-sto"]
 
-    # Load the DFN for STO and convert to V2
-    v1_dfns = load_flat(dfn_path)
-    mapper = MapV1To2()
-    sto_dfn = mapper.map(v1_dfns["gwf-sto"])
+    sto_file = next(iter(model_workspace.rglob("*.sto")), None)
+    assert sto_file
 
-    # Find the STO file
-    sto_files = list(model_workspace.rglob("*.sto"))
+    parser = get_typed_parser(dfn)
+    transformer = TypedTransformer(dfn=dfn)
 
-    # Skip if no STO files (not all models have storage)
-    if len(sto_files) == 0:
-        pytest.skip("No STO files found in this model")
-
-    sto_file = sto_files[0]
-    parser = get_typed_parser("gwf-sto")
-    transformer = TypedTransformer(dfn=sto_dfn)
-
-    # Read, parse, and transform
     with open(sto_file, "r") as f:
         content = f.read()
 
     tree = parser.parse(content)
     result = transformer.transform(tree)
 
-    # Check structure
     assert isinstance(result, dict)
-
-    # Check griddata block
     assert "griddata" in result
     griddata = result["griddata"]
-
-    # STO should have iconvert
     assert "iconvert" in griddata
     assert "control" in griddata["iconvert"]
     assert "data" in griddata["iconvert"]

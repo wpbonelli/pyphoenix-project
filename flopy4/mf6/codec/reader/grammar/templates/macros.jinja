@@ -1,72 +1,57 @@
-{# Field rendering macros #}
-
-{% macro record_field(field_name, field) -%}
-{{ field_name|to_rule_name }}: {% for child_name, child in field.children.items() -%}
-{%- set child_type = child|record_child_type -%}
-{%- if child.type == 'keyword' -%}
-"{{ child.name }}"i
-{%- elif child.type == 'union' -%}
-{{ child_name|to_rule_name }}
+{%- macro block_header(block) -%}
+{%- if block.repeats -%}
+{{ block.name }}_block: "begin"i "{{ block.name }}"i block_label {{ block.name }}_fields "end"i "{{ block.name }}"i block_label
 {%- else -%}
-{{ child_type }}
+{{ block.name }}_block: "begin"i "{{ block.name }}"i {{ block.name }}_fields "end"i "{{ block.name }}"i
+{%- endif -%}
+{%- endmacro %}
+
+{% macro scalar_or_array(field) -%}
+{% set name = field.name|unhyphenate }
+{{ name| }}: "{{ name }}"i {{ field.type }}
+{%- endmacro %}
+
+{% macro record(field) -%}
+{% set name = field.name|unhyphenate }
+{{ name }}: {% for child in field.fields.values() -%}
+{%- set child_name = child.name|unhyphenate -%}
+{%- if child.type == 'keyword' -%}
+"{{ child_name }}"i
+{%- elif child.type == 'union' -%}
+{{ child_name }}
+{%- else -%}
+{{ child.type }}
 {%- endif -%}
 {%- if not loop.last %} {% endif -%}
 {%- endfor %}
 {%- endmacro %}
 
-{% macro union_field(field_name, field) -%}
-{{ field_name|to_rule_name }}: {% for child_name, child in field.children.items() -%}
-{{ field_name|to_rule_name }}_{{ child_name|to_rule_name }}
+{% macro union(field) -%}
+{% set name = field.name|unhyphenate }
+{{ name }}: {% for child in field.children.values() -%}
+{% set child_name = child.name|unhyphenate }
+{{ name }}_{{ child_name }}
 {%- if not loop.last %} | {% endif -%}
 {%- endfor %}
-{% for child_name, child in field.children.items() -%}
-{{ field_name|to_rule_name }}_{{ child_name|to_rule_name }}: {% if child.type == 'keyword' -%}
-"{{ child.name }}"i
+{% for child in field.children.values() -%}
+{% set child_name = child.name|unhyphenate }
+{{ name }}_{{ child_name }}: {% if child.type == 'keyword' -%}
+"{{ child_name }}"i
 {%- else -%}
-"{{ child.name }}"i {{ child.type }}
+"{{ child_name }}"i {{ child.type }}{% if child.type == 'array' %}+{% endif %}
 {%- endif %}
 {% endfor -%}
 {%- endmacro %}
 
-{% macro simple_field(field_name, field, field_type) -%}
-{{ field_name|to_rule_name }}: "{{ field.name }}"i {{ field_type }}
-{%- endmacro %}
-
-{% macro nested_union(child_name, child) -%}
-{{ child_name|to_rule_name }}: {% for opt_name, opt in child.children.items() -%}
-{{ child_name|to_rule_name }}_{{ opt_name|to_rule_name }}
-{%- if not loop.last %} | {% endif -%}
-{%- endfor %}
-
-{% for opt_name, opt in child.children.items() -%}
-{{ child_name|to_rule_name }}_{{ opt_name|to_rule_name }}: {% if opt.type == 'keyword' -%}
-"{{ opt.name }}"i
-{%- else -%}
-"{{ opt.name }}"i {{ opt.type }}{% if opt.shape %}+{% endif %}
-{%- endif %}
-
-{% endfor -%}
-{%- endmacro %}
-
-{# Block definition macro #}
-{%- macro block_def(block_name, has_index) -%}
-{%- if has_index -%}
-{{ block_name }}_block: "begin"i "{{ block_name }}"i block_index {{ block_name }}_fields "end"i "{{ block_name }}"i block_index
-{%- else -%}
-{{ block_name }}_block: "begin"i "{{ block_name }}"i {{ block_name }}_fields "end"i "{{ block_name }}"i
-{%- endif -%}
-{%- endmacro %}
-
-{# Field list macro #}
-{%- macro field_list(block_name, fields, recarray_name) -%}
-{%- if recarray_name -%}
+{%- macro list(block_name, field) -%}
+{% set name = field.name|unhyphenate }
 {{ block_name }}_fields: (
-{%- for field_name in fields %}{{ field_name|to_rule_name }} | {% endfor -%}
-{{ recarray_name }})*
+{%- for field_name in field.fields.keys() %}{{ field_name|unhyphenate }} | {% endfor -%}
+{{ name }})*
 {%- else -%}
 {{ block_name }}_fields: (
-{%- for field_name in fields %}
-{{- field_name|to_rule_name }}{% if not loop.last %} | {% endif %}
+{%- for field_name in fields.fields.keys() %}
+{{- field_name|unhyphenate }}{% if not loop.last %} | {% endif %}
 {%- endfor -%}
 )*
 {%- endif -%}

@@ -1,4 +1,4 @@
-{% import 'macros.jinja' as m %}
+{% import 'macros.jinja' as macros with context %}
 // Auto-generated grammar for MF6 {{ name|upper }}
 
 %import typed.integer -> integer
@@ -22,50 +22,46 @@ block: {% for block in blocks %}
 {%- endfor %}
 
 {% for block in blocks -%}
-{{ m.block_def(block.name, block.has_index) }}
+{{ macros.block_header(block) }}
 {% endfor -%}
-{% if blocks|selectattr('has_index')|list -%}
-block_index: integer
+{% if blocks|select('repeats')|list -%}
+block_label: word
 {% endif -%}
 {% for block in blocks -%}
-{% if block.recarrays -%}
-{% set recarray_name = block.recarrays[0].name -%}
-{{ m.field_list(block.name, block.standalone_fields, recarray_name) }}
+{% if block|list_field -%}
+{{ macros.list(block.name, block|tagged_fields, recarray_name) }}
 {% else -%}
-{{ m.field_list(block.name, block.standalone_fields, none) }}
+{{ macros.list(block.name, block|tagged_fields, none) }}
 {% endif -%}
 {% endfor -%}
-{% set generated_rules = [] -%}
+{% set generated_l1 = [] -%}
 {% for block in blocks -%}
-{% for field_name in block.standalone_fields -%}
-{% if field_name not in generated_rules -%}
-{% set field = fields[field_name] -%}
-{% set field_type = field|field_type -%}
-{% if field.type == 'record' and field.children is not none -%}
-{{ m.record_field(field_name, field) }}
-{% elif field.type == 'union' and field.children is not none -%}
-{{ m.union_field(field_name, field) }}
+{% for field in block|tagged_fields -%}
+{% if field.name not in generated_l1 -%}
+{% if field.type == 'record' and field.fields is not none -%}
+{{ macros.record(field) }}
+{% elif field.type == 'union' and field.arms is not none -%}
+{{ macros.union(field) }}
 {% else -%}
-{{ m.simple_field(field_name, field, field_type) }}
+{{ macros.scalar_or_array(field) }}
 {% endif -%}
-{% set _ = generated_rules.append(field_name) -%}
+{% set _ = generated_l1.append(field_name) -%}
 {% endif -%}
 {% endfor -%}
 {% endfor -%}
-{% set unions_generated = [] -%}
-{% for field_name in generated_rules -%}
-{% set field = fields[field_name] -%}
-{% if field.type == 'record' and field.children is not none -%}
-{% for child_name, child in field.children.items() -%}
-{% if child.type == 'union' and child_name not in unions_generated -%}
-{{ m.nested_union(child_name, child) }}
-{% set _ = unions_generated.append(child_name) -%}
+{% set generated_l2 = [] -%}
+{% for field_name in generated_l1 -%}
+{% if field.type == 'record' and field.fields is not none -%}
+{% for child_name, child in field.fields.items() -%}
+{% if child.type == 'union' and child_name not in generated_l2 -%}
+{{ macros.union(child) }}
+{% set _ = generated_l2.append(child_name) -%}
 {% endif -%}
 {% endfor -%}
 {% endif -%}
 {% endfor -%}
 {% for block in blocks -%}
-{% for recarray in block.recarrays -%}
-{{ recarray.name }}: record+
-{% endfor -%}
+{% if block|list_field -%}
+{{ block|list_field|name }}: record+
+{% endif -%}
 {% endfor -%}

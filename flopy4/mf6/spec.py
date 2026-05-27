@@ -5,19 +5,14 @@ These include field decorators and introspection functions.
 
 import builtins
 import types
-import warnings
 from datetime import datetime
+from functools import singledispatch
 from pathlib import Path
 from typing import Literal, Union, get_args, get_origin
 
 import numpy as np
 from attrs import NOTHING, Attribute
-
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", message=".*modflow_devtools.dfns.*experimental.*")
-    from modflow_devtools.dfns.schema.block import block_sort_key
-from modflow_devtools.dfns.schema.v2 import Field as FieldV2
-from modflow_devtools.dfns.schema.v2 import FieldType
+from modflow_devtools.dfns import FieldType
 
 from flopy4.spec import array as flopy_array
 from flopy4.spec import coord as flopy_coord
@@ -73,7 +68,7 @@ def path(
     inout: FileInOut | None = None,
     longname: str | None = None,
 ):
-    """Define a path field."""
+    """Define a file path field."""
     if block or inout or longname:
         metadata = metadata or {}
         if block:
@@ -193,68 +188,21 @@ def array(
     )
 
 
-def embedded_keystring(
-    keyword: str,
-    feature_dim: str,
-    dtype: np.dtype | str | type | None = None,
-    default=None,
-    block: str | None = None,
-    longname: str | None = None,
-    converter=None,
-):
-    """Define a 2D period field for embedded keystring output (e.g. LAK, MAW).
-
-    Values indexed by (nper, feature_dim) emit rows:
-        ``feature_num KEYWORD value``
-    one row per non-fill entry.  Fill is FILL_DNODATA for numeric fields
-    and None for object fields.
-    """
-    metadata: dict = {
-        "embedded_keystring": True,
-        "keyword": keyword,
-    }
-    if block:
-        metadata["block"] = block
-    if longname:
-        metadata["longname"] = longname
-    return flopy_array(
-        dtype=dtype if dtype is not None else np.float64,
-        dims=("nper", feature_dim),
-        default=default,
-        converter=converter,
-        metadata=metadata,
-    )
-
-
-def keystring(
-    default=None,
-    block: str | None = None,
-    dims: tuple = ("nper",),
-    longname: str | None = None,
-    converter=None,
-):
-    """Define a period output-control keystring field.
-
-    Values are strings representing a valid ocsetting alternative,
-    e.g. 'ALL', 'LAST', 'STEPS 1 3', 'FREQUENCY 2'.  The 'keystring'
-    metadata key distinguishes these from plain string arrays so the
-    egress writer can route them through the correct serialiser.
-    """
-    metadata: dict = {"keystring": True}
-    if block:
-        metadata["block"] = block
-    if longname:
-        metadata["longname"] = longname
-    return flopy_array(
-        dtype=np.dtypes.StringDType(),
-        dims=dims,
-        default=default,
-        converter=converter,
-        metadata=metadata,
-    )
-
-
 Block = dict[str, Attribute]
+
+
+def _block_sort_key(item) -> int:
+    k, _ = item
+    if k == "options":
+        return 0
+    elif k == "dimensions":
+        return 1
+    elif k == "griddata":
+        return 2
+    elif "period" in k:
+        return 4
+    else:
+        return 3
 
 
 def blocks(cls) -> list[list[Attribute]]:
@@ -275,7 +223,7 @@ def blocks_dict(cls) -> dict[str, Block]:
         if block not in blocks:
             blocks[block] = {}
         blocks[block][k] = v
-    return dict(sorted(blocks.items(), key=block_sort_key))
+    return dict(sorted(blocks.items(), key=_block_sort_key))
 
 
 def fields(cls) -> list[Attribute]:
@@ -292,7 +240,13 @@ def fields_dict(cls) -> dict[str, Attribute]:
     return {k: v for k, v in fields.items() if "block" in v.metadata}
 
 
-def to_field_type(t: type) -> FieldType:
+@singledispatch
+def get_field_type(obj) -> FieldType:
+    raise ValueError(f"Cannot infer field type from object of type {type(obj)}")
+
+
+@get_field_type.register(type)
+def _(t: type) -> FieldType:
     match t:
         case builtins.str | np.str_:
             return "string"
@@ -326,7 +280,8 @@ def to_field_type(t: type) -> FieldType:
             return "record"
 
 
-def get_field_type(attribute: Attribute) -> FieldType:
+@get_field_type.register(Attribute)
+def _(attribute: Attribute) -> FieldType:
     """
     Get a `xattree` field's type as defined by the MODFLOW 6 input
     definition language:
@@ -348,26 +303,5 @@ def get_field_type(attribute: Attribute) -> FieldType:
         case "attr":
             if (t := attribute.type) is None:
                 raise ValueError(f"Attribute {attribute.name} in {attribute.name} has no type.")
-            return to_field_type(t)
+            return get_field_type(t)
     raise ValueError(f"Could not map {attribute.name} to a valid MF6 type.")
-
-
-def to_field(attribute: Attribute) -> FieldV2:
-    """
-    Convert a `xattree` field specification to a field as defined by the
-    MODFLOW 6 input definition language:
-    https://modflow6.readthedocs.io/en/stable/_dev/dfn.html#variable-types.
-    """
-    if (xatmeta := attribute.metadata.get("xattree", None)) is None:
-        raise ValueError(f"Attribute {attribute.name} in {attribute.name} has no xattree metadata.")
-    return FieldV2(
-        name=attribute.name,
-        type=get_field_type(attribute),
-        shape=xatmeta.get("dims", None),
-        block=attribute.metadata.get("block", None),
-        default=attribute.default,
-        netcdf=attribute.metadata.get("netcdf", None),
-        children={k: to_field(v) for k, v in fields_dict(attribute.type)}  # type: ignore
-        if attribute.metadata.get("kind", None) == "child"  # type: ignore
-        else None,  # type: ignore
-    )
