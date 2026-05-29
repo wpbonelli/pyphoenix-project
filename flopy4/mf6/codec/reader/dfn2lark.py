@@ -23,13 +23,9 @@ def make(dfndir: str | PathLike, outdir: str | PathLike):
 
 
 def main():
-<<<<<<< HEAD
-    parser = argparse.ArgumentParser(description="Generate lark grammars from definition files.")
-=======
     parser = argparse.ArgumentParser(
         description="Generate lark grammars from definition files."
     )
->>>>>>> 4221103 (adapt wip)
     parser.add_argument(
         "--dfndir",
         "-d",
