@@ -201,7 +201,7 @@ class Csub(Package):
         dims=("ninterbeds",),
         default=None,
         converter=Converter(structure_array, takes_self=True, takes_field=True),
-        longname="interbed name",
+        longname="well name",
     )
     cg_ske_cr: NDArray[np.float64] = array(
         block="griddata",
