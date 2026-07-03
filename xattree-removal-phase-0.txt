@@ -1,0 +1,1879 @@
+▗ ▗   ▖ ▖  Claude Code v2.1.198
+           Sonnet 5 · Claude Pro
+  ▘▘ ▝▝    ~/dev/pyphoenix-project/.claude/worktrees/phase0-codegen-metadata
+
+ ▎ Fable 5 is back.
+ ▎ Until July 7, you can use up to 50% of your plan's weekly usage limit on Fable 5. If you hit your limit, you can continue on Fable 5 with usage credits. Fable 5 draws down usage faster than Opus 4.8. Learn more (https://support.claude.com/en/articles/15424964-claude-fable-5-promotional-access)
+
+❯ Have a look at phase 0 of namefile-load-plan.md. Do you have a clear idea     
+  what to do? Ask questions if not.                                             
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+❯ Any progress?                                                                 
+
+⏺ I've read Phase 0 and understand the goal: unify codegen-v2 field metadata
+  (dfn_block/schema/oc_action) onto the existing block=/array()/dim() xattree
+  convention used by hand-written components, so there's one metadata convention
+  instead of two.
+
+  I was about to survey the actual code (flopy4/mf6/spec.py,
+  utils/codegen/filters.py, make.py, templates/package.py.jinja,
+  converter/ingress/structure.py, converter/egress/unstructure.py, package.py)
+  to ground step 1's audit in real field definitions, but that grep got rejected
+  before it ran — no progress made yet on that front.
+
+  Before I dig in, a few things worth clarifying rather than assuming:
+
+  1. Do you want me to start with just the audit (step 1 — read the code,
+  produce the ad-hoc-key → xattree-equivalent mapping) and stop there for your
+  review, or go ahead through implementation (steps 2+) in one pass?
+  2. Should this happen on develop directly, or do you want a branch/worktree
+  for it given the "76 generated files" blast radius the plan calls out?
+  3. Is flopy4/mf6/dimensions.py (shown as deleted in git status) and
+  flopy4/dimensions.py (untracked, new) part of unrelated in-flight work I
+  should leave alone, or does Phase 0 touch that too?
+
+✻ Crunched for 8s
+
+❯ Let's make a worktree for this. We'll fix the code, then test the codegen     
+  produces the right generated file content. The dimensions work, along with    
+  the other uncommitted changes, is just cleanup/reorganization. It should be   
+  moved to a separate branch or worktree before we start the phase 0 work. But  
+  if you feel confident in what to do, please go ahead, no need to stop for my  
+  review unless you have questions or see unresolved decisions to make.         
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ HEAD matches origin/develop exactly, and the uncommitted changes are a
+  coherent reorg (moving flopy4/mf6/dimensions.py → generic
+  flopy4/dimensions.py, relocating test_mf6_*.py files into test/mf6/, plus
+  trivial unrelated tweaks). I'll commit that as-is to its own branch, then spin
+  up a fresh worktree for Phase 0.
+
+  Committed f3c6175 (ctrl+o to expand)
+
+⏺ Reorg work is safely committed to chore/dimensions-and-test-reorg. Now
+  creating a fresh worktree off origin/develop for Phase 0.
+
+⏺ Creating worktree(phase0-codegen-metadata)
+  ⎿  Switched to worktree on branch worktree-phase0-codegen-metadata
+     /Users/wbonelli/dev/pyphoenix-project/.claude/worktrees/phase0-codegen
+     -metadata
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Clean worktree at 470f85b (matches origin/develop). Let me track Phase 0's
+  steps and start the audit.
+⏺ Now let's start the audit — reading the relevant files.
+
+  Searched for 3 patterns, read 3 files (ctrl+o to expand)
+
+⏺ Let me view the full package.py file since it's central.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+  Searched for 4 patterns, read 5 files (ctrl+o to expand)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ Sorry to interrupt, please continue.                                          
+
+  Searched for 5 patterns, read 1 file, ran 7 shell commands (ctrl+o to expand)
+
+⏺ I've completed the audit (Task #1). Two findings worth flagging before I start
+  changing code — one is a plan-scope correction, the other is a technical
+  landmine that changes how I'll implement step 3.
+
+  1. Scope correction: The plan assumed dis/disv/tdis/ncf (hand-written,
+  skip-listed in dfn2py.py) still use the old block= convention. They don't — I
+  checked, and they already carry dfn_block/dfn_type metadata (written in the
+  codegen-v2 style, presumably copy-pasted from generator output during PR
+  #327's "update model dis/disv"). So the real fix touches 79 files, ~796 
+  occurrences of dfn_block: 71 auto-regenerated (fixed for free by step 6) + 8 
+  hand-written files that dfn2py.py skips and won't regenerate (gwf/dis.py,
+  gwf/disv.py, gwf/disbase.py, gwt/dis.py, gwe/dis.py, prt/dis.py, tdis.py,
+  utl/ncf.py) that I'll need to fix by hand/script. Mechanical, just bigger than
+  the plan's "76" estimate.
+
+  2. Technical landmine in step 3's literal wording. The plan says emit fields
+  via flopy4.mf6.spec.field(block=...) instead of raw
+  attrs.field(metadata={"dfn_block":...}). I traced spec.field() →
+  flopy4.spec.field() → the real xattree.field(), and confirmed:
+  xattree.field(converter=...) doesn't hand the converter to attrs directly — it
+  stashes it in metadata["xattree"]["converter"], and that only gets applied by
+  a field_transformer that runs inside the @xattree class decorator. Codegen-v2
+  Package subclasses are deliberately plain @attrs.define (not
+  @xattree-decorated — that's the whole point of PR #336's "decouple xattree
+  from codegen"). So if I literally switch generated Path-record fields
+  (budget_file, ts6_filename, etc., which currently use raw
+  attrs.field(converter=_optional_path, metadata={...})) to call
+  spec.field(converter=_optional_path, ...), the converter would silently stop
+  running — string paths would no longer coerce to Path objects. Currently they
+  work because they call raw attrs.field() directly.
+
+  My resolution: keep codegen-v2 fields on raw attrs.field(default=..., 
+  converter=..., metadata={...}) (unchanged mechanism, so converters stay
+  real/active), but fix the actual root cause the plan cares about — rename the
+  metadata key dfn_block → block everywhere (confirmed correct independently:
+  netcdf.py:112 already does "block": f.metadata.get("dfn_block", "") as a
+  workaround shim, i.e. the rest of the codebase already expects the key to be
+  called block). Hand-written xattree classes (Gwf, Simulation, etc.) keep using
+  the real spec.field()/array()/dim() as today — unchanged. This achieves the
+  plan's actual goal (one metadata key, one fields_dict()/blocks_dict() that
+  sees every field, one structuring/unstructuring path) without the regression.
+
+  I'll proceed on this basis unless you want it done differently.
+
+✻ Sautéed for 4m 50s
+❯ Isn't the cleaner resolution to update the spec field decorator functions     
+  currently wrapping xattree to just wrap attrs instead? Otherwise sounds good  
+
+  Searched for 3 patterns, read 1 file (ctrl+o to expand)
+
+⏺ Confirmed — and it's actually necessary, not just cleaner. I found that
+  hand-written @xattree classes already do field(converter=convert_grid, ...)
+  and path(converter=to_path, ...) (e.g. simulation.py:26,
+  gwf/__init__.py:154,163). Tracing xattree.field()'s source: it never forwards
+  converter/validator to the underlying attrs.field() call — it stashes them in
+  metadata["xattree"], and they only get reattached as real attrs converters by
+  a field_transformer that runs inside @xattree-decorated classes. So those
+  existing call sites only work because their enclosing classes (Simulation,
+  Gwf, etc.) are @xattree-decorated. Codegen-v2 classes aren't, so the same call
+  would silently drop the converter — exactly the landmine, just already latent
+  in the existing API, not something switching codegen-v2 over would newly
+  introduce.
+
+  Fix: change flopy4/spec.py's field() (the single base function both
+  flopy4/mf6/spec.py's field() and path() delegate to) to build the
+  attrs.field() call directly — passing converter/validator for real — while
+  still stamping the same metadata["xattree"] = {"kind": "attr", "converter": 
+  ..., "validator": ...} shape xattree.field() produces, so @xattree classes'
+  field_transformer/get_xatspec() keep working unchanged (the reattachment
+  becomes redundant but harmless there). This fixes the landmine for codegen-v2
+  and makes the existing hand-written converter usages correct by construction
+  rather than by accident.
+
+  Proceeding on this basis. Implementing now.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Only flopy4/mf6/spec.py consumes flopy4.spec.field. Safe to fix at the base
+  layer.
+
+⏺ Update(flopy4/spec.py)
+  ⎿  Added 17 lines, removed 4 lines
+       3  These include field decorators and introspection functions.
+       4  """
+       5  
+       6 +import attrs                                                   
+       7  import numpy as np
+       8  from attrs import NOTHING, Attribute
+       9  from xattree import array as xattree_array
+      10  from xattree import coord as xattree_coord
+      11  from xattree import dim as xattree_dim
+      11 -from xattree import field as xattree_field                     
+      12  from xattree import fields_dict as xattree_fields_dict
+      13  
+      14  
+     ...
+      22      metadata=None,
+      23      on_setattr=None,
+      24  ):
+      25 -    """Define a field."""                                      
+      26 -    return xattree_field(                                      
+      25 +    """Define a field.                                         
+      26 +                                                               
+      27 +    Builds the `attrs.field()` call directly rather than delega
+         +ting to                                                        
+      28 +    `xattree.field()`, which never forwards `converter`/`valida
+         +tor` to attrs                                                  
+      29 +    itself — it stashes them in `metadata["xattree"]` for a `fi
+         +eld_transformer`                                               
+      30 +    that only runs inside `@xattree`-decorated classes to reatt
+         +ach. Plain attrs                                               
+      31 +    classes (e.g. codegen-v2 packages) would silently lose the 
+         +converter. The                                                 
+      32 +    same `metadata["xattree"]` shape is still stamped so `@xatt
+         +ree` classes'                                                  
+      33 +    introspection (`get_xatspec()`, etc.) keeps working unchang
+         +ed.                                                            
+      34 +    """                                                        
+      35 +    metadata = dict(metadata or {})                            
+      36 +    metadata["xattree"] = {"kind": "attr", "converter": convert
+         +er, "validator": validator}                                    
+      37 +    return attrs.field(                                        
+      38          default=default,
+      39          validator=validator,
+      40          converter=converter,
+      41          repr=repr,
+      42          eq=eq,
+      43 +        order=False,                                           
+      44 +        hash=True,                                             
+      45          init=init,
+      33 -        metadata=metadata,                                     
+      46          on_setattr=on_setattr,
+      47 +        metadata=metadata,                                     
+      48      )
+      49  
+      50  
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/spec.py)
+  ⎿  Added 2 lines
+      21      init=True,
+      22      metadata=None,
+      23      on_setattr=None,
+      24 +    alias: str | None = None,                                  
+      25  ):
+      26      """Define a field.
+      27  
+     ...
+      46          init=init,
+      47          on_setattr=on_setattr,
+      48          metadata=metadata,
+      49 +        alias=alias,                                           
+      50      )
+      51  
+      52  
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Good, alias=None is the correct default (attrs computes it automatically when
+  unset). Now let's extend flopy4/mf6/spec.py's field() and path().
+
+⏺ Update(flopy4/mf6/spec.py)
+  ⎿  Added 76 lines, removed 3 lines
+       29      init=True,
+       30      metadata=None,
+       31      on_setattr=None,
+       32 +    alias: str | None = None,                                 
+       33      block: str | None = None,
+       34      longname: str | None = None,
+       35 +    dfn_type: str | None = None,                              
+       36 +    shape: tuple[str, ...] | None = None,                     
+       37 +    layered: bool = False,                                    
+       38 +    optional: bool = False,                                   
+       39 +    netcdf: bool | None = None,                               
+       40 +    schema: str | None = None,                                
+       41 +    always_emit: bool = False,                                
+       42 +    auto_from: str | None = None,                             
+       43 +    fill_forward: bool = False,                               
+       44 +    reader: str | None = None,                                
+       45 +    oc_action: str | None = None,                             
+       46 +    oc_rtype: str | None = None,                              
+       47 +    time_series: bool = False,                                
+       48  ):
+       35 -    """Define a field."""                                     
+       36 -    if block or longname:                                     
+       49 +    """Define a field.                                        
+       50 +                                                              
+       51 +    The ``dfn_type``/``shape``/``layered``/``optional``/``sche
+          +ma``/``always_emit``/                                         
+       52 +    ``auto_from``/``fill_forward``/``reader``/``oc_action``/``
+          +oc_rtype``/``time_series``                                    
+       53 +    keys describe codegen-v2 recarray/period-block fields, whi
+          +ch are plain attrs                                            
+       54 +    fields (not real xattree ``array()``/``dim()``) since code
+          +gen-v2 packages are                                           
+       55 +    not ``@xattree``-decorated. They carry no dims/coord seman
+          +tics of their own.                                            
+       56 +    """                                                       
+       57 +    if any(                                                   
+       58 +        v                                                     
+       59 +        for v in (                                            
+       60 +            block,                                            
+       61 +            longname,                                         
+       62 +            dfn_type,                                         
+       63 +            shape,                                            
+       64 +            layered,                                          
+       65 +            optional,                                         
+       66 +            netcdf,                                           
+       67 +            schema,                                           
+       68 +            always_emit,                                      
+       69 +            auto_from,                                        
+       70 +            fill_forward,                                     
+       71 +            reader,                                           
+       72 +            oc_action,                                        
+       73 +            oc_rtype,                                         
+       74 +            time_series,                                      
+       75 +        )                                                     
+       76 +    ):                                                        
+       77          metadata = metadata or {}
+       78          if block:
+       79              metadata["block"] = block
+       80          if longname:
+       81              metadata["longname"] = longname
+       82 +        if dfn_type:                                          
+       83 +            metadata["dfn_type"] = dfn_type                   
+       84 +        if shape:                                             
+       85 +            metadata["shape"] = shape                         
+       86 +        if layered:                                           
+       87 +            metadata["layered"] = True                        
+       88 +        if optional:                                          
+       89 +            metadata["optional"] = True                       
+       90 +        if netcdf:                                            
+       91 +            metadata["netcdf"] = True                         
+       92 +        if schema:                                            
+       93 +            metadata["schema"] = schema                       
+       94 +        if always_emit:                                       
+       95 +            metadata["always_emit"] = True                    
+       96 +        if auto_from:                                         
+       97 +            metadata["auto_from"] = auto_from                 
+       98 +        if fill_forward:                                      
+       99 +            metadata["fill_forward"] = True                   
+      100 +        if reader:                                            
+      101 +            metadata["reader"] = reader                       
+      102 +        if oc_action:                                         
+      103 +            metadata["oc_action"] = oc_action                 
+      104 +        if oc_rtype:                                          
+      105 +            metadata["oc_rtype"] = oc_rtype                   
+      106 +        if time_series:                                       
+      107 +            metadata["time_series"] = True                    
+      108      return flopy_field(
+      109          default=default,
+      110          validator=validator,
+     ...
+      114          init=init,
+      115          on_setattr=on_setattr,
+      116          metadata=metadata,
+      117 +        alias=alias,                                          
+      118      )
+      119  
+      120  
+     ...
+      133      block: str | None = None,
+      134      inout: FileInOut | None = None,
+      135      longname: str | None = None,
+      136 +    dfn_type: str | None = None,                              
+      137 +    optional: bool = False,                                   
+      138  ):
+      139      """Define a path field."""
+       71 -    if block or inout or longname:                            
+      140 +    if block or inout or longname or dfn_type or optional:    
+      141          metadata = metadata or {}
+      142          if block:
+      143              metadata["block"] = block
+     ...
+      145              metadata["inout"] = inout
+      146          if longname:
+      147              metadata["longname"] = longname
+      148 +        if dfn_type:                                          
+      149 +            metadata["dfn_type"] = dfn_type                   
+      150 +        if optional:                                          
+      151 +            metadata["optional"] = True                       
+      152      return flopy_field(
+      153          default=default,
+      154          validator=validator,
+
+  Searched for 3 patterns, ran 5 shell commands (ctrl+o to expand)
+
+⏺ All passing. Now let's run a broader baseline before touching the codegen —
+  the full mf6 test suite, to have a clean reference point.
+
+  Searched for 4 patterns, ran 4 shell commands (ctrl+o to expand)
+⏺ Now implementing the codegen fix. Let's rewrite field_metadata/field_call in
+  filters.py first.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/filters.py)
+  ⎿  Added 13 lines, removed 16 lines
+      530  
+      531  
+      532  def field_metadata(f: Field, *, has_maxbound: bool = False) ->
+            dict:
+      533 -    """Build the metadata dict for an attrs.field() call (new 
+          -codegen path).                                                
+      533 +    """Build the ``field()``/``path()`` spec-call kwargs for a
+          + field (new codegen path).                                    
+      534  
+      535 -    Replaces the xattree spec call (array(), field(), dim(), p
+          -ath()) with a                                                 
+      536 -    passive dict read by the codec and conversion methods at c
+          -all time.                                                     
+      535 +    Codegen-v2 packages are plain attrs classes (not ``@xattre
+          +e``-decorated), so                                            
+      536 +    these calls carry passive metadata read by the codec and c
+          +onversion methods                                             
+      537 +    at call time rather than real xattree array/dim/coord stru
+          +cture.                                                        
+      538      """
+      538 -    meta: dict = {"dfn_block": f["block"], "dfn_type": f["type
+          -"]}                                                           
+      539 +    kw: dict = {"block": f["block"], "dfn_type": f["type"]}   
+      540      if shape := f.get("shape"):
+      540 -        meta["shape"] = _dims_tuple_val(shape)                
+      541 +        kw["shape"] = _dims_tuple_val(shape)                  
+      542      if f.get("layered"):
+      542 -        meta["layered"] = True                                
+      543 -        meta["chunk_axis"] = "nlay"                           
+      543 +        kw["layered"] = True                                  
+      544      if f.get("netcdf"):
+      545 -        meta["netcdf"] = True                                 
+      545 +        kw["netcdf"] = True                                   
+      546      if f.get("time_series"):
+      547 -        meta["time_series"] = True                            
+      548 -    if is_period_array(f):                                    
+      549 -        meta["period_data"] = True                            
+      547 +        kw["time_series"] = True                              
+      548      if f.get("optional"):
+      551 -        meta["optional"] = True                               
+      549 +        kw["optional"] = True                                 
+      550      if f["block"] == "dimensions" and f["name"] == "maxbound" 
+           and has_maxbound:
+      553 -        meta["auto_from"] = "stress_period_data"              
+      551 +        kw["auto_from"] = "stress_period_data"                
+      552      if is_file_record(f):
+      555 -        inout = "filein" if _has_file_child_of(f, "filein") el
+          -se "fileout"                                                  
+      556 -        meta["inout"] = inout                                 
+      557 -    return meta                                               
+      553 +        kw["inout"] = "filein" if _has_file_child_of(f, "filei
+          +n") else "fileout"                                            
+      554 +    return kw                                                 
+      555  
+      556  
+      557  def _dq(v) -> str:
+
+⏺ Update(flopy4/mf6/utils/codegen/filters.py)
+  ⎿  Added 10 lines, removed 16 lines
+      570  
+      571  
+      572  def field_call(f: Field, *, has_maxbound: bool = False) -> str
+           :
+      573 -    """Return the attrs.field() call string for a field.      
+      573 +    """Return the field()/path() spec call string for a field.
+      574  
+      575      Emits a multi-line call to comply with the 100-char line-l
+           ength limit.
+      576      Continuation lines are pre-indented for class body (8-spac
+           e args,
+      577 -    12-space dict keys, 4-space closing paren).               
+      577 +    4-space closing paren).                                   
+      578      """
+      579 -    meta = field_metadata(f, has_maxbound=has_maxbound)       
+      579 +    kw = field_metadata(f, has_maxbound=has_maxbound)         
+      580      # maxbound is auto-computed from stress_period_data at wri
+           te time; default 0.
+      581      if f["block"] == "dimensions" and f["name"] == "maxbound":
+      582          default = "0"
+     ...
+      590      type_ignore = ""
+      591      if (is_array(f) and default != "None") or (_str_default an
+           d _numeric_field):
+      592          type_ignore = "  # type: ignore[assignment]"
+      593 -    meta_lines = ["        metadata={"]                       
+      594 -    for k, v in meta.items():                                 
+      595 -        meta_lines.append(f'            "{k}": {_dq(v)},')    
+      596 -    meta_lines.append("        },")                           
+      597 -    converter_line = ""                                       
+      593 +    fn = "path" if is_file_record(f) else "field"             
+      594 +    lines = [f"{fn}(", f"        default={default},"]         
+      595      if is_file_record(f):
+      599 -        converter_line = "        converter=_optional_path,\n"
+      600 -    return (                                                  
+      601 -        f"attrs.field(\n"                                     
+      602 -        f"        default={default},\n"                       
+      603 -        + converter_line                                      
+      604 -        + "\n".join(meta_lines)                               
+      605 -        + f"\n    ){type_ignore}"                             
+      606 -    )                                                         
+      596 +        lines.append("        converter=_optional_path,")     
+      597 +    for k, v in kw.items():                                   
+      598 +        lines.append(f"        {k}={_dq(v)},")                
+      599 +    lines.append(f"    ){type_ignore}")                       
+      600 +    return "\n".join(lines)                                   
+      601  
+      602  
+      603  def python_repr(v) -> str:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 11 lines, removed 8 lines
+      313      default: str = "None",
+      314      metadata: dict | None = None,
+      315      *,
+      316 +    fn: str = "field",                                        
+      317      alias: str | None = None,
+      318      converter: str | None = None,
+      319      repr_: bool = True,
+      320      type_ignore: str | None = None,
+      321  ) -> str:
+      321 -    """Multi-line attrs.field() string for class-body spec_cal
+          -ls (4-space indent).                                          
+      322 +    """Multi-line field()/path() spec-call string for class-bo
+          +dy spec_calls.                                                
+      323  
+      323 -    Produces continuation lines pre-indented at 8 spaces (args
+          -), 12 spaces                                                  
+      324 -    (dict keys), and 4 spaces (closing paren) so the Jinja tem
+          -plate can render                                              
+      325 -    it verbatim after ``    {name}: {type} = ``.              
+      324 +    Produces continuation lines pre-indented at 8 spaces (args
+          +) and 4 spaces                                                
+      325 +    (closing paren) so the Jinja template can render it verbat
+          +im after                                                      
+      326 +    ``    {name}: {type} = ``. ``metadata`` here is the set of
+          + ``field()``/                                                 
+      327 +    ``path()`` kwargs (block, schema, oc_action, ...), not a r
+          +aw attrs                                                      
+      328 +    metadata dict — codegen-v2 fields are plain attrs fields, 
+          +so they go                                                    
+      329 +    through the same passive-metadata constructors hand-writte
+          +n xattree                                                     
+      330 +    classes use for their scalar fields.                      
+      331      """
+      327 -    lines = ["attrs.field("]                                  
+      332 +    lines = [f"{fn}("]                                        
+      333      if alias is not None:
+      334          lines.append(f'        alias="{alias}",')
+      335      lines.append(f"        default={default},")
+     ...
+      338      if not repr_:
+      339          lines.append("        repr=False,")
+      340      if metadata is not None:
+      336 -        lines.append("        metadata={")                    
+      341          for k, v in metadata.items():
+      338 -            lines.append(f'            "{k}": {_dq(v)},')     
+      339 -        lines.append("        },")                            
+      342 +            lines.append(f"        {k}={_dq(v)},")            
+      343      suffix = f"  {type_ignore}" if type_ignore else ""
+      344      lines.append(f"    ){suffix}")
+      345      return "\n".join(lines)
+
+⏺ Now update all _ml_field call sites to rename dfn_block → block and set
+  fn="path" where needed.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 1 line, removed 1 line
+      354          py_name = f"{action}_{rtype}"
+      355          spec_call = _ml_field(
+      356              metadata={
+      357 -                "dfn_block": "period",                        
+      357 +                "block": "period",                            
+      358                  "dfn_type": "string",
+      359                  "oc_action": action,
+      360                  "oc_rtype": rtype,
+
+⏺ Now the list-block field and inner-class-record _ml_field calls (~line 749,
+  767):
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 1 line, removed 1 line
+      749              schema = _build_schema_from_list_field(f)
+      750              if schema:
+      751                  block_schemas[block_name] = schema
+      752 -                meta = {"dfn_block": block_name, "schema": f"_
+          -_{block_name}_schema__"}                                      
+      752 +                meta = {"block": block_name, "schema": f"__{bl
+          +ock_name}_schema__"}                                          
+      753                  target.append(
+      754                      FieldSpec(
+      755                          dfn_name=f["name"],
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 1 line, removed 1 line
+      767              inner_class_specs.append(record_spec)
+      768              clean_name = filters.safe_name("_".join(_strip_rec
+           ord_words(f["name"])))
+      769              block = f["block"]
+      770 -            inner_spec_call = _ml_field(metadata={"dfn_block":
+          - block})                                                      
+      770 +            inner_spec_call = _ml_field(metadata={"block": blo
+          +ck})                                                          
+      771              target.append(
+      772                  FieldSpec(
+      773                      dfn_name=f["name"],
+
+⏺ Now the injected path fields (replace_list_fields), block-property recarray
+  fields, stress_period_data, and readarray period fields:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 2 lines, removed 2 lines
+      796          block = entry["block"]
+      797          inout = entry["inout"]
+      798          _path_meta: dict = {
+      799 -            "dfn_block": block,                               
+      799 +            "block": block,                                   
+      800              "dfn_type": "record",
+      801              "optional": True,
+      802              "inout": inout,
+      803          }
+      804 -        spec_call_str = _ml_field(metadata=_path_meta, convert
+          -er="_optional_path")                                          
+      804 +        spec_call_str = _ml_field(metadata=_path_meta, convert
+          +er="_optional_path", fn="path")                               
+      805          extra_specs.append(
+      806              FieldSpec(
+      807                  dfn_name=entry["name"],
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 1 line, removed 1 line
+      893          schema = _build_block_schema(bp)
+      894          block_schemas[bp.block_name] = schema
+      895          _meta: dict = {
+      896 -            "dfn_block": bp.block_name,                       
+      896 +            "block": bp.block_name,                           
+      897              "schema": f"__{bp.block_name}_schema__",
+      898          }
+      899          if bp.dim_is_dfn_declared:
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 1 line, removed 1 line
+      944          if not has_period_keystring:
+      945              period_schema = _build_period_schema_from_array_fi
+           elds(_period_array_fields)
+      946          _spd_meta = {
+      947 -            "dfn_block": "period",                            
+      947 +            "block": "period",                                
+      948              "schema": "__period_schema__",
+      949              "fill_forward": True,
+      950          }
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 1 line, removed 1 line
+      969      if _readarray_period_fields:
+      970          for _ra_f in _readarray_period_fields:
+      971              _ra_meta = {
+      972 -                "dfn_block": "period",                        
+      972 +                "block": "period",                            
+      973                  "reader": "readarray",
+      974                  "dfn_type": _ra_f.get("type", "double"),
+      975                  "layered": _ra_f.get("layered", False),
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 2 lines
+      576      has_griddata: bool = False,
+      577      has_readarray_period: bool = False,
+      578      has_injected_paths: bool = False,
+      579 +    has_field_call: bool = False,                             
+      580 +    has_path_call: bool = False,                              
+      581      period_schema: list[dict] | None = None,
+      582      block_schemas: dict[str, list[dict]] | None = None,
+      583  ) -> dict[str, list[str]]:
+
+⏺ Now add the actual import-line logic and the flopy4 import list entry:
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 7 lines
+      640          flopy4.append("from flopy4.mf6.record import Record")
+      641      if has_period_schema:
+      642          flopy4.append("from flopy4.mf6.schema import Column, S
+           chema")
+      643 +    _spec_parts: list[str] = []                               
+      644 +    if has_field_call:                                        
+      645 +        _spec_parts.append("field")                           
+      646 +    if has_path_call:                                         
+      647 +        _spec_parts.append("path")                            
+      648 +    if _spec_parts:                                           
+      649 +        flopy4.append(f"from flopy4.mf6.spec import {', '.join
+          +(sorted(_spec_parts))}")                                      
+      650      _types_parts: list[str] = []
+      651      if has_arraylike:
+      652          _types_parts.append("ArrayLike")
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 4 lines
+      1009      _has_griddata = any(
+      1010          f.get("block") == "griddata" and filters.is_array(f) 
+            for f in generatable_field_objects
+      1011      )
+      1012 +    _has_field_call = any(fs.generatable and fs.spec_call.sta
+           +rtswith("field(") for fs in field_specs)                     
+      1013 +    _has_path_call = any(fs.generatable and fs.spec_call.star
+           +tswith("path(") for fs in field_specs)                       
+      1014      imports = _new_codegen_imports(
+      1015          generatable_field_objects,
+      1016          base_class=base,
+     ...
+      1023          ),
+      1024          has_griddata=_has_griddata,
+      1025          has_injected_paths=has_injected_paths,
+      1026 +        has_field_call=_has_field_call,                      
+      1027 +        has_path_call=_has_path_call,                        
+      1028          has_readarray_period=bool(_readarray_period_fields),
+      1029          period_schema=period_schema,
+      1030          block_schemas=block_schemas,
+
+  Searched for 2 patterns, ran 3 shell commands (ctrl+o to expand)
+
+⏺ Looks correct. Let's check the griddata/schema/oc_action/path cases too, and
+  confirm no leftover dfn_block/chunk_axis/period_data anywhere.
+
+  Searched for 1 pattern, read 3 files, ran 12 shell commands (ctrl+o to expand)
+
+⏺ Now I need to add the missing imports to each of these 10 files, plus fix
+  disbase.py's runtime read. Let's check each file's current import block.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/gwe/dis.py)
+  ⎿  Added 1 line
+       5  from numpy.typing import NDArray
+       6  from flopy4.mf6._types import _optional_path
+       7  from flopy4.mf6.gwf.disbase import DisBase
+       8 +from flopy4.mf6.spec import field, path                        
+       9  from flopy4.mf6.utils.grid import StructuredGrid
+      10  from flopy4.mf6.utl.ncf import Ncf
+      11  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/gwe/disv.py)
+  ⎿  Added 1 line
+       6  from flopy4.mf6._types import _optional_path
+       7  from flopy4.mf6.gwf.disbase import DisBase
+       8  from flopy4.mf6.schema import Column, Schema
+       9 +from flopy4.mf6.spec import field, path                        
+      10  from flopy4.mf6.utils.grid import VertexGrid
+      11  from flopy4.mf6.utl.ncf import Ncf
+      12  
+
+  Read 1 file (ctrl+o to expand)
+⏺ Update(flopy4/mf6/gwf/dis.py)
+  ⎿  Added 1 line
+       5  from numpy.typing import NDArray
+       6  from flopy4.mf6._types import _optional_path
+       7  from flopy4.mf6.gwf.disbase import DisBase
+       8 +from flopy4.mf6.spec import field, path                        
+       9  from flopy4.mf6.utils.grid import StructuredGrid
+      10  from flopy4.mf6.utl.ncf import Ncf
+      11  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/gwf/disv.py)
+  ⎿  Added 1 line
+       6  from flopy4.mf6._types import _optional_path
+       7  from flopy4.mf6.gwf.disbase import DisBase
+       8  from flopy4.mf6.schema import Column, Schema
+       9 +from flopy4.mf6.spec import field, path                        
+      10  from flopy4.mf6.utils.grid import VertexGrid
+      11  from flopy4.mf6.utl.ncf import Ncf
+      12  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/gwt/dis.py)
+  ⎿  Added 1 line
+       5  from numpy.typing import NDArray
+       6  from flopy4.mf6._types import _optional_path
+       7  from flopy4.mf6.gwf.disbase import DisBase
+       8 +from flopy4.mf6.spec import field, path                        
+       9  from flopy4.mf6.utils.grid import StructuredGrid
+      10  from flopy4.mf6.utl.ncf import Ncf
+      11  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/gwt/disv.py)
+  ⎿  Added 1 line
+       6  from flopy4.mf6._types import _optional_path
+       7  from flopy4.mf6.gwf.disbase import DisBase
+       8  from flopy4.mf6.schema import Column, Schema
+       9 +from flopy4.mf6.spec import field, path                        
+      10  from flopy4.mf6.utils.grid import VertexGrid
+      11  from flopy4.mf6.utl.ncf import Ncf
+      12  
+
+⏺ Now the field-only files: prt/dis.py, prt/disv.py, tdis.py, utl/ncf.py.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/prt/dis.py)
+  ⎿  Added 1 line
+      3  import numpy as np
+      4  from numpy.typing import NDArray
+      5  from flopy4.mf6.gwf.disbase import DisBase
+      6 +from flopy4.mf6.spec import field                               
+      7  from flopy4.mf6.utils.grid import StructuredGrid
+      8  
+      9  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/prt/disv.py)
+  ⎿  Added 1 line
+       4  from numpy.typing import NDArray
+       5  from flopy4.mf6.gwf.disbase import DisBase
+       6  from flopy4.mf6.schema import Column, Schema
+       7 +from flopy4.mf6.spec import field                              
+       8  from flopy4.mf6.utils.grid import VertexGrid
+       9  
+      10  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/tdis.py)
+  ⎿  Added 1 line
+       5  from numpy.typing import ArrayLike, NDArray
+       6  from flopy4.mf6.package import Package
+       7  from flopy4.mf6.schema import Column, Schema
+       8 +from flopy4.mf6.spec import field                              
+       9  from flopy4.mf6.utils.time import Time
+      10  
+      11  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utl/ncf.py)
+  ⎿  Added 1 line
+       5  from numpy.typing import NDArray
+       6  from flopy4.mf6.enums import NetCDFFormat
+       7  from flopy4.mf6.package import Package
+       8 +from flopy4.mf6.spec import field                              
+       9  
+      10  
+      11  @attrs.define(kw_only=True, slots=False)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/gwf/disbase.py)
+  ⎿  Added 1 line, removed 1 line
+      36          ncpl = dims.get("ncpl", 0)
+      37          nlay = dims.get("nlay", 1)
+      38          for f in fields:
+      39 -            if f.metadata.get("dfn_block") != "griddata":      
+      39 +            if f.metadata.get("block") != "griddata":          
+      40                  continue
+      41              val = self.__dict__.get(f.name)
+      42              if val is None:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ All 11 hand-maintained files import cleanly. Marking task #3 done and moving
+  to the runtime infra fixes (tasks #4/#5).
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Exactly the 6 infra files. Let's tackle package.py first since it's central
+  (task #5's __attrs_post_init__ collapse + dead-code cleanup).
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/package.py)
+  ⎿  Added 4 lines, removed 2 lines
+      37          """
+      38          import attrs as _attrs
+      39  
+      40 -        # Detect codegen v2 by presence of 'dfn_block' in any f
+         -ield metadata.                                                 
+      40 +        # Detect schema-driven (codegen v2 style) fields by pre
+         +sence of 'block'                                               
+      41 +        # in field metadata. Package subclasses with no such fi
+         +elds (rare) just                                               
+      42 +        # no-op through the rest of this method.               
+      43          try:
+      44              fields = _attrs.fields(type(self))  # type: ignore[
+          arg-type]
+      45          except _attrs.exceptions.NotAnAttrsClassError:
+      46              return
+      45 -        if not any(f.metadata.get("dfn_block") is not None for 
+         -f in fields):                                                  
+      47 +        if not any(f.metadata.get("block") is not None for f in
+         + fields):                                                      
+      48              return
+      49  
+      50          # 1. Fix xattree name registration.
+
+⏺ Now the remaining dfn_block occurrences in package.py:
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/package.py)
+  ⎿  Added 1 line, removed 1 line
+      298          blocks : bool
+      299              If True, return nested dict keyed by DFN block nam
+           e.
+      300          strict : bool
+      301 -            If True, only include fields with ``dfn_block`` me
+          -tadata.                                                       
+      301 +            If True, only include fields with ``block`` metada
+          +ta.                                                           
+      302          """
+      303          import attrs as _attrs
+      304  
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/component.py)
+  ⎿  Added 1 line, removed 1 line
+      233                      _fields = _attrs.fields(type(child))
+      234                  except _attrs.exceptions.NotAnAttrsClassError:
+      235                      continue
+      236 -                if not any(f.metadata.get("dfn_block") == "gri
+          -ddata" for f in _fields):                                     
+      236 +                if not any(f.metadata.get("block") == "griddat
+          +a" for f in _fields):                                         
+      237                      continue
+      238                  try:
+      239                      ds = child.to_xarray()
+
+⏺ Now adapters.py:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/adapters.py)
+  ⎿  Added 1 line, removed 1 line
+      264  
+      265          try:
+      266              for f in _attrs.fields(type(self._package)):
+      267 -                if f.metadata.get("dfn_block") == "period":   
+      267 +                if f.metadata.get("block") == "period":       
+      268                      attr_name = f.alias if (f.alias and f.name
+           .startswith("_")) else f.name
+      269                      if getattr(self._package, attr_name, None)
+            is not None:
+      270                          return True
+
+⏺ Now netcdf.py:
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/netcdf.py)
+  ⎿  Added 1 line, removed 1 line
+      109                  self.dims = normalized
+      110                  self.metadata = {
+      111                      "longname": f.name,
+      112 -                    "block": f.metadata.get("dfn_block", ""), 
+      112 +                    "block": f.metadata.get("block", ""),     
+      113                      "netcdf": True,
+      114                  }
+      115  
+
+⏺ Update(flopy4/mf6/netcdf.py)
+  ⎿  Added 1 line, removed 1 line
+      114                  }
+      115  
+      116          def _include(f) -> bool:
+      117 -            block = f.metadata.get("dfn_block", "")           
+      117 +            block = f.metadata.get("block", "")               
+      118              if block == "griddata" and f.metadata.get("netcdf"
+           ):
+      119                  return True
+      120              if block == "period" and f.metadata.get("reader") 
+           == "readarray":
+
+  Searched for 8 patterns, read 3 files (ctrl+o to expand)
+
+⏺ Now let's rename the function and merge it in. First rewrite the function
+  signature/docstring and the internal dfn_block reads:
+
+⏺ Update(flopy4/mf6/converter/ingress/structure.py)
+  ⎿  Added 4 lines, removed 3 lines
+      356      return result
+      357  
+      358  
+      359 -def _structure_codegen_v2(raw: dict, cls: type, dims: dict | N
+          -one = None) -> Any:                                           
+      360 -    """Reconstruct a codegen v2 (attrs-based) component from r
+          -aw MF6 input.                                                 
+      359 +def structure_component(raw: dict, cls: type, *, dims: dict | 
+          +None = None) -> Any:                                          
+      360 +    """Reconstruct a component instance from a raw parsed MF6 
+          +input dict.                                                   
+      361  
+      362      Parameters
+      363      ----------
+      364      raw : dict
+      365          Output of ``loads()`` — {BLOCK_NAME_UPPER: list_of_tok
+           en_rows}.
+      366      cls : type
+      367 -        A codegen v2 package class (has attrs fields with 'dfn
+          -_block' metadata).                                            
+      367 +        The component class to instantiate. Fields are read vi
+          +a ``block``/                                                  
+      368 +        ``schema``/``oc_action`` metadata (see ``flopy4.mf6.sp
+          +ec.field``).                                                  
+      369      dims : dict, optional
+      370          Grid dimensions (e.g. {"nlay": 3, "nodes": 675}) used 
+           to resolve
+      371          GRIDDATA array shapes.  Required for packages with gri
+           ddata fields.
+
+⏺ Now remove the old structure_component wrapper/dispatch and dead branch at the
+  end of the file:
+
+  Read 1 file (ctrl+o to expand)
+⏺ Update(flopy4/mf6/converter/ingress/structure.py)
+  ⎿  Error editing file
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/converter/ingress/structure.py)
+  ⎿  Added 1 line, removed 1 line
+      554              gd_fields = {
+      555                  f.name: f
+      556                  for f in attrs.fields(cls)
+      557 -                if f.metadata.get("dfn_block") == "griddata" a
+          -nd f.init is not False                                        
+      557 +                if f.metadata.get("block") == "griddata" and f
+          +.init is not False                                            
+      558              }
+      559              parsed = _parse_griddata_block(griddata_rows, gd_f
+           ields, dims)
+      560              kwargs.update(parsed)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ File is exactly 622 lines and the duplicate function starts at line 564. Let's
+  truncate the file to 562 lines.
+
+  Searched for 1 pattern, read 2 files, ran 1 shell command (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/converter/ingress/structure.py)
+  ⎿  Added 1 line, removed 1 line
+      403      period_field = None  # field for recarray stress_period_da
+           ta
+      404  
+      405      for f in attrs.fields(cls):
+      406 -        block = f.metadata.get("dfn_block", "")               
+      406 +        block = f.metadata.get("block", "")                   
+      407          schema_ref = f.metadata.get("schema")
+      408          oc_action = f.metadata.get("oc_action")
+      409  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/converter/ingress/structure.py)
+  ⎿  Added 1 line, removed 1 line
+      243              continue
+      244          key = str(row[0]).lower()
+      245          f = fields_by_name.get(key)
+      246 -        if f is None or f.metadata.get("dfn_block") != "gridda
+          -ta":                                                          
+      246 +        if f is None or f.metadata.get("block") != "griddata":
+      247              i += 1
+      248              continue
+      249  
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/converter/ingress/structure.py)
+  ⎿  Added 2 lines, removed 2 lines
+      520          else:
+      521              # ── Pass 3b: READARRAY period fields (G/A variant
+           s) ─────────────
+      522              # Packages like Rcha/Chdg store full-grid arrays p
+           er stress period.
+      523 -            # Each field has dfn_block="period" + reader="read
+          -array".                                                       
+      523 +            # Each field has block="period" + reader="readarra
+          +y".                                                           
+      524              ra_fields = {
+      525                  f.name: f
+      526                  for f in attrs.fields(cls)
+      527 -                if f.metadata.get("dfn_block") == "period"    
+      527 +                if f.metadata.get("block") == "period"        
+      528                  and f.metadata.get("reader") == "readarray"
+      529                  and f.init is not False
+      530              }
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/converter/egress/unstructure.py)
+  ⎿  Added 1 line, removed 11 lines
+      12  from flopy4.mf6.component import Component
+      13  from flopy4.mf6.constants import FILL_DNODATA
+      14  from flopy4.mf6.context import Context
+      15 +from flopy4.mf6.package import Package                         
+      16  from flopy4.mf6.spec import FileInOut, block_sort_key, blocks_d
+          ict
+      17  
+      18  
+      18 -def has_dfn_metadata(cls: type) -> bool:                       
+      19 -    """True if cls is a codegen v2 package (has attrs fields wi
+         -th 'dfn_block' metadata).                                      
+      20 -                                                               
+      21 -    Old xattree-based packages use 'block' as the metadata key;
+         - codegen v2 uses 'dfn_block'.                                  
+      22 -    This distinguishes Ic/Chd/Npf (codegen v2) from Dis/Gwf/Pac
+         -kage (xattree).                                                
+      23 -    """                                                        
+      24 -    if not attrs.has(cls):                                     
+      25 -        return False                                           
+      26 -    return any("dfn_block" in f.metadata for f in attrs.fields(
+         -cls))                                                          
+      27 -                                                               
+      28 -                                                               
+      19  def _path_to_tuple(name: str, value: Path, inout: FileInOut) ->
+           tuple[str, ...]:
+      20      for suffix in ("_input_file", "_filerecord", "_file"):
+      21          if name.endswith(suffix):
+
+⏺ Now update the unstructure_component dispatcher, the meta.get("dfn_block")
+  read, and the has_dfn_metadata call at the bottom:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/converter/egress/unstructure.py)
+  ⎿  Added 6 lines, removed 1 line
+      378  
+      379  
+      380  def unstructure_component(value: Component) -> dict[str, Any]:
+      381 -    if has_dfn_metadata(type(value)):                         
+      381 +    # Package (Npf, Chd, Dis, ...) and Context/Model (Simulati
+          +on, Gwf, ...) are                                             
+      382 +    # disjoint Component subclasses with different field-metad
+          +ata shapes: Package                                           
+      383 +    # leaves are plain attrs classes with schema/oc_action-dri
+          +ven block metadata,                                           
+      384 +    # while Context/Model classes are real @xattree trees. Dis
+          +patch on the class                                            
+      385 +    # hierarchy rather than sniffing field metadata.          
+      386 +    if isinstance(value, Package):                            
+      387          return _unstructure_codegen_v2(value)
+      388      return _unstructure_component(value)
+      389  
+
+⏺ Now fix the meta.get("dfn_block") read at line ~171 (now shifted a bit) and
+  the docstring at line ~152:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/converter/egress/unstructure.py)
+  ⎿  Added 1 line, removed 1 line
+      150  
+      151  
+      152  def _unstructure_codegen_v2(value: Any) -> dict[str, Any]:
+      153 -    """Unstructure a codegen v2 (attrs-based, non-xattree) Pac
+          -kage."""                                                      
+      153 +    """Unstructure a Package leaf (attrs-based, non-xattree; e
+          +.g. Npf, Chd, Dis)."""                                        
+      154      cls = type(value)
+      155      blocks: dict[str, dict[str, Any]] = {}
+      156      # Block names that must appear in output even when empty (
+           e.g. SSM SOURCES).
+
+⏺ Update(flopy4/mf6/converter/egress/unstructure.py)
+  ⎿  Added 1 line, removed 1 line
+      168  
+      169      for f in attrs.fields(cls):
+      170          meta = f.metadata
+      171 -        block_name = meta.get("dfn_block")                    
+      171 +        block_name = meta.get("block")                        
+      172          if not block_name:
+      173              continue
+      174  
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+⏺ Update(flopy4/mf6/component.py)
+  ⎿  Added 4 lines, removed 4 lines
+      80          (like CHD, DRN, etc.) will have it automatically comput
+          ed at
+      81          initialization and updated when period arrays change.
+      82          """
+      83 -        # Codegen v2 packages compute maxbound in Package.__att
+         -rs_post_init__                                                 
+      84 -        # via _init_period_dtype; skip the xattree metadata sca
+         -n.                                                             
+      85 -        from flopy4.mf6.converter.egress.unstructure import has
+         -_dfn_metadata                                                  
+      83 +        # Package leaves compute maxbound in Package.__attrs_po
+         +st_init__ via                                                  
+      84 +        # _init_period_dtype; skip the xattree metadata scan fo
+         +r them.                                                        
+      85 +        from flopy4.mf6.package import Package                 
+      86  
+      87 -        if has_dfn_metadata(type(self)):                       
+      87 +        if isinstance(self, Package):                          
+      88              return
+      89  
+      90          # Check if component has a maxbound field and period bl
+          ock arrays
+
+⏺ Let's verify no more stray references and confirm the import works (checking
+  for actual circularity at runtime, not just AST parse):
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ No more references, no circular import issues. Let's mark tasks #4/#5 done and
+  run the mf6 test suite to catch regressions.
+
+  Searched for 2 patterns, read 1 file, ran 4 shell commands (ctrl+o to expand)
+
+⏺ I found a serious bug in my own fix. Let me explain and correct it.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/spec.py)
+  ⎿  Added 4 lines, removed 17 lines
+       3  These include field decorators and introspection functions.
+       4  """
+       5  
+       6 -import attrs                                                   
+       6  import numpy as np
+       7  from attrs import NOTHING, Attribute
+       8  from xattree import array as xattree_array
+       9  from xattree import coord as xattree_coord
+      10  from xattree import dim as xattree_dim
+      11 +from xattree import field as xattree_field                     
+      12  from xattree import fields_dict as xattree_fields_dict
+      13  
+      14  
+     ...
+      23      on_setattr=None,
+      24      alias: str | None = None,
+      25  ):
+      26 -    """Define a field.                                         
+      27 -                                                               
+      28 -    Builds the `attrs.field()` call directly rather than delega
+         -ting to                                                        
+      29 -    `xattree.field()`, which never forwards `converter`/`valida
+         -tor` to attrs                                                  
+      30 -    itself — it stashes them in `metadata["xattree"]` for a `fi
+         -eld_transformer`                                               
+      31 -    that only runs inside `@xattree`-decorated classes to reatt
+         -ach. Plain attrs                                               
+      32 -    classes (e.g. codegen-v2 packages) would silently lose the 
+         -converter. The                                                 
+      33 -    same `metadata["xattree"]` shape is still stamped so `@xatt
+         -ree` classes'                                                  
+      34 -    introspection (`get_xatspec()`, etc.) keeps working unchang
+         -ed.                                                            
+      35 -    """                                                        
+      36 -    metadata = dict(metadata or {})                            
+      37 -    metadata["xattree"] = {"kind": "attr", "converter": convert
+         -er, "validator": validator}                                    
+      38 -    return attrs.field(                                        
+      26 +    """Define a field."""                                      
+      27 +    return xattree_field(                                      
+      28          default=default,
+      29          validator=validator,
+      30          converter=converter,
+      31          repr=repr,
+      32          eq=eq,
+      44 -        order=False,                                           
+      45 -        hash=True,                                             
+      33          init=init,
+      47 -        on_setattr=on_setattr,                                 
+      34          metadata=metadata,
+      35 +        on_setattr=on_setattr,                                 
+      36          alias=alias,
+      37      )
+      38  
+
+⏺ Update(flopy4/spec.py)
+  ⎿  Removed 2 lines
+      21      init=True,
+      22      metadata=None,
+      23      on_setattr=None,
+      24 -    alias: str | None = None,                                  
+      24  ):
+      25      """Define a field."""
+      26      return xattree_field(
+     ...
+      32          init=init,
+      33          metadata=metadata,
+      34          on_setattr=on_setattr,
+      36 -        alias=alias,                                           
+      35      )
+      36  
+      37  
+
+⏺ flopy4/spec.py is now byte-for-byte the original. Now rework
+  flopy4/mf6/spec.py's field()/path() to build a plain (non-xattree) attrs field
+  whenever any codegen-v2-only kwarg is used.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/spec.py)
+  ⎿  Added 43 lines, removed 23 lines
+       9  from pathlib import Path
+      10  from typing import Literal, Union, get_args, get_origin
+      11  
+      12 +import attrs                                                   
+      13  import numpy as np
+      14  from attrs import NOTHING, Attribute
+      15  from modflow_devtools.dfn.schema import Field, FieldType
+     ...
+      20  from flopy4.spec import field as flopy_field
+      21  from flopy4.spec import fields_dict as flopy_fields_dict
+      22  
+      23 +# Keys unique to codegen-v2 recarray/period-block fields. Their
+         + presence marks                                                
+      24 +# a field() call as "plain" (see field()/path() below).        
+      25 +_CODEGEN_V2_ONLY_KEYS = (                                      
+      26 +    "dfn_type",                                                
+      27 +    "shape",                                                   
+      28 +    "layered",                                                 
+      29 +    "optional",                                                
+      30 +    "schema",                                                  
+      31 +    "always_emit",                                             
+      32 +    "auto_from",                                               
+      33 +    "fill_forward",                                            
+      34 +    "reader",                                                  
+      35 +    "oc_action",                                               
+      36 +    "oc_rtype",                                                
+      37 +    "time_series",                                             
+      38 +)                                                              
+      39  
+      40 +                                                               
+      41  def field(
+      42      default=NOTHING,
+      43      validator=None,
+     ...
+      68  
+      69      The ``dfn_type``/``shape``/``layered``/``optional``/``schem
+          a``/``always_emit``/
+      70      ``auto_from``/``fill_forward``/``reader``/``oc_action``/``o
+          c_rtype``/``time_series``
+      53 -    keys describe codegen-v2 recarray/period-block fields, whic
+         -h are plain attrs                                              
+      54 -    fields (not real xattree ``array()``/``dim()``) since codeg
+         -en-v2 packages are                                             
+      55 -    not ``@xattree``-decorated. They carry no dims/coord semant
+         -ics of their own.                                              
+      71 +    kwargs describe codegen-v2 recarray/period-block fields. Co
+         +degen-v2 packages                                              
+      72 +    are plain attrs classes, not ``@xattree``-decorated, so a f
+         +ield carrying any                                              
+      73 +    of these builds a plain ``attrs.field()`` instead of going 
+         +through                                                        
+      74 +    ``xattree.field()`` — the latter only registers a field wit
+         +h xattree's                                                    
+      75 +    tree/xatspec machinery when the *enclosing class* is itself
+         + ``@xattree``-                                                 
+      76 +    decorated, and stashing its marker metadata on a non-decora
+         +ted class's                                                    
+      77 +    field is actively harmful: ``_get_xatspec()`` recomputes fr
+         +om                                                             
+      78 +    ``attrs.fields(cls)`` for whatever class is asked about, so
+         + it would treat                                                
+      79 +    the field as real xattree state and start moving it in/out 
+         +of a DataTree                                                  
+      80 +    that doesn't otherwise track it, corrupting ``Package``'s p
+         +lain                                                           
+      81 +    ``__dict__``-based field storage.                          
+      82      """
+      57 -    if any(                                                    
+      58 -        v                                                      
+      59 -        for v in (                                             
+      60 -            block,                                             
+      61 -            longname,                                          
+      62 -            dfn_type,                                          
+      63 -            shape,                                             
+      64 -            layered,                                           
+      65 -            optional,                                          
+      66 -            netcdf,                                            
+      67 -            schema,                                            
+      68 -            always_emit,                                       
+      69 -            auto_from,                                         
+      70 -            fill_forward,                                      
+      71 -            reader,                                            
+      72 -            oc_action,                                         
+      73 -            oc_rtype,                                          
+      74 -            time_series,                                       
+      75 -        )                                                      
+      76 -    ):                                                         
+      83 +    plain = any((dfn_type, shape, layered, optional, schema, al
+         +ways_emit, auto_from, fill_forward, reader, oc_action, oc_rtype
+         +, time_series))                                                
+      84 +    if block or longname or plain:                             
+      85          metadata = metadata or {}
+      86          if block:
+      87              metadata["block"] = block
+     ...
+      113              metadata["oc_rtype"] = oc_rtype
+      114          if time_series:
+      115              metadata["time_series"] = True
+      116 +    if plain:                                                 
+      117 +        return attrs.field(                                   
+      118 +            default=default,                                  
+      119 +            validator=validator,                              
+      120 +            converter=converter,                              
+      121 +            repr=repr,                                        
+      122 +            eq=eq,                                            
+      123 +            init=init,                                        
+      124 +            on_setattr=on_setattr,                            
+      125 +            metadata=metadata,                                
+      126 +            alias=alias,                                      
+      127 +        )                                                     
+      128      return flopy_field(
+      129          default=default,
+      130          validator=validator,
+
+⏺ Update(flopy4/mf6/spec.py)
+  ⎿  Removed 1 line
+      134          init=init,
+      135          on_setattr=on_setattr,
+      136          metadata=metadata,
+      137 -        alias=alias,                                          
+      137      )
+      138  
+      139  
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/spec.py)
+  ⎿  Added 18 lines, removed 2 lines
+      155      dfn_type: str | None = None,
+      156      optional: bool = False,
+      157  ):
+      158 -    """Define a path field."""                                
+      159 -    if block or inout or longname or dfn_type or optional:    
+      158 +    """Define a path field.                                   
+      159 +                                                              
+      160 +    See ``field()`` for why ``dfn_type``/``optional`` force a 
+          +plain (non-xattree)                                           
+      161 +    attrs field: they only ever appear on codegen-v2 (non-``@x
+          +attree``) classes.                                            
+      162 +    """                                                       
+      163 +    plain = bool(dfn_type or optional)                        
+      164 +    if block or inout or longname or plain:                   
+      165          metadata = metadata or {}
+      166          if block:
+      167              metadata["block"] = block
+     ...
+      173              metadata["dfn_type"] = dfn_type
+      174          if optional:
+      175              metadata["optional"] = True
+      176 +    if plain:                                                 
+      177 +        return attrs.field(                                   
+      178 +            default=default,                                  
+      179 +            validator=validator,                              
+      180 +            converter=converter,                              
+      181 +            repr=repr,                                        
+      182 +            eq=eq,                                            
+      183 +            init=init,                                        
+      184 +            on_setattr=on_setattr,                            
+      185 +            metadata=metadata,                                
+      186 +        )                                                     
+      187      return flopy_field(
+      188          default=default,
+      189          validator=validator,
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Fixed. Let's rerun the full test suite.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Down to 4 real regressions (all netcdf-related), rest match the pre-existing
+  "mf6 binary not found" baseline. Let's debug them.
+
+  Searched for 2 patterns, read 2 files, ran 5 shell commands (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/spec.py)
+  ⎿  Added 1 line, removed 1 line
+      52      longname: str | None = None,
+      53      dfn_type: str | None = None,
+      54      shape: tuple[str, ...] | None = None,
+      55 -    layered: bool = False,                                     
+      55 +    layered: bool | None = None,                               
+      56      optional: bool = False,
+      57      netcdf: bool | None = None,
+      58      schema: str | None = None,
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/spec.py)
+  ⎿  Added 20 lines, removed 3 lines
+       80      that doesn't otherwise track it, corrupting ``Package``'s 
+           plain
+       81      ``__dict__``-based field storage.
+       82      """
+       83 -    plain = any((dfn_type, shape, layered, optional, schema, a
+          -lways_emit, auto_from, fill_forward, reader, oc_action, oc_rty
+          -pe, time_series))                                             
+       83 +    plain = any(                                              
+       84 +        (                                                     
+       85 +            dfn_type,                                         
+       86 +            shape,                                            
+       87 +            layered is not None,                              
+       88 +            optional,                                         
+       89 +            schema,                                           
+       90 +            always_emit,                                      
+       91 +            auto_from,                                        
+       92 +            fill_forward,                                     
+       93 +            reader,                                           
+       94 +            oc_action,                                        
+       95 +            oc_rtype,                                         
+       96 +            time_series,                                      
+       97 +        )                                                     
+       98 +    )                                                         
+       99      if block or longname or plain:
+      100          metadata = metadata or {}
+      101          if block:
+     ...
+      106              metadata["dfn_type"] = dfn_type
+      107          if shape:
+      108              metadata["shape"] = shape
+       94 -        if layered:                                           
+       95 -            metadata["layered"] = True                        
+      109 +        if layered is not None:                               
+      110 +            # Explicit False must round-trip: some consumers (
+          +netcdf.py) default                                            
+      111 +            # a *missing* key to True, so omitting a deliberat
+          +e False would flip it.                                        
+      112 +            metadata["layered"] = layered                     
+      113          if optional:
+      114              metadata["optional"] = True
+      115          if netcdf:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ I have an unused constant since I inlined the check. Let me remove it to avoid
+  dead code.
+
+⏺ Update(flopy4/mf6/spec.py)
+  ⎿  Removed 18 lines
+      20  from flopy4.spec import field as flopy_field
+      21  from flopy4.spec import fields_dict as flopy_fields_dict
+      22  
+      23 -# Keys unique to codegen-v2 recarray/period-block fields. Their
+         - presence marks                                                
+      24 -# a field() call as "plain" (see field()/path() below).        
+      25 -_CODEGEN_V2_ONLY_KEYS = (                                      
+      26 -    "dfn_type",                                                
+      27 -    "shape",                                                   
+      28 -    "layered",                                                 
+      29 -    "optional",                                                
+      30 -    "schema",                                                  
+      31 -    "always_emit",                                             
+      32 -    "auto_from",                                               
+      33 -    "fill_forward",                                            
+      34 -    "reader",                                                  
+      35 -    "oc_action",                                               
+      36 -    "oc_rtype",                                                
+      37 -    "time_series",                                             
+      38 -)                                                              
+      39 -                                                               
+      40 -                                                               
+      23  def field(
+      24      default=NOTHING,
+      25      validator=None,
+
+⏺ Now let's rerun the 4 regressed tests plus the full suite.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ All 4 previously-regressed tests now pass. Let's run the full suite once more
+  to confirm we're back to baseline.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Exactly matches the pre-existing baseline: 708 passed, 25 failed (all mf6
+  binary missing), 12 errors (same), 6 skipped, 1 xfailed. No regressions. Let's
+  mark task #7 done and move to task #8 (re-apply the chunks= removal).
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now let's check who else references chunks= on Package.load() (tests, docs)
+  before removing it.
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now let's remove the chunks= parameter and its dask-wrapping logic from
+  Package.load():
+
+⏺ Update(flopy4/mf6/package.py)
+  ⎿  Removed 43 lines
+      215          cls,
+      216          path: Path,
+      217          dims: "dict[str, int] | None" = None,
+      218 -        chunks: "int | str | None" = None,                    
+      218      ):
+      219          """Load from an MF6 text input file.
+      220  
+     ...
+      227              e.g. ``{"nlay": 3, "nodes": 900}``.  Required for 
+           griddata
+      228              packages (NPF, IC, STO, etc.); may be omitted for 
+           list-input
+      229              packages (WEL, DRN, etc.).
+      231 -        chunks :                                              
+      232 -            None   → eager numpy arrays.                      
+      233 -            "auto" → one dask chunk per layer (griddata packag
+          -es only).                                                     
+      234 -            int    → approximate chunk size in elements.      
+      230          """
+      231          from flopy4.mf6.codec.reader import load as _codec_loa
+           d
+      232          from flopy4.mf6.converter.ingress.structure import str
+           ucture_component
+     ...
+      240          if dims:
+      241              _pkg._dimension_cache.update(dims)
+      242  
+      248 -        if chunks is not None:                                
+      249 -            try:                                              
+      250 -                import dask.array as _da                      
+      251 -            except ImportError:                               
+      252 -                raise ImportError(                            
+      253 -                    "dask is required for chunked loading; ins
+          -tall with 'pip install dask[array]'"                          
+      254 -                ) from None                                   
+      255 -            import attrs as _attrs                            
+      256 -                                                              
+      257 -            _nlay = (dims or {}).get("nlay", 1)               
+      258 -            _nodes = (dims or {}).get("nodes", _nlay)         
+      259 -            _ncpl = _nodes // _nlay if _nlay > 1 else _nodes  
+      260 -            _chunk_shape = (1, _ncpl) if chunks == "auto" else
+          - (max(1, int(chunks) // _ncpl), _ncpl)                        
+      261 -            for _fld in _attrs.fields(cls):  # type: ignore[ar
+          -g-type]                                                       
+      262 -                if _fld.metadata.get("block") != "griddata":  
+      263 -                    continue                                  
+      264 -                _arr = getattr(_pkg, _fld.name)               
+      265 -                if _arr is None or not isinstance(_arr, np.nda
+          -rray):                                                        
+      266 -                    continue                                  
+      267 -                setattr(                                      
+      268 -                    _pkg,                                     
+      269 -                    _fld.name,                                
+      270 -                    _da.from_array(_arr.reshape(_nlay, _ncpl),
+          - chunks=_chunk_shape).reshape(-1),                            
+      271 -                )                                             
+      272 -                                                              
+      273 -            # READARRAY period fields (G/A variants: Rcha, Chd
+          -g, etc.)                                                      
+      274 -            # Shape is (nper, ncpl) for non-layered or (nper, 
+          -nlay, ncpl) for layered.                                      
+      275 -            # Chunk 1 period at a time along the first axis.  
+      276 -            for _fld in _attrs.fields(cls):  # type: ignore[ar
+          -g-type]                                                       
+      277 -                if _fld.metadata.get("block") != "period":    
+      278 -                    continue                                  
+      279 -                if _fld.metadata.get("reader") != "readarray":
+      280 -                    continue                                  
+      281 -                _arr = getattr(_pkg, _fld.name)               
+      282 -                if _arr is None or not isinstance(_arr, np.nda
+          -rray):                                                        
+      283 -                    continue                                  
+      284 -                setattr(_pkg, _fld.name, _da.from_array(_arr, 
+          -chunks=(1,) + _arr.shape[1:]))                                
+      285 -                                                              
+      243          return _pkg
+      244  
+      245      def default_filename(self) -> str:
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+⏺ Write(test/test_package_load.py)
+  ⎿  Wrote 239 lines to test/test_package_load.py
+       1 """Tests for eager loading of codegen v2 packages via ``Package.
+         load(path, dims)``.
+       3 ``dims_from_grb(grb_path)`` resolves grid dimensions from a bina
+         ry grid file
+       4 so any package can be loaded without manually constructing the d
+       5 """
+       6 
+       7 import textwrap
+       9 
+      10 import numpy as np
+     … +259 lines (ctrl+o to expand)
+
+⏺ Now delete the old test_chunked.py:
+
+  Searched for 1 pattern, read 2 files, ran 5 shell commands (ctrl+o to expand)
+
+⏺ Let's remove just the load-time chunks= variant while keeping the write-path
+  dask-streaming benchmarks (a separate, still-valid feature).
+
+⏺ Update(docs/profile/chunked_profile.py)
+  ⎿  Removed 3 lines
+       6  streaming benefit: the codec writer's array2chunks iterates das
+          k blocks one
+       7  layer at a time, never materializing the full array simultaneou
+          sly.
+       8  
+       9 -Also profiles text-format load to confirm dask wrapping adds ze
+         -ro overhead.                                                   
+      10 -                                                               
+       9  Variants
+      10  --------
+      11  **Write (user-constructed arrays):**
+     ...
+      14  
+      15  **Load from text file:**
+      16    npf  load (eager)          Package.load(path, dims)
+      19 -  npf  load (chunked)        Package.load(path, dims, chunks="a
+         -uto")                                                          
+      17  
+      18  **xarray views:**
+      19    npf  to_xarray (numpy)     npf.to_xarray() on numpy-backed pa
+          ckage
+
+⏺ Update(docs/profile/chunked_profile.py)
+  ⎿  Added 2 lines, removed 14 lines
+      124          )
+      125      )
+      126  
+      127 -    # ── Load from text (confirms zero dask overhead) ────────
+          -──────────────────                                            
+      127 +    # ── Load from text ──────────────────────────────────────
+          +────────────────                                              
+      128      print(f"\n{'─' * 60}")
+      129 -    print("Load from text file (Lark parser dominates — confir
+          -ms zero dask overhead)")                                      
+      129 +    print("Load from text file")                              
+      130      print(f"{'─' * 60}")
+      131  
+      132      # Write a text file to load from
+     ...
+      144          )
+      145      )
+      146  
+      147 -    timing_results.append(                                    
+      148 -        report(                                               
+      149 -            "npf  load (chunked)",                            
+      150 -            time_reads(                                       
+      151 -                lambda: Npf.load(npf_path, dims=dims, chunks="
+          -auto"),                                                       
+      152 -                N,                                            
+      153 -                "load chunked",                               
+      154 -                include_slow,                                 
+      155 -            ),                                                
+      156 -        )                                                     
+      157 -    )                                                         
+      158 -                                                              
+      147      sections.append({"name": "chunked-profile", "results": tim
+           ing_results})
+      148  
+      149      # ── Memory profiling ────────────────────────────────────
+           ──────────────────
+
+⏺ Update(docs/profile/chunked_profile.py)
+  ⎿  Removed 5 lines
+      167          mem_results.append(
+      168              profile_memory(lambda: Npf.load(npf_path, dims=dim
+           s), "npf  load (eager)")
+      169          )
+      170 -        mem_results.append(                                   
+      171 -            profile_memory(                                   
+      172 -                lambda: Npf.load(npf_path, dims=dims, chunks="
+          -auto"), "npf  load (chunked)"                                 
+      173 -            )                                                 
+      174 -        )                                                     
+      170          sections.append({"name": "chunked-profile-memory", "re
+           sults": mem_results})
+      171  
+      172      if args.output:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Works correctly. Now let's update test_profile_scripts.py and run_all.py
+  references:
+
+  Searched for 2 patterns, read 1 file, ran 2 shell commands (ctrl+o to expand)
+⏺ All 8 Phase 0 tasks complete, tests match baseline. Let's run ruff/lint checks
+  across everything touched to catch any leftover issues.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Now fix the make.py long line and ncf.py long warning strings.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utils/codegen/make.py)
+  ⎿  Added 3 lines, removed 1 line
+      1009      _has_griddata = any(
+      1010          f.get("block") == "griddata" and filters.is_array(f) 
+            for f in generatable_field_objects
+      1011      )
+      1012 -    _has_field_call = any(fs.generatable and fs.spec_call.sta
+           -rtswith("field(") for fs in field_specs)                     
+      1012 +    _has_field_call = any(                                   
+      1013 +        fs.generatable and fs.spec_call.startswith("field(") 
+           +for fs in field_specs                                        
+      1014 +    )                                                        
+      1015      _has_path_call = any(fs.generatable and fs.spec_call.star
+            tswith("path(") for fs in field_specs)
+      1016      imports = _new_codegen_imports(
+      1017          generatable_field_objects,
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(flopy4/mf6/utl/ncf.py)
+  ⎿  Added 2 lines, removed 1 line
+      71              lats, lons = grid.latlon()
+      72              if lats is None:
+      73                  warn(
+      74 -                    "Grid has no CRS or latlon() failed; Ncf wi
+         -ll have no lat/lon. Set grid.crs before calling Ncf.from_grid()
+         -.",                                                            
+      74 +                    "Grid has no CRS or latlon() failed; Ncf wi
+         +ll have no lat/lon. "                                          
+      75 +                    "Set grid.crs before calling Ncf.from_grid(
+         +).",                                                           
+      76                      UserWarning,
+      77                      stacklevel=2,
+      78                  )
+
+⏺ Update(flopy4/mf6/utl/ncf.py)
+  ⎿  Added 2 lines, removed 1 line
+      83  
+      84          if grid.crs is None:
+      85              warn(
+      86 -                "Grid has no CRS; Ncf will have no WKT. Set gri
+         -d.crs before calling Ncf.from_grid().",                        
+      86 +                "Grid has no CRS; Ncf will have no WKT. "      
+      87 +                "Set grid.crs before calling Ncf.from_grid().",
+      88                  UserWarning,
+      89                  stacklevel=2,
+      90              )
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Clean. Let's run the full test suite one final time to confirm everything
+  still matches baseline after these lint fixes.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ Phase 0 is complete. Summary:
+
+  What changed (in worktree phase0-codegen-metadata, branch
+  worktree-phase0-codegen-metadata, nothing committed yet):
+
+  1. flopy4/mf6/spec.py: extended field()/path() with the codegen-v2 metadata
+  vocabulary (dfn_type, shape, layered, optional, schema, always_emit,
+  auto_from, fill_forward, reader, oc_action, oc_rtype, time_series). When any
+  of these are used, the field is built as a plain attrs.field() rather than
+  routed through real xattree.field() — necessary because codegen-v2 packages
+  aren't @xattree-decorated, and I found stamping xattree's marker metadata on
+  their fields corrupts _get_xatspec(), silently breaking Package's
+  __dict__-based storage (caught via full-suite regression, fixed).
+  2. Codegen (filters.py, make.py, generator now emits field(block=..., 
+  ...)/path(...) calls instead of raw attrs.field(metadata={"dfn_block": ...}).
+  Regenerated all 64 auto-generated packages via pixi run generate-classes.
+  3. 11 hand-maintained files the generator skips (dis/disv/disbase/tdis/ncf
+  across model families) — fixed via an AST codemod + ruff format, since they'd
+  been hand-written in the old dfn_block style too (wider than the plan's
+  original estimate).
+  4. Structuring (converter/ingress/structure.py): merged _structure_codegen_v2
+  into the sole structure_component() — the old scalar-only branch was dead code
+  (never reached; Component.load()/Context.load() don't call it).
+  5. Unstructuring (converter/egress/unstructure.py) and package.py: replaced
+  has_dfn_metadata()'s key-sniffing with a clean isinstance(value, Package)
+  dispatch.
+  6. Package.load(): removed the chunks= parameter and its dask-wrapping logic
+  per the plan's background item; trimmed test/test_chunked.py down to
+  test/test_package_load.py (eager-load coverage only), and adjusted
+  docs/profile/chunked_profile.py to drop the now-invalid chunked-load benchmark
+  while keeping the still-valid write-streaming ones.
+
+  Verification: full test suite matches the pre-Phase-0 baseline exactly (688
+  passed vs. an adjusted baseline after intentionally removing ~20
+  chunks-specific tests; same 25 failures + 12 errors, all pre-existing "mf6
+  binary not found" environment gaps unrelated to this work). ruff check/format
+  clean.
+
+  The unrelated in-flight dimensions.py/test-reorg work is safely preserved on
+  chore/dimensions-and-test-reorg in the main checkout, untouched by this
+  worktree.
+
+  Ready for Phase 1 whenever you want to proceed — nothing is committed yet, so
+  let me know if you'd like a commit/PR for this first.
+
+✻ Worked for 37m 36s
