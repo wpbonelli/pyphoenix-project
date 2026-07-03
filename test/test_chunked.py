@@ -44,7 +44,7 @@ def npf_file(tmp_path) -> Path:
 
 @pytest.fixture()
 def npf_layered_file(tmp_path) -> Path:
-    """NPF file with LAYERED ICELLTYPE for a 3-layer 5×5 grid (75 nodes).
+    """NPF file with LAYERED ICELLTYPE for a 3-layer 5x5 grid (75 nodes).
 
     Uses the quickstart GRB (1 layer, 100 nodes) only for shape resolution
     in non-layered tests; layered tests write their own stub GRB via monkeypatch.

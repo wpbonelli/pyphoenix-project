@@ -1,0 +1,595 @@
+▗ ▗   ▖ ▖  Claude Code v2.1.119
+           Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~/dev/pyphoenix-project
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+❯ /compact                                                                      
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Read docs/dev/dfn_format_rules.md (198 lines)
+  ⎿  Read docs/dev/dfn-schema-plan.md (62 lines)
+  ⎿  Read ../../.claude/projects/-Users-wbonelli-dev-pyphoenix-project/memory/feedback_pixi_env.md (12 lines)
+  ⎿  Read docs/dev/dfn_refactor.md (102 lines)
+  ⎿  Read docs/dev/dfn_steps.md (40 lines)
+
+❯ Ok, please continue.                                                          
+
+⏺ Picking up where we left off — updating dfn_format_rules.md with the three
+  finalized decisions.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Good, file is unchanged. Making the three targeted edits now.
+
+⏺ Update(docs/dev/dfn_format_rules.md)
+  ⎿  Added 5 lines, removed 11 lines
+      62  
+      63  ---
+      64  
+      65 -## `preserve_case` — requires a `path` type decision           
+      65 +## `preserve_case` — drop in v2                                
+      66  
+      67 -`preserve_case=true` marks string fields where the parser must 
+         -not fold the value to uppercase. Two distinct categories exist 
+         -in the corpus:                                                 
+      67 +`preserve_case=true` marks string fields where the v1 parser mu
+         +st not fold the value to uppercase. Two categories exist in the
+         + corpus: file path fields (`in_record=true`) and verbatim strin
+         +g scalars (e.g. `crs`, `list`, `tdis6`).                       
+      68  
+      69 -**Category 1 — file path fields (in_record=true):** All file re
+         -ference strings inside records. Examples: `grb6_filename`, `ts6
+         -_filename`, `mfname`, `slnfname`, `exgfile`. Always `string` ty
+         -pe, `in_record=true`, `tagged=false`. These are file paths pass
+         -ed verbatim to the OS.                                         
+      69 +**Decision:** Adopt an always-preserve-case policy in v2. The v
+         +1 parser uppercases string values by default, which is an MF6-f
+         +ormat-specific behavior with no relevance to the Python data mo
+         +del. In v2, all string and path values are preserved as-is. `pr
+         +eserve_case` is therefore a no-op annotation in v2 and is dropp
+         +ed from the field schema entirely.                             
+      70  
+      71 -**Category 2 — verbatim string scalars (not in_record):** Top-l
+         -evel `string` fields in `options` or `timing` blocks where the 
+         -value must be preserved exactly. Examples: `crs` (coordinate re
+         -ference system string, e.g. `"epsg:26915"`), `list` (name list 
+         -file path), `tdis6` (TDIS file path).                          
+      71 +**`path` type:** A `path` type is retained in the v2 type syste
+         +m (as in `spec.py`'s `path()` decorator) for semantic reasons —
+         + to distinguish file-reference strings from generic strings — n
+         +ot for case handling. The `crs` field remains `string` type; no
+         + edge-case annotation is needed.                               
+      72  
+      73 -**Inference condition:** `preserve_case` is fully derivable if 
+         -the v2 type system distinguishes `path` from `string`. Under th
+         -at design:                                                     
+      74 -- `path` type → `preserve_case=true`                           
+      75 -- `string` type → `preserve_case=false`                        
+      73 +**In v2:** `preserve_case` is dropped. Path fields use type `pa
+         +th`.                                                           
+      74  
+      77 -The `crs` field is the only edge case: it is not strictly a fil
+         -e path but still requires case preservation. It could be typed 
+         -as `string` with explicit `preserve_case=true`, or the type sys
+         -tem could include a broader `verbatim_string` concept.         
+      78 -                                                               
+      79 -**Decision required:** If a `path` type is added to the v2 type
+         - system (already reflected in `spec.py`'s `path()` decorator), 
+         -`preserve_case` becomes fully derivable and can be dropped from
+         - the field schema, with `crs` handled as a known exception. Oth
+         -erwise, `preserve_case` must remain as an explicit field annota
+         -tion.                                                          
+      80 -                                                               
+      75  ---
+      76  
+      77  ## `time_series` — must be explicit
+
+⏺ Update(docs/dev/dfn_format_rules.md)
+  ⎿  Added 18 lines, removed 4 lines
+      125  
+      126  ---
+      127  
+      128 -## `numeric_index` — structural, must be explicit             
+      128 +## `numeric_index` → `index` — structural, must be explicit   
+      129  
+      130 -`numeric_index=true` marks integer fields that are 1-based ind
+          -ices in the MF6 input file and should be presented 0-based to 
+          -Python tools. It is not a format annotation — it affects the s
+          -emantic interpretation of the value and is relevant to both th
+          -e codec and to codegen.                                       
+      130 +`numeric_index=true` marks integer fields that carry 1-based i
+          +ndices in the MF6 input file and should be presented 0-based t
+          +o Python tools. It is a structural semantic annotation, not a 
+          +format annotation — it affects how values are interpreted by t
+          +he codec and codegen.                                         
+      131  
+      132 -Very common: appears in ~100 fields across all model types (co
+          -nnection arrays, vertex references, cell-to-cell links, packag
+          -e-specific index columns). Not inferrable from field type or p
+          -osition.                                                      
+      132 +Very common: appears in ~100 fields across all model types (co
+          +nnection arrays, vertex references, cell-to-cell links, packag
+          +e-specific index columns).                                    
+      133  
+      134 -**In v2:** `numeric_index: bool` on `ScalarFieldV2` (integer) 
+          -and in record/list item fields.                               
+      134 +**v2 design — primary key / foreign key semantics:**          
+      135  
+      136 +The v1 `numeric_index` annotation is replaced by two cooperati
+          +ng mechanisms:                                                
+      137 +                                                              
+      138 +1. **`ListFieldV2.key: str | None`** — names the column within
+          + a list's record type that serves as the primary key (a unique
+          +, 1-based row identifier). The named column must itself have `
+          +index=True` on its `ScalarFieldV2`. A Pydantic `model_validato
+          +r` enforces this consistency at schema load time. Example: `pa
+          +ckagedata` has `key="ifno"` where `ifno` is a 1-based feature 
+          +number.                                                       
+      139 +                                                              
+      140 +2. **`ScalarFieldV2.index: bool = False`** — marks an integer 
+          +scalar as a 1-based index. Set to `True` on PK columns (the co
+          +lumn named by `ListFieldV2.key`) and on FK columns that refere
+          +nce PKs in other lists (e.g. a connection table's `ifno` colum
+          +n referencing `packagedata.ifno`). The codec applies 0-based c
+          +onversion to all fields where `index=True`.                   
+      141 +                                                              
+      142 +This design makes primary/foreign key relationships first-clas
+          +s and explicit, replacing the flat `numeric_index` flag with a
+          + relational structure that can be validated and queried.      
+      143 +                                                              
+      144 +**`utl-obs` `id`/`id2` fields:** These accept either a boundar
+          +y name (string) or a cellid (integer, 1-based). In v2, they ar
+          +e modeled as `UnionFieldV2` with two arms: a `string` arm for 
+          +boundary names and an `integer` arm with `index=True` for cell
+          +id values. No special `numeric_index` annotation is needed.   
+      145 +                                                              
+      146 +**`block_variable` / `iper` fields:** The `iper` block label (
+          +e.g. `BEGIN PERIOD 5`) is a 1-based period number, but it is n
+          +ot a field in the block body — it is the key of a first-class 
+          +block repetition mechanism. It does not need an `index` annota
+          +tion; the block repetition model handles its semantics directl
+          +y.                                                            
+      147 +                                                              
+      148 +**In v2:** `index: bool = False` on `ScalarFieldV2` (integer).
+          + `key: str | None` on `ListFieldV2` with a `model_validator` t
+          +hat asserts the named column exists and has `index=True`.     
+      149 +                                                              
+      150  ---
+      151  
+      152  ## `valid` — structural, must be explicit
+
+⏺ Update(docs/dev/dfn_format_rules.md)
+  ⎿  Added 4 lines, removed 4 lines
+      115  
+      116  ---
+      117  
+      118 -## `jagged_array` — structural, must be explicit              
+      118 +## `jagged_array` — drop in v2                                
+      119  
+      120 -`jagged_array: str` marks READARRAY fields whose row lengths a
+          -re not uniform but are determined by a named counter field. Th
+          -e value is the name of the counter field (always `iac` in the 
+          -corpus). Only appears in DISU `connectiondata` blocks (15 occu
+          -rrences across `gwf-disu`, `gwe-disu`, `gwt-disu`).           
+      120 +`jagged_array: str` marks READARRAY fields whose row lengths v
+          +ary and are determined by a named counter array (`iac`). Appea
+          +rs only in DISU `connectiondata` blocks (15 occurrences across
+          + `gwf-disu`, `gwe-disu`, `gwt-disu`).                         
+      121  
+      122 -Despite being rare, this is a structural annotation: it descri
+          -bes the data shape, not just how data is read. The connection 
+          -data IS a ragged structure — the value of `jagged_array` is a 
+          -cross-reference to another field, analogous to how `shape` ref
+          -erences dimension variables.                                  
+      122 +**Decision:** Drop from the structural schema. The Fortran IDM
+          + (`InputParamDefinitionType` in `InputDefinition.f90`) has no 
+          +`jagged_array` field. In the MF6 Fortran parser, `ja` is read 
+          +as a plain flat 1D integer array of shape `NJA` — no ragedness
+          + is expressed at the parser level. The jagged presentation (co
+          +nverting a flat `ja` array into a variable-length list of neig
+          +hbor lists) is a Python data-presentation transform, not a str
+          +uctural property of the data. It belongs in the codec layer, n
+          +ot the schema.                                                
+      123  
+      124 -**In v2:** `jagged_array: str | None` on `ArrayFieldV2`. Prese
+          -nt only in READARRAY blocks.                                  
+      124 +**In v2:** `jagged_array` is dropped. The `connectiondata` arr
+          +ays remain `ArrayFieldV2` with shape `NJA`.                   
+      125  
+      126  ---
+      127  
+
+⏺ Now update the summary table:
+
+⏺ Update(docs/dev/dfn_format_rules.md)
+  ⎿  Added 3 lines, removed 3 lines
+      194  | v1 attribute | v2 fate | Reason |
+      195  |---|---|---|
+      196  | `tagged` | **derivable, drop** | Determined by block type + 
+           field type + position |
+      197 -| `preserve_case` | **derivable with `path` type; otherwise ex
+          -plicit** | All path fields inferrable if `path` type exists; `
+          -crs` is edge case |                                           
+      197 +| `preserve_case` | **drop** | Always-preserve-case policy; `p
+          +ath` type retained for semantics only |                       
+      198  | `time_series` | **explicit** (`ScalarFieldV2`, `ArrayFieldV2
+           `) | Not inferrable; many `double` fields lack it |
+      199  | `layered` | **explicit** (`ArrayFieldV2`) | Not inferrable f
+           rom shape alone |
+      200 -| `jagged_array` | **explicit** (`ArrayFieldV2`) | Structural 
+          -cross-reference; not inferrable |                             
+      201 -| `numeric_index` | **explicit** (`ScalarFieldV2` integer) | S
+          -tructural semantic annotation; not inferrable |               
+      200 +| `jagged_array` | **drop** | Not in Fortran IDM; `ja` is flat
+          + 1D array; jagged presentation is a Python codec concern |    
+      201 +| `numeric_index` | **replaced** → `ScalarFieldV2.index` + `Li
+          +stFieldV2.key` | PK/FK semantics; `model_validator` enforces k
+          +ey consistency |                                              
+      202  | `valid` | **explicit** (`ScalarFieldV2` string) | Structural
+            constraint; not inferrable |
+      203  | `repeating` | **explicit** | Not inferrable; behavior is fil
+           e-format-level |
+      204  | `just_data` | **drop** | Single occurrence; handled structur
+           ally |
+
+⏺ Let me do a final read to verify the document looks correct end-to-end:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ There's one stale reference remaining — the "Sub-case — jagged READARRAY" note
+   in the block-level rules section still describes jagged_array as a live
+  annotation. Let me clean that up:
+
+⏺ Update(docs/dev/dfn_format_rules.md)
+  ⎿  Added 1 line, removed 1 line
+      26  
+      27  **Examples:** `griddata`, DISU `connectiondata`, array-based `p
+          eriod` blocks in `gwf-rcha`, `gwf-evta`, and all `-g`/`-a` suff
+          ix packages.
+      28  
+      29 -**Sub-case — jagged READARRAY:** DISU `connectiondata` fields h
+         -ave `jagged_array: str` set, indicating that row lengths vary a
+         -nd are determined by the named counter array (`iac`). Input sty
+         -le is still READARRAY; the jagged annotation modifies how row b
+         -ounds are computed.                                            
+      29 +**Sub-case — DISU `connectiondata`:** These fields have variabl
+         +e-length rows determined by the `iac` counter array. In v1, thi
+         +s was annotated with `jagged_array: str`. In v2, `jagged_array`
+         + is dropped — the Fortran parser reads these as flat 1D arrays;
+         + the ragged structure is a Python codec concern. Input style fo
+         +r the block remains READARRAY.                                 
+      30  
+      31  ### 3. List/table block
+      32  
+
+⏺ dfn_format_rules.md is now fully up to date with all finalized decisions.
+  Here's a summary of what changed:
+
+  - preserve_case: Updated from "requires a path type decision" to "drop in v2"
+  — always-preserve-case policy; path type retained for semantics only.
+  - jagged_array: Updated from "explicit on ArrayFieldV2" to "drop" — not in
+  Fortran IDM, ja is flat 1D in the parser, jagged presentation belongs in the
+  codec.
+  - numeric_index: Replaced section with the full index + PK/FK design —
+  ScalarFieldV2.index: bool, ListFieldV2.key: str | None, Pydantic
+  model_validator, and the utl-obs UnionFieldV2 solution.
+  - Block-level sub-case note: Cleaned up the stale jagged_array reference.
+  - Summary table: All three rows updated.
+
+  The next open question you raised: unified cross-component reference semantics
+   — dimension sizes (nlay, nper defined in one component, referenced in shapes
+  by others) and index FK references (feature numbers across component
+  boundaries) — should we treat these with a single mechanism, and if so, what
+  does it look like?
+
+✻ Baked for 1m 19s
+
+※ recap: Formalizing the MODFLOW 6 DFN schema (v2), with a verified format inference ruleset now complete in dfn_format_rules.md. Next: decide whether dimension-size references and index FK references across components should share a unified cross-component reference mechanism.
+
+❯ Excellent. Your questions are exactly what I'm wondering about. Are there     
+  elegant ways of treating these with one mechanism? Or is that misguided,      
+  since they are different situations, they just share the cross-component      
+  reference characteristic? For that matter, we should probably explicitly      
+  indicate that field is a dimension in the specification, so we know for sure  
+  what array fields can validly reference, no?                                  
+
+⏺ Good question, and I think the answer is: partially unified conceptually, but
+  not mechanically — and for good reason.
+
+  The shared property
+
+  Both are "a value defined in component X, referenced by field metadata in
+  component Y." That's real, but it's about where the pointer lives, not what
+  the pointer does. When you look at what the reference means in each case, the
+  similarities end quickly:
+
+  ┌───────────┬──────────────────────────────────┬──────────────────────────┐
+  │           │       Dimension reference        │    FK/index reference    │
+  ├───────────┼──────────────────────────────────┼──────────────────────────┤
+  │ Target    │ scalar integer value             │ row identity in a list   │
+  ├───────────┼──────────────────────────────────┼──────────────────────────┤
+  │ Consumer  │ shape expression (constrains     │ column value (identifies │
+  │           │ array bounds)                    │  a row)                  │
+  ├───────────┼──────────────────────────────────┼──────────────────────────┤
+  │ Resolved  │ once, at component init          │ per-row, at data access  │
+  ├───────────┼──────────────────────────────────┼──────────────────────────┤
+  │ Validated │ array can be sized               │ row exists in referenced │
+  │           │                                  │  list                    │
+  └───────────┴──────────────────────────────────┴──────────────────────────┘
+
+  A unified mechanism would need a kind discriminator that branches into
+  entirely different code paths on both sides. That's abstraction that obscures
+  rather than clarifies. Keep them separate.
+
+  ---
+  Dimensions: yes, mark them explicitly
+
+  Your instinct is right. The shape grammar already references dimension
+  variables by name — nlay, nrow, ncpl, nja, etc. — but in v1 there's no
+  declaration that a given scalar field IS a valid dimension target. That
+  implicit contract should be made explicit in v2:
+
+  class ScalarFieldV2(FieldV2):
+      type: Literal["keyword", "integer", "double", "string", "path"]
+      dimension: bool = False   # True → may appear in shape expressions
+      index: bool = False       # True → 1-based, codec applies 0-based 
+  conversion
+      ...
+
+  This does several useful things:
+  - Shape expressions can be validated — a reference to a non-dimension field is
+   an error, a typo gets caught at schema load time
+  - Tooling knows which fields must be resolved before any array in the same (or
+   related) component can be sized
+  - Cross-component resolution logic has a well-defined set of candidates to
+  search
+
+  The fields that would get dimension=True are basically everything that appears
+   in any shape expression across the corpus: nlay, nrow, ncol, nper, nodes,
+  nja, nvert, ncpl, naux, and a handful of package-specific counters. These
+  cluster strongly in dimensions blocks, though some live in options (e.g.,
+  naux). The dimensions block name in v1 was a convention, not a constraint;
+  dimension: bool makes the constraint explicit.
+
+  maxbound would not get dimension=True — it's a formatting artifact being
+  dropped from the schema, and it shouldn't appear in any v2 shape expression.
+
+  ---
+  FK references: already handled by the index design
+
+  Most "FK" references in the corpus are within-component, cross-block (e.g.,
+  packagedata.ifno → period.ifno in the same stress package). The
+  ListFieldV2.key + ScalarFieldV2.index design covers those.
+
+  Truly cross-component integer FK references are actually rare. The cellid case
+   (an index into the grid's cell numbering) uses index=True and the grid is
+  always a known context — no explicit FK declaration is needed beyond the flag.
+   The utl-obs id/id2 cross-component reference is string-based (boundary
+  names), handled by the UnionFieldV2 design, so index doesn't apply there.
+
+  ---
+  What would a DfnSpec-level cross-component FK index add?
+
+  If you wanted to make cross-component FK relationships queryable (e.g., "which
+   lists reference packagedata.ifno from outside the component?"), you could add
+   a fk_edges: dict[str, list[str]] to DfnSpec analogous to the
+  fixed_edges/free_edges for component relationships. But this feels premature —
+   the corpus doesn't have enough cross-component integer FK cases to justify it
+   now. The index=True flag on both sides is sufficient for the codec, and a
+  graph can be derived from that if needed later.
+
+  ---
+  Summary recommendation
+
+  - Add dimension: bool = False to ScalarFieldV2 — makes dimension targets
+  explicit, enables shape validation, formalizes what has been an implicit
+  contract.
+  - Do not unify dimension and FK references mechanically — they're different
+  relationships that happen to cross component boundaries.
+  - Cross-component FK references at the DfnSpec level: defer; current corpus
+  doesn't warrant it.
+
+  Want to capture this in dfn_format_rules.md as a new section on the
+  shape/dimension system, or is this better suited for dfn_refactor.md?
+
+✻ Cogitated for 1m 14s
+
+❯ Excellent. I agree with your recommendations. Please add this to              
+  dfn_format_rules.md if you think that's the best place. I think               
+  dfn_refactor.md is a bit outdated now, is it not? Let's pick one and          
+  consolidate.                                                                  
+
+⏺ Let me re-read both documents to assess what's still live in dfn_refactor.md
+  before deciding what to keep.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ dfn_refactor.md has three layers of content:
+
+  1. Current code state (Field/FieldV1/FieldV2 descriptions) — readable from the
+   code, doesn't belong in a design doc
+  2. FormatSpec Options 1/2/3 — entirely superseded; we decided format is
+  co-located on type-specific subclasses, no separate FormatSpec
+  3. Two still-live questions: where does block live in v2, and where does
+  netcdf go
+
+  So the live residue is just those two questions. I'll resolve them, absorb
+  them into dfn_format_rules.md alongside the cross-component section, and
+  delete dfn_refactor.md. I'll also lightly update the intro to reflect the
+  document's widened scope.
+
+⏺ Update(docs/dev/dfn_format_rules.md)  ⎿  Added 1 line, removed 1 line
+      1  # DFN format inference rules
+      2  
+      3 -This document derives rules by which format behavior can be infe
+        -rred from or validated against a v2 structural schema. The goal 
+        -is to determine which format properties are fully derivable from
+        - structure (and need not be stored), which must remain as explic
+        -it annotations, and which pending type-system decisions determin
+        -e the answer.                                                   
+      3 +This document derives rules by which format behavior can be infe
+        +rred from or validated against a v2 structural schema, and recor
+        +ds structural annotation decisions that required corpus analysis
+        + to settle. The goal is to determine which format properties are
+        + fully derivable from structure (and need not be stored), which 
+        +must remain as explicit annotations, and which pending type-syst
+        +em decisions determine the answer.                              
+      4  
+      5  All rules were verified against the full DFN corpus in `modflow6
+         /doc/mf6io/mf6ivar/dfn/`.
+      6  
+
+⏺ Now add the cross-component references section before the summary table, and
+  update the table:
+
+⏺ Update(docs/dev/dfn_format_rules.md)
+  ⎿  Added 46 lines
+      189  
+      190  ---
+      191  
+      192 +## Cross-component references                                 
+      193 +                                                              
+      194 +Two distinct kinds of cross-component reference exist in the c
+          +orpus.                                                        
+      195 +                                                              
+      196 +### 1. Dimension references                                   
+      197 +                                                              
+      198 +A scalar integer field defined in one component is referenced 
+          +by name in the `shape` expression of an array field in the sam
+          +e or another component. Examples: `nlay`, `nrow`, `ncol` (grid
+          + packages), `nper` (`tdis`), `nodes`, `nja`, `nvert`, `ncpl`, 
+          +`naux`.                                                       
+      199 +                                                              
+      200 +**Decision:** Add `dimension: bool = False` to `ScalarFieldV2`
+          + (integer). Shape expressions may only reference `dimension=Tr
+          +ue` fields; a reference to any other field is a schema validat
+          +ion error. This makes explicit what was an implicit contract i
+          +n v1 and enables shape validation at schema load time.        
+      201 +                                                              
+      202 +Fields in `dimensions` blocks are the primary candidates, but 
+          +some `options` scalars also qualify (e.g., `naux`). `maxbound`
+          + does not — it is a formatting artifact dropped from the struc
+          +tural schema.                                                 
+      203 +                                                              
+      204 +### 2. Index/FK references                                    
+      205 +                                                              
+      206 +An integer column in one list identifies a row in another. Wit
+          +hin-component cross-block FKs are covered by `ListFieldV2.key`
+          + + `ScalarFieldV2.index`. Cross-component integer FKs are rare
+          + in the corpus; `index=True` on both the PK and FK columns is 
+          +sufficient for the codec. A `DfnSpec`-level FK edge index is d
+          +eferred.                                                      
+      207 +                                                              
+      208 +### Why not unify?                                            
+      209 +                                                              
+      210 +Both cross component boundaries but serve fundamentally differ
+          +ent purposes:                                                 
+      211 +                                                              
+      212 +| | Dimension reference | FK reference |                      
+      213 +|---|---|---|                                                 
+      214 +| Target | scalar value | row identity |                      
+      215 +| Consumer | shape expression (array bound) | column value (ro
+          +w lookup) |                                                   
+      216 +| Resolved | once, at component init | per-row, at data access
+          + |                                                            
+      217 +                                                              
+      218 +A unified mechanism requires a `kind` discriminator that immed
+          +iately branches into different code paths — abstraction withou
+          +t payoff.                                                     
+      219 +                                                              
+      220 +---                                                           
+      221 +                                                              
+      222 +## `block` — drop from field schema in v2                     
+      223 +                                                              
+      224 +In v1, `Field.block: str` places a field into a named block as
+          + an inline attribute. In v2, block membership is expressed str
+          +ucturally: fields are nested inside block objects in the schem
+          +a hierarchy, so `block` on a field is redundant. In the TOML s
+          +erialization format, block membership is expressed by table pa
+          +th (`[gwf-dis.griddata.botm]`), not an inline attribute.      
+      225 +                                                              
+      226 +**In v2:** `block` is dropped from the field schema. It is a l
+          +oader/serializer concern, not a field attribute.              
+      227 +                                                              
+      228 +---                                                           
+      229 +                                                              
+      230 +## `netcdf` — drop from structural schema                     
+      231 +                                                              
+      232 +`netcdf` on the v1 `Field` base class marks fields that can ap
+          +pear in NetCDF output. This is an output-format annotation, no
+          +t a structural property. The Fortran IDM (`InputParamDefinitio
+          +nType`) has no `netcdf` field. NetCDF output spec is a separat
+          +e concern from the structural input schema.                   
+      233 +                                                              
+      234 +**In v2:** `netcdf` is dropped from the field schema.         
+      235 +                                                              
+      236 +---                                                           
+      237 +                                                              
+      238  ## Summary table
+      239  
+      240  | v1 attribute | v2 fate | Reason |
+
+⏺ Now update the summary table to include the new entries:
+
+⏺ Update(docs/dev/dfn_format_rules.md)
+  ⎿  Added 10 lines
+      249  | `repeating` | **explicit** | Not inferrable; behavior is fil
+           e-format-level |
+      250  | `just_data` | **drop** | Single occurrence; handled structur
+           ally |
+      251  | `block_variable` | **drop** | Replace with first-class block
+            repetition at block level |
+      252 +| `block` | **drop** | Field position in block hierarchy makes
+          + inline attribute redundant |                                 
+      253 +| `netcdf` | **drop** | Output-format annotation; not in Fortr
+          +an IDM; not a structural property |                           
+      254 +                                                              
+      255 +**New in v2:**                                                
+      256 +                                                              
+      257 +| v2 attribute | Field class | Purpose |                      
+      258 +|---|---|---|                                                 
+      259 +| `dimension: bool` | `ScalarFieldV2` (integer) | Marks valid 
+          +targets for shape expressions; enables shape validation |     
+      260 +| `index: bool` | `ScalarFieldV2` (integer) | Marks 1-based in
+          +dices; codec applies 0-based conversion |                     
+      261 +| `key: str \| None` | `ListFieldV2` | Names the PK column; `m
+          +odel_validator` asserts column exists and has `index=True` |  
+
+⏺ Now delete dfn_refactor.md:
+
+⏺ Bash(rm /Users/wbonelli/dev/pyphoenix-project/docs/dev/dfn_refactor.md)
+  ⎿  Done
+
+⏺ Quick sanity check on the final document:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Looks good. Now confirm dfn_refactor.md is gone and check the docs folder
+  state:
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ Clean. The DFN design docs are now:
+
+  - dfn-schema-plan.md — high-level plan (unchanged)
+  - dfn_format_rules.md — format inference rules + all structural annotation
+  decisions (consolidated)
+  - dfn_steps.md — implementation steps (unchanged)
+  - dfn_transforms.md — (haven't touched, presumably still relevant)
+
+  dfn_refactor.md is gone. What I resolved from it before deleting:
+  - block: dropped from field schema — block membership is expressed by position
+   in the object hierarchy, not an inline attribute
+  - netcdf: dropped from structural schema — output-format concern, not in
+  Fortran IDM
+  - FormatSpec Options 1/2/3: obsolete, not preserved (decision was made to
+  co-locate format on type-specific subclasses)
+
+  The summary table now has both the v1→v2 attribute fate table and a "New in
+  v2" table for dimension, index, and key. Is there anything else you want to
+  address before moving on to dfn_steps.md or implementation?
+
+✻ Brewed for 2m 30s
+
+※ recap: Formalizing the MODFLOW 6 DFN schema from v1 to v2 with clean structural/format separation. The format inference rules document is complete and consolidated; next step is reviewing and updating dfn_steps.md to reflect all settled decisions.
