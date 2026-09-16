@@ -33,7 +33,7 @@ from typing import Annotated, Any, ClassVar, Optional
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 # ============================================================================
 # Base: MF6Base
@@ -169,31 +169,44 @@ _DTYPE_MAP = {"integer": np.int64, "double": np.float64}
 
 
 class PackageBase(ComponentBase, ABC):
-    # FRICTION POINT #5 (the real one -- see plan doc's "What's left
-    # standing"): a griddata field's *declared* type is `NDArray[np.float64]`,
-    # but its *default value* in the current attrs code is a bare scalar
-    # (`default=1.0`) that only becomes a real array once dims are known
-    # (Package._broadcast_griddata, called from __attrs_post_init__).
-    # attrs never type-checks this mismatch (no validator on the field, and
-    # attrs doesn't validate types by default at all). Pydantic, by
-    # contrast, DOES enforce it: constructing `DisProto(delr=100.0, ...)`
-    # raises `ValidationError: Input should be an instance of ndarray`
-    # immediately, confirmed by actually running this prototype -- before
-    # a `field_validator(mode="before")` was added on each array field
-    # (below, on DisProto) to coerce a bare scalar/list to a 0-d/real
-    # ndarray *before* pydantic's isinstance check runs. This is exactly
-    # what the Jan prototype's `structure_array_from_value` `mode="before"`
-    # pattern exists for, and it isn't optional the way I first assumed
-    # when sketching this file -- every griddata-shaped field needs one, or
-    # needs to be typed as `Any`/`float | NDArray[...]` and rely on
-    # `_broadcast_griddata` alone. That per-field validator is real,
-    # measurable migration cost the "next steps" re-measurement should
-    # count. Once past construction, `validate_assignment=True` (MF6Base)
-    # does give an ergonomics win attrs' plain fields don't: a later
-    # `dis.delr = "bad"` assignment is caught by the same coercion path
-    # (see the demo below) -- that's the actual ergonomics case issue #282
-    # was making, distinct from the schema argument.
+    # FRICTION POINT #5: a griddata field's *declared* type is
+    # `NDArray[np.float64]`, but its *default value* in the current attrs
+    # code is a bare scalar (`default=1.0`) that only becomes a real array
+    # once dims are known (Package._broadcast_griddata, called from
+    # __attrs_post_init__). attrs never type-checks this mismatch (no
+    # validator on the field, and attrs doesn't validate types by default
+    # at all). Pydantic, by contrast, DOES enforce it: constructing
+    # `DisProto(delr=100.0, ...)` raised `ValidationError: Input should be
+    # an instance of ndarray` immediately, confirmed by actually running
+    # this prototype -- before `_coerce_arrays` below was added.
     #
+    # This does NOT need to be written once per field, or even once per
+    # generated class -- a single `field_validator("*", mode="before")`,
+    # defined ONE time on this shared base, driven by each field's own
+    # `json_schema_extra` metadata (`shape` present => it's an array
+    # field), covers every array field on every subclass, including ones
+    # not yet written. Confirmed with a standalone test
+    # (`d.delr = 5.0` after construction still coerces, since
+    # `validate_assignment=True` re-runs "before" validators too) --
+    # earlier revisions of this prototype declared this per-field on
+    # `DisProto` directly and described it as an unavoidable per-generated-
+    # field cost; that was wrong. Codegen's array-field template doesn't
+    # need to emit a validator at all -- just the `shape=` metadata it
+    # already emits today.
+    @field_validator("*", mode="before")
+    @classmethod
+    def _coerce_arrays(cls, v: Any, info: ValidationInfo) -> Any:
+        finfo = cls.model_fields.get(info.field_name)
+        if finfo is None or v is None:
+            return v
+        meta = finfo.json_schema_extra or {}
+        if not (isinstance(meta, dict) and meta.get("block") == "griddata" and meta.get("shape")):
+            return v
+        if isinstance(v, np.ndarray):
+            return v
+        dtype = _DTYPE_MAP.get(meta.get("dfn_type", "double"), np.float64)
+        return np.asarray(v, dtype=dtype)
+
     # Deliberately a plain method, not a `model_validator` -- called
     # explicitly from `model_post_init` (see DisProto below), the same way
     # the real `Package._broadcast_griddata`/`DisBase._coerce_griddata` are
@@ -318,19 +331,9 @@ class DisProto(DisBaseProto):
         ),
     ] = 0.0  # type: ignore[assignment]
 
-    # Required, not optional -- see PackageBase._broadcast_griddata's
-    # updated commentary above: without this, `DisProto(delr=100.0, ...)`
-    # fails validation before construction even reaches model_post_init.
-    # Ported near-verbatim from origin/plan-codegen's
-    # `structure_array_from_value` (mode="before" field_validator idea),
-    # simplified to "coerce to ndarray now, broadcast to real shape later"
-    # since dims aren't resolvable yet at this point in construction.
-    @field_validator("delr", "delc", "top", "botm", mode="before")
-    @classmethod
-    def _coerce_array(cls, v: Any) -> Any:
-        if isinstance(v, np.ndarray):
-            return v
-        return np.asarray(v, dtype=np.float64)
+    # No per-field validator needed here -- PackageBase._coerce_arrays
+    # (a single `field_validator("*", mode="before")`) already covers
+    # delr/delc/top/botm via their `shape=` metadata.
 
     def get_dims(self) -> dict[str, int]:
         return {

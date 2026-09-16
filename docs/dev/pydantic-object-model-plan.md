@@ -8,8 +8,8 @@ Supersedes the prototype on `origin/plan-codegen` (`a9b77e8`, "planning",
 `codegen_recommendation.md`, `codegen_architecture.py`,
 `model_rebuild_explained.md`), never merged. That branch isn't deleted and
 its code is still worth mining when this is picked back up (see "What's
-still true," below) — but its headline recommendation and effort estimate
-are stale as of 2026-09.
+still true," below) — but its headline recommendation is stale as of
+2026-09.
 
 ## Background
 
@@ -102,9 +102,9 @@ phases. Wait for one of:
 Staging ground for updated prototyping once one of the above triggers is
 met: port one real, current-shape package (e.g. `Dis` or `Npf`, using
 today's `Row`/`pk`/`fk` conventions, no xattree) to pydantic and re-measure
-effort/ergonomics against the actual current codebase, rather than trusting
-the January estimate (4-5 weeks) at face value — that number was produced
-against a codebase materially different from today's.
+ergonomics against the actual current codebase, rather than trusting the
+January prototype's conclusions at face value — those were produced against
+a codebase materially different from today's.
 
 ## Prototype results (2026-09-16)
 
@@ -138,23 +138,31 @@ not a drop-in replacement — see "Explicitly out of scope" below.
 - `validate_assignment=True` delivers the concrete ergonomics win issue
   #282 actually asked for: a later bad assignment (`dis.xorigin = "not a
   float"`) is now caught automatically. Confirmed working in the demo.
+- Array-field coercion (below) also turned out to be a one-time cost, not a
+  per-field one — see the correction under "What's real."
 
-**What's real, newly-measured cost (not obvious from the January
-prototype, which predates today's `field()`/griddata-default shape):**
+**What's real (a genuine, newly-surfaced correctness gap, but a one-time
+fix, not a per-field one):**
 
-- **Every array-typed field needs its own `field_validator(mode="before")`.**
-  Constructing `DisProto(delr=100.0, ...)` — the exact call shape
-  `Dis(delr=100.0, ...)` uses today — raised
-  `ValidationError: Input should be an instance of ndarray` until a
-  `field_validator` was added to coerce a bare scalar to an ndarray before
-  pydantic's `isinstance` check runs. attrs never validates this (no
-  validator attached to the field), so the scalar-default-for-an-array-typed-
-  field pattern (used throughout DIS/DISV/NPF/IC/STO/... griddata fields)
-  just works today. This isn't a one-off fix — codegen would need to emit
-  this validator for every griddata field across every generated package,
-  not just write a different `Field(...)` call. That's the single largest
-  incremental cost this measurement surfaced, and it scales with the
-  generated-code surface area, not with the effort of any one package.
+- Pydantic strictly validates `NDArray`-typed fields: constructing
+  `DisProto(delr=100.0, ...)` — the exact call shape `Dis(delr=100.0, ...)`
+  uses today, a bare scalar against an array-typed field — raised
+  `ValidationError: Input should be an instance of ndarray`. attrs never
+  validates this (no validator attached to the field by default), so the
+  scalar-default-for-an-array-typed-field pattern (used throughout
+  DIS/DISV/NPF/IC/STO/... griddata fields) just works there today.
+  An earlier revision of this prototype fixed this with a `field_validator`
+  declared per array field on `DisProto` and described it as an unavoidable
+  per-generated-field cost. **That was wrong, and worth flagging as a
+  correction rather than quietly fixing:** a single `field_validator("*",
+  mode="before")`, defined once on the shared `PackageBase`, driven by each
+  field's own `json_schema_extra["shape"]` metadata (the same metadata
+  `flopy4/mf6/spec.py`'s `field()` helper already emits today), covers
+  every array field on every subclass — present and future — including
+  under `validate_assignment=True` (`d.delr = 5.0` after construction still
+  coerces correctly, confirmed with a standalone test). Codegen doesn't
+  need to emit anything new for this; the `shape=` metadata it already
+  writes is sufficient.
 - `attrs.field(init=False)` (`DisBase`'s derived `nlay`/`nrow`/`ncol`/
   `ncpl`/`nvert`/`nodes` — computed, never user-supplied) has no `BaseModel`
   equivalent (that's a `pydantic.dataclasses.dataclass` feature). The
@@ -183,41 +191,52 @@ priced:
   candidate) wouldn't exercise it either; a list-heavy package (`Wel`,
   `Chd`, ...) would be needed to measure this.
 - Every consumer that reads `attrs.fields()`/`.metadata` off a live
-  `Package` today — `flopy4/mf6/netcdf.py`'s `_PackageSpec`,
-  `flopy4/mf6/converter/*`, `flopy4/mf6/codec/*`, `to_dict()`/`to_xarray()`
-  on `Component`/`Package` themselves — would each need to switch to
-  `model_fields`/`json_schema_extra`. This is a codebase-wide touch
-  surface, not a package-local one, and dominates total migration cost far
-  more than porting any individual leaf package's field declarations does.
+  `Package` today. Measured directly (not estimated): ~50 call sites across
+  12 files (`component.py`, `package.py`, `dimensions.py`, `spec.py`,
+  `item.py`, `record.py`, `adapters.py`, `attrs_xarray.py`, `netcdf.py`,
+  `converter/ingress/structure.py`, `converter/egress/unstructure.py`,
+  `gwf/disbase.py`), concentrated most heavily in
+  `converter/ingress/structure.py` and `netcdf.py`. Each individual call
+  site is the same mechanical swap this prototype already demonstrates
+  (`attrs.fields(cls)` → `cls.model_fields`, `attr.metadata.get(...)` →
+  `finfo.json_schema_extra.get(...)`) — no single one is hard. The cost is
+  the count: ~50 independent edit sites is real surface area to touch and
+  re-test, and dominates total migration size far more than porting any
+  individual leaf package's field declarations does. Not measured here:
+  whether `attrs.Attribute.type` and pydantic's `FieldInfo.annotation`
+  ever disagree on a case this prototype didn't exercise (e.g. how each
+  represents `Optional`/`Union` for a field type) — worth checking against
+  the two largest files above before trusting the swap is mechanical
+  everywhere.
 
 ## Re-assessed recommendation
 
 The measurement doesn't change the "wait for a trigger" recommendation
-above — but it does sharpen the cost picture: the per-field array-validator
-requirement means the marginal cost of migrating *each* generated package is
-higher than the January estimate assumed (a mechanical `field()` →
-`Field()` swap isn't enough; codegen's array-field template needs a
-validator emitted too), while the base-class port (`Component`/`Package`/
-`DimensionResolverMixin`) is the one-time dominant cost either way. If this
-is picked up for real, budget for both line items explicitly rather than
-treating "port the base classes" as the whole job.
+above. It does relocate where the real cost lives: not in per-field
+boilerplate (the array-coercion validator collapses to one reusable
+definition, not one per field or per package), but in (a) faithfully
+porting `Component`/`Package`/`DimensionResolverMixin` themselves — the
+`MutableMapping` interface and Item-list coercion are still unmeasured —
+and (b) the ~50-call-site consumer surface outside the object model itself
+(`netcdf.py`, `converter/*`, `codec/*`). Both are one-time, codebase-wide
+costs rather than a cost that scales with how many packages get migrated.
 
 ## Next steps (when picked up for a real migration decision)
 
 1. Extend the prototype (or a new one) to a list-heavy package (`Wel`,
    `Chd`) to measure the `MutableMapping`/Item-list surface this one
    skipped.
-2. Prototype the codegen-side change: emit `Field(json_schema_extra=...)` +
-   the per-array-field `field_validator` from `flopy4/mf6/utils/codegen/
-   {make,filters}.py`'s templates, rather than hand-writing it as this
-   prototype did.
+2. Prototype the codegen-side change: emit `Field(json_schema_extra=...)`
+   from `flopy4/mf6/utils/codegen/{make,filters}.py`'s templates in place
+   of `attrs.field(metadata=...)` — no validator-emitting needed, per the
+   corrected finding above; the existing `shape=` metadata is enough.
 3. Prototype migrating one real consumer (`flopy4/mf6/netcdf.py`'s
    `_PackageSpec`, the smallest of the three) off `attrs.fields()`/
    `.metadata` to confirm the `model_fields`/`json_schema_extra` swap is as
-   mechanical there as it was in this prototype.
-4. Re-decide the full-migration effort estimate and go/no-go from (1)-(3),
-   not from the January prototype's numbers or this single-package
-   measurement alone.
+   mechanical there as it was in this prototype, and to check the
+   `Attribute.type`/`FieldInfo.annotation` question flagged above.
+4. Re-decide go/no-go from (1)-(3), not from the January prototype or this
+   single-package measurement alone.
 
 ## Related
 
@@ -231,6 +250,6 @@ treating "port the base classes" as the whole job.
 - Issue #282.
 - `origin/plan-codegen` (`a9b77e8`) — original prototype code/docs; mined
   for `pydantic_prototype.py`'s array-structuring pattern
-  (`structure_array_from_value` → this prototype's `_coerce_array`
+  (`structure_array_from_value` → this prototype's `PackageBase._coerce_arrays`
   `field_validator`) when writing `pydantic_dis_prototype.py`. Its
   recommendation section is still not current; this doc supersedes it.
