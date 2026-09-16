@@ -106,25 +106,131 @@ effort/ergonomics against the actual current codebase, rather than trusting
 the January estimate (4-5 weeks) at face value — that number was produced
 against a codebase materially different from today's.
 
-## Next steps (when picked up)
+## Prototype results (2026-09-16)
 
-1. Port one package end-to-end in its current shape.
-2. Port its `__attrs_post_init__`/`DimensionResolverMixin` chain; confirm
-   `model_validator(mode="after")` actually collapses it the way the
-   prototype expected.
-3. Re-measure: lines changed, generated-file diff size, whether `Row`/
-   `pk`/`fk` metadata conventions transfer cleanly to pydantic's
-   `Annotated`/`Field` idiom.
-4. Re-decide the full-migration effort estimate and go/no-go from that
-   measurement, not from the January prototype's numbers.
+Steps 1-2 below are done: `docs/dev/prototypes/pydantic_dis_prototype.py`
+ports `Dis` (via `DisBase`/`Package`/`Component`/`DimensionResolverMixin`,
+`flopy4/mf6/gwf/{dis,disbase}.py`, `flopy4/mf6/{package,component}.py`,
+`flopy4/dimensions.py`) to pydantic in its current, post-`Row` shape, and
+runs (`pixi run -e dev python docs/dev/prototypes/pydantic_dis_prototype.py`)
+against real assertions: derived dims (`nodes`/`ncpl`/`nvert`) compute
+correctly, griddata scalar defaults broadcast to full arrays, a child
+component (`ncf`, stubbed) gets parent-wired, and `validate_assignment=True`
+catches a bad post-construction assignment. It is a scoped-down measurement,
+not a drop-in replacement — see "Explicitly out of scope" below.
+
+**What ported cleanly, lower cost than expected:**
+
+- Parent/child wiring is *simpler* in pydantic than attrs, not just
+  equivalent: attrs needs a private-attribute naming convention (`_parent`
+  field, `parent=` constructor kwarg, via leading-underscore mangling) to
+  get a public-looking accessor; pydantic just names the field `parent`
+  directly (`Field(exclude=True)` keeps it out of `model_dump()`/schema).
+  No trick needed.
+- `attrs.fields(cls)` → `cls.model_fields`, `.metadata` dict →
+  `Field(json_schema_extra={...})`: a direct, mechanical swap, field by
+  field. Every place `spec.py`'s `field()` helper writes to `metadata[...]`
+  has an equally-simple pydantic equivalent.
+- `model_post_init` not auto-chaining across the MRO (each override must
+  call `super().model_post_init(context)` itself) turned out to be a wash,
+  not a new cost — attrs' `__attrs_post_init__` already required the same
+  explicit `super()` chaining discipline.
+- `validate_assignment=True` delivers the concrete ergonomics win issue
+  #282 actually asked for: a later bad assignment (`dis.xorigin = "not a
+  float"`) is now caught automatically. Confirmed working in the demo.
+
+**What's real, newly-measured cost (not obvious from the January
+prototype, which predates today's `field()`/griddata-default shape):**
+
+- **Every array-typed field needs its own `field_validator(mode="before")`.**
+  Constructing `DisProto(delr=100.0, ...)` — the exact call shape
+  `Dis(delr=100.0, ...)` uses today — raised
+  `ValidationError: Input should be an instance of ndarray` until a
+  `field_validator` was added to coerce a bare scalar to an ndarray before
+  pydantic's `isinstance` check runs. attrs never validates this (no
+  validator attached to the field), so the scalar-default-for-an-array-typed-
+  field pattern (used throughout DIS/DISV/NPF/IC/STO/... griddata fields)
+  just works today. This isn't a one-off fix — codegen would need to emit
+  this validator for every griddata field across every generated package,
+  not just write a different `Field(...)` call. That's the single largest
+  incremental cost this measurement surfaced, and it scales with the
+  generated-code surface area, not with the effort of any one package.
+- `attrs.field(init=False)` (`DisBase`'s derived `nlay`/`nrow`/`ncol`/
+  `ncpl`/`nvert`/`nodes` — computed, never user-supplied) has no `BaseModel`
+  equivalent (that's a `pydantic.dataclasses.dataclass` feature). The
+  prototype falls back to "normal field, unconditionally overwritten in
+  `model_post_init`" — which means a caller *can* pass `nodes=` at
+  construction and have it silently discarded, where attrs raises
+  `TypeError: unexpected keyword argument`. A real behavioral regression if
+  this ships as-is; fixable (reject the key explicitly in a `mode="before"`
+  validator) but is more code than attrs needed for the same guarantee.
+- `attrs.Factory(lambda self: ..., takes_self=True)` (`Component.name`'s
+  default: the lowercased *runtime* class name) also has no direct
+  `Field(default_factory=...)` equivalent (those callables take no
+  arguments) — replaced with a `model_validator(mode="after")`. Composes
+  fine, but it's one more method where attrs needed a one-line `Factory`.
+
+**Explicitly out of scope for this measurement (deferred, not glossed
+over)** — each of these is real remaining migration surface, not yet
+priced:
+
+- `Component`'s full `MutableMapping` interface (`__getitem__`/
+  `__setitem__`/`__delitem__`, list/dict child collections) — `Dis` only
+  exercises the single-child ("only") case via `ncf`.
+- `Package`'s Item-list period-data coercion (`_init_item_lists`,
+  `construct_item`/`construct_union_item`) — `Dis` has no period block, so
+  this path is entirely untouched here. `Npf` (the plan's other suggested
+  candidate) wouldn't exercise it either; a list-heavy package (`Wel`,
+  `Chd`, ...) would be needed to measure this.
+- Every consumer that reads `attrs.fields()`/`.metadata` off a live
+  `Package` today — `flopy4/mf6/netcdf.py`'s `_PackageSpec`,
+  `flopy4/mf6/converter/*`, `flopy4/mf6/codec/*`, `to_dict()`/`to_xarray()`
+  on `Component`/`Package` themselves — would each need to switch to
+  `model_fields`/`json_schema_extra`. This is a codebase-wide touch
+  surface, not a package-local one, and dominates total migration cost far
+  more than porting any individual leaf package's field declarations does.
+
+## Re-assessed recommendation
+
+The measurement doesn't change the "wait for a trigger" recommendation
+above — but it does sharpen the cost picture: the per-field array-validator
+requirement means the marginal cost of migrating *each* generated package is
+higher than the January estimate assumed (a mechanical `field()` →
+`Field()` swap isn't enough; codegen's array-field template needs a
+validator emitted too), while the base-class port (`Component`/`Package`/
+`DimensionResolverMixin`) is the one-time dominant cost either way. If this
+is picked up for real, budget for both line items explicitly rather than
+treating "port the base classes" as the whole job.
+
+## Next steps (when picked up for a real migration decision)
+
+1. Extend the prototype (or a new one) to a list-heavy package (`Wel`,
+   `Chd`) to measure the `MutableMapping`/Item-list surface this one
+   skipped.
+2. Prototype the codegen-side change: emit `Field(json_schema_extra=...)` +
+   the per-array-field `field_validator` from `flopy4/mf6/utils/codegen/
+   {make,filters}.py`'s templates, rather than hand-writing it as this
+   prototype did.
+3. Prototype migrating one real consumer (`flopy4/mf6/netcdf.py`'s
+   `_PackageSpec`, the smallest of the three) off `attrs.fields()`/
+   `.metadata` to confirm the `model_fields`/`json_schema_extra` swap is as
+   mechanical there as it was in this prototype.
+4. Re-decide the full-migration effort estimate and go/no-go from (1)-(3),
+   not from the January prototype's numbers or this single-package
+   measurement alone.
 
 ## Related
 
+- `docs/dev/prototypes/pydantic_dis_prototype.py` — the working prototype
+  behind "Prototype results" above. Runnable standalone; not wired into
+  flopy4's real registry/codegen/write/load path.
 - `docs/dev/netcdf-spec-plan.md` — same schema-value-layering conclusion,
   applied to the NetCDF I/O object model.
 - `mf6-object-model-plan.md` — the in-flight refactor this should sequence
   after.
 - Issue #282.
-- `origin/plan-codegen` (`a9b77e8`) — original prototype code/docs; mine
-  `pydantic_prototype.py` for working mechanics when this is picked back
-  up, but don't treat its recommendation section as current.
+- `origin/plan-codegen` (`a9b77e8`) — original prototype code/docs; mined
+  for `pydantic_prototype.py`'s array-structuring pattern
+  (`structure_array_from_value` → this prototype's `_coerce_array`
+  `field_validator`) when writing `pydantic_dis_prototype.py`. Its
+  recommendation section is still not current; this doc supersedes it.
