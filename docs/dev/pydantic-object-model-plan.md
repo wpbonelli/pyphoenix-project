@@ -108,16 +108,21 @@ a codebase materially different from today's.
 
 ## Prototype results (2026-09-16)
 
-Steps 1-2 below are done: `docs/dev/prototypes/pydantic_dis_prototype.py`
-ports `Dis` (via `DisBase`/`Package`/`Component`/`DimensionResolverMixin`,
+`docs/dev/prototypes/pydantic_dis_prototype.py` ports `Dis` (via
+`DisBase`/`Package`/`Component`/`DimensionResolverMixin`,
 `flopy4/mf6/gwf/{dis,disbase}.py`, `flopy4/mf6/{package,component}.py`,
 `flopy4/dimensions.py`) to pydantic in its current, post-`Row` shape, and
 runs (`pixi run -e dev python docs/dev/prototypes/pydantic_dis_prototype.py`)
 against real assertions: derived dims (`nodes`/`ncpl`/`nvert`) compute
 correctly, griddata scalar defaults broadcast to full arrays, a child
-component (`ncf`, stubbed) gets parent-wired, and `validate_assignment=True`
-catches a bad post-construction assignment. It is a scoped-down measurement,
-not a drop-in replacement — see "Explicitly out of scope" below.
+component (`ncf`, stubbed) gets parent-wired, `validate_assignment=True`
+catches a bad post-construction assignment, and (v3, below) an explicit
+`nodes=` kwarg is correctly rejected. It is a scoped-down measurement, not
+a drop-in replacement — see "Explicitly out of scope" below.
+
+v3 of the prototype is built on `pydantic.dataclasses.dataclass`, not
+`pydantic.BaseModel` — see "BaseModel vs. pydantic dataclasses" below for
+why that switch happened and what it fixed.
 
 **What ported cleanly, lower cost than expected:**
 
@@ -125,16 +130,19 @@ not a drop-in replacement — see "Explicitly out of scope" below.
   equivalent: attrs needs a private-attribute naming convention (`_parent`
   field, `parent=` constructor kwarg, via leading-underscore mangling) to
   get a public-looking accessor; pydantic just names the field `parent`
-  directly (`Field(exclude=True)` keeps it out of `model_dump()`/schema).
-  No trick needed.
-- `attrs.fields(cls)` → `cls.model_fields`, `.metadata` dict →
+  directly. No trick needed.
+- `attrs.fields(cls)` → a pydantic dataclass's `__pydantic_fields__`
+  (or `cls.model_fields` if targeting `BaseModel`), `.metadata` dict →
   `Field(json_schema_extra={...})`: a direct, mechanical swap, field by
   field. Every place `spec.py`'s `field()` helper writes to `metadata[...]`
   has an equally-simple pydantic equivalent.
-- `model_post_init` not auto-chaining across the MRO (each override must
-  call `super().model_post_init(context)` itself) turned out to be a wash,
-  not a new cost — attrs' `__attrs_post_init__` already required the same
-  explicit `super()` chaining discipline.
+- The single post-construction hook (`__post_init__` on a pydantic
+  dataclass) not auto-chaining across the MRO (each override must call
+  `super().__post_init__()` itself) turned out to be a wash, not a new
+  cost — attrs' `__attrs_post_init__` already required the same explicit
+  `super()` chaining discipline, and it's the same *single*-hook shape
+  attrs has (unlike BaseModel's two-hook `model_validator(mode="after")` +
+  `model_post_init` split — one more reason v3 prefers dataclasses).
 - `validate_assignment=True` delivers the concrete ergonomics win issue
   #282 actually asked for: a later bad assignment (`dis.xorigin = "not a
   float"`) is now caught automatically. Confirmed working in the demo.
@@ -164,19 +172,20 @@ fix, not a per-field one):**
   need to emit anything new for this; the `shape=` metadata it already
   writes is sufficient.
 - `attrs.field(init=False)` (`DisBase`'s derived `nlay`/`nrow`/`ncol`/
-  `ncpl`/`nvert`/`nodes` — computed, never user-supplied) has no `BaseModel`
-  equivalent (that's a `pydantic.dataclasses.dataclass` feature). The
-  prototype falls back to "normal field, unconditionally overwritten in
-  `model_post_init`" — which means a caller *can* pass `nodes=` at
-  construction and have it silently discarded, where attrs raises
-  `TypeError: unexpected keyword argument`. A real behavioral regression if
-  this ships as-is; fixable (reject the key explicitly in a `mode="before"`
-  validator) but is more code than attrs needed for the same guarantee.
+  `ncpl`/`nvert`/`nodes` — computed, never user-supplied) has **no working
+  `BaseModel` equivalent** — this was v2 of the prototype's biggest
+  unresolved gap, and it's resolved in v3 by targeting
+  `pydantic.dataclasses.dataclass` instead. See "BaseModel vs. pydantic
+  dataclasses" below.
 - `attrs.Factory(lambda self: ..., takes_self=True)` (`Component.name`'s
-  default: the lowercased *runtime* class name) also has no direct
-  `Field(default_factory=...)` equivalent (those callables take no
-  arguments) — replaced with a `model_validator(mode="after")`. Composes
-  fine, but it's one more method where attrs needed a one-line `Factory`.
+  default: the lowercased *runtime* class name) has no direct
+  `default_factory=` equivalent (those callables take no arguments) in
+  either BaseModel or a pydantic dataclass — filled in inside the single
+  post-construction hook instead (`__post_init__`, on the dataclass; a
+  `model_validator(mode="after")` on the now-abandoned BaseModel version).
+  One extra method either way, where attrs needed a one-line `Factory` —
+  the only place this measurement found pydantic costing a genuinely
+  unavoidable few extra lines versus attrs.
 
 **Explicitly out of scope for this measurement (deferred, not glossed
 over)** — each of these is real remaining migration surface, not yet
@@ -209,17 +218,119 @@ priced:
   the two largest files above before trusting the swap is mechanical
   everywhere.
 
+## BaseModel vs. pydantic dataclasses
+
+Every pydantic-based sketch this codebase has produced so far — the
+January prototype, `flopy4/mf6/netcdf.py`, `modflow_devtools.dfns` — is
+built on `pydantic.BaseModel`. v2 of this prototype followed that default
+without examining it. It shouldn't have: `pydantic.dataclasses.dataclass`
+is the closer match to what the object model actually needs, confirmed
+directly (not assumed) by testing both:
+
+- **`Field(init=False)`.** On `BaseModel`, it's accepted by the field
+  constructor but has **no runtime effect at all** — confirmed:
+  `M(nodes=999)` on a `BaseModel` with an `init=False` field silently
+  succeeds and sets `nodes=999`, even under `extra="forbid"`. It's
+  type-checker-only metadata there (part of `@dataclass_transform`
+  support), not an enforced constraint. On a pydantic dataclass, the
+  *identical* `Field(init=False)`, combined with `extra="forbid"` in
+  config, works exactly like attrs: `DisProto(nodes=999)` raises
+  `ValidationError: Unexpected keyword argument` — confirmed in the demo.
+  This was v2's single biggest unresolved gap; v3 closes it for free, no
+  extra code beyond the `Field(init=False)` call attrs' equivalent already
+  needed.
+- **Everything else composes cleanly, confirmed with standalone tests
+  before committing to the rewrite:** a pydantic dataclass subclassing
+  `ABC` and mixing in `collections.abc.MutableMapping` works
+  (`isinstance(d, MutableMapping)` is `True`); `kw_only=True` is a direct
+  decorator argument, matching `@attrs.define(kw_only=True)` exactly;
+  `field_validator`/`validate_assignment=True` work identically to the
+  `BaseModel` case; direct `self.__dict__[...]` writes (the
+  `_dimension_cache` lazy-init pattern `flopy4/dimensions.py` uses today)
+  and `object.__setattr__` bypass-writes (used throughout
+  `Package`/`DisBase` to update a field without re-triggering validation)
+  both still work on a dataclass instance; a nested pydantic-dataclass-typed
+  child field (`ncf: Optional[NcfProto]`) constructs and wires up the same
+  as under `BaseModel`.
+- **What a dataclass gives up:** `BaseModel`'s self-methods
+  (`.model_dump()`, `.model_validate()`, `.model_json_schema()`) aren't
+  available directly on an instance — the equivalent is an external
+  `pydantic.TypeAdapter(cls)` call. In practice this costs nothing here:
+  flopy4 doesn't lean on those methods today either. `Component.to_dict()`
+  already wraps `attrs.asdict(self, recurse=True, filter=...)` — an
+  external function, not a self-method — and would wrap
+  `TypeAdapter(type(self)).dump_python(self, ...)` the same way. JSON
+  Schema (already concluded, in the Background section above, to belong
+  at the devtools/DFN layer rather than here) would still be reachable via
+  `TypeAdapter(cls).json_schema()` if ever wanted.
+
+**Consequence:** any future prototyping or real migration should target
+`pydantic.dataclasses.dataclass`, not `BaseModel`. It's a closer structural
+match to attrs (single post-construction hook, real `init=False`,
+`kw_only` as a decorator arg) and gives up nothing flopy4's object model
+actually uses from `BaseModel`.
+
+## Supporting-code complexity vs. the current implementation
+
+The previous section (and the ~50-call-site count above) covers *how many*
+places need to change. This is about the code *those places rely on* —
+`spec.py`'s `field()`/`fields_dict()`/`to_field_type()`/`get_field_type()`
+and `attrs_xarray.py`'s `child_field_candidates()` — and whether its
+replacement is more, less, or equally complex.
+
+- **The bulk of it is a wash.** `to_field_type()`/`get_field_type()`
+  (~100 lines) and `child_field_candidates()` (~40 lines) are `match`
+  statements over `get_origin()`/`get_args()` of a raw type annotation,
+  bridging Python's type system to MF6's own DFN type vocabulary
+  (`keyword`/`integer`/`double`/`record`/`list`/...). That complexity comes
+  from interpreting `typing` module generics, not from attrs vs. pydantic —
+  confirmed directly: a side-by-side test showed `attrs.Attribute.type` and
+  pydantic's `FieldInfo.annotation` expose `Optional[int]`-style
+  annotations identically (`typing.Optional[int]`,
+  `typing._UnionGenericAlias`, both cases). Neither library's native
+  validation/schema machinery reduces this bridge layer — MF6's type
+  vocabulary doesn't map onto either library's own type system, so a
+  hand-written translation is required either way. `spec.py`'s `field()`
+  metadata wrapper is the same story: `Field(json_schema_extra={...})` in
+  place of `attrs.field(metadata={...})`, same kwargs, same size.
+- **One place pydantic's introspection is more robust, not just
+  equivalent** — found by testing, not assumed: `attrs.fields(cls).type`
+  only resolves to a real type object when attrs can eagerly evaluate the
+  annotation. A string/forward-ref annotation (e.g. under `from __future__
+  import annotations`, which the codebase doesn't use today but easily
+  could add) silently degrades `attrs.Attribute.type` to an unresolved
+  `str` unless `attrs.resolve_types()` is called explicitly — and there
+  are zero such calls anywhere in flopy4 today, so `to_field_type()`/
+  `child_field_candidates()` are quietly relying on a convention (no
+  future-annotations import) rather than a guarantee. Confirmed directly:
+  `b: "int | None"` under attrs stayed a bare `str`; the identical
+  annotation under pydantic resolved to a real `types.UnionType`
+  automatically, no extra call needed.
+- **One place pydantic dataclasses need genuinely new support code:** the
+  `init=False` replacement (see "BaseModel vs. pydantic dataclasses" above)
+  is resolved for the object model itself, but confirms this is a
+  systemic pattern, not a `Dis`-only quirk — `init=False` appears at 13
+  real sites across 7 files, including `flopy4/mf6/utils/codegen/
+  filters.py` (codegen emits it, not just hand-written `DisBase`). A real
+  migration's codegen templates need `extra="forbid"` in the shared
+  dataclass config (one line, project-wide) for this to keep working —
+  cheap, but worth naming as a required config decision, not an implicit
+  default.
+
 ## Re-assessed recommendation
 
 The measurement doesn't change the "wait for a trigger" recommendation
 above. It does relocate where the real cost lives: not in per-field
 boilerplate (the array-coercion validator collapses to one reusable
-definition, not one per field or per package), but in (a) faithfully
-porting `Component`/`Package`/`DimensionResolverMixin` themselves — the
+definition, not one per field or per package) and not in translating type
+annotations to MF6's DFN vocabulary (a wash — see "Supporting-code
+complexity" above), but in (a) faithfully porting
+`Component`/`Package`/`DimensionResolverMixin` themselves — the
 `MutableMapping` interface and Item-list coercion are still unmeasured —
 and (b) the ~50-call-site consumer surface outside the object model itself
 (`netcdf.py`, `converter/*`, `codec/*`). Both are one-time, codebase-wide
 costs rather than a cost that scales with how many packages get migrated.
+Target `pydantic.dataclasses.dataclass`, not `BaseModel`, for both.
 
 ## Next steps (when picked up for a real migration decision)
 
@@ -229,20 +340,22 @@ costs rather than a cost that scales with how many packages get migrated.
 2. Prototype the codegen-side change: emit `Field(json_schema_extra=...)`
    from `flopy4/mf6/utils/codegen/{make,filters}.py`'s templates in place
    of `attrs.field(metadata=...)` — no validator-emitting needed, per the
-   corrected finding above; the existing `shape=` metadata is enough.
+   corrected finding above; the existing `shape=` metadata is enough. Make
+   sure the emitted `@dataclass(...)` config carries `extra="forbid"` (see
+   "Supporting-code complexity" above — required for `init=False` to work).
 3. Prototype migrating one real consumer (`flopy4/mf6/netcdf.py`'s
    `_PackageSpec`, the smallest of the three) off `attrs.fields()`/
-   `.metadata` to confirm the `model_fields`/`json_schema_extra` swap is as
-   mechanical there as it was in this prototype, and to check the
-   `Attribute.type`/`FieldInfo.annotation` question flagged above.
+   `.metadata` to confirm the `__pydantic_fields__`/`json_schema_extra`
+   swap is as mechanical there as it was in this prototype.
 4. Re-decide go/no-go from (1)-(3), not from the January prototype or this
    single-package measurement alone.
 
 ## Related
 
 - `docs/dev/prototypes/pydantic_dis_prototype.py` — the working prototype
-  behind "Prototype results" above. Runnable standalone; not wired into
-  flopy4's real registry/codegen/write/load path.
+  behind "Prototype results" above, built on `pydantic.dataclasses.dataclass`
+  (v3 — see "BaseModel vs. pydantic dataclasses"). Runnable standalone; not
+  wired into flopy4's real registry/codegen/write/load path.
 - `docs/dev/netcdf-spec-plan.md` — same schema-value-layering conclusion,
   applied to the NetCDF I/O object model.
 - `mf6-object-model-plan.md` — the in-flight refactor this should sequence
