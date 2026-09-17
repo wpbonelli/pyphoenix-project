@@ -78,12 +78,6 @@ class Welg(Package):
         block="options",
         optional=True,
     )
-    maxbound: Optional[int] = field(
-        default=0,
-        block="dimensions",
-        optional=True,
-        auto_from="stress_period_data",
-    )
     q: Optional[FloatArrayLike] = field(
         default=None,
         block="period",
