@@ -564,6 +564,64 @@ prototypes' scoped-down demos):**
     existing (till now hand-patched) content exactly, and `gwf/api.py`/
     `gwt/api.py` gain the field too. This branch's copy is now fixed at
     the codegen level; `develop`'s is not yet — worth reporting upstream.
+  - **Second follow-up (`812a906`, 2026-09-17): went further and asked
+    whether `auto_from` is needed for these 5 packages at all, rather than
+    treating it as settled.** Checked the real MF6 Fortran source
+    (`src/Model/ModelUtilities/BoundaryPackageExt.f90`,
+    `BndExtType%source_dimensions`, via `gh api` against
+    `MODFLOW-ORG/modflow6`): for any `READARRAYGRID` ("G-variant") package,
+    the entire branch that reads a user-supplied `MAXBOUND` from the input
+    file is skipped unconditionally — `this%maxbound = this%dis%get_ncpl()`
+    always runs instead. A `MAXBOUND` line in a real `.chdg` (etc.) file's
+    DIMENSIONS block parses without error but has zero effect: never read,
+    never logged, never validated — genuinely dead input, not just an
+    inconvenient one, confirmed in the implementation rather than inferred
+    from the schema alone. This is real, not the same story as the ordinary
+    list-input variant, where `gwf-chd.dfn`'s `stress_period_data` field
+    declares `shape (maxbound)` — MF6 genuinely needs that value there to
+    size the read.
+
+    Fixed at the actual source — the DFN schema itself, not flopy4's
+    codegen — on a new branch, `fix-gvariant-maxbound`, pushed to
+    `wpbonelli/modflow-devtools` (not yet merged upstream): the dev3
+    migration (`migrate_to_v2_0_0_dev3.py`) no longer emits a `maxbound`
+    DIMENSIONS field (or the matching `dims.maxbound` entry) for any
+    package with a `readarraygrid` options-block keyword. Verified against
+    `autotest/dfns/` there (204 passed) with reviewed, hand-checked
+    snapshot diffs (only the 5 expected packages changed, only the
+    `maxbound` entries removed).
+
+    That same verification — regenerating flopy4 against the new devtools
+    branch to confirm it actually worked end-to-end, not just trusting the
+    schema-level test — surfaced a second, unrelated, independently
+    real bug: `Dfns.load()` (what `RemoteDfnRegistry.spec()` actually calls
+    for a live sync, i.e. flopy4's own `generate-classes` path) silently
+    stopped its migration at schema_version `"2.0.0.dev2"` rather than
+    advancing to `"2.0.0.dev3"` (`CURRENT_SCHEMA_VERSION`), with no error —
+    meaning the maxbound fix above would never have reached flopy4's real
+    generated output at all without also fixing this. Confirmed directly:
+    the first version of the devtools fix alone produced zero change when
+    flopy4 was regenerated against it. Also fixed on the same branch,
+    together with a second devtools-side bug this uncovered (`migrate.py`'s
+    own dev2-CLI-output path was depending on `Dfns.load()`'s buggy
+    stop-at-dev2 behavior, so simply "fixing" `Dfns.load()` alone broke
+    that caller — given its own direct per-file loop instead, mirroring the
+    already-correct dev3 branch).
+
+    flopy4 itself was NOT repointed at the unmerged devtools branch
+    permanently (would have meant depending on someone else's unreviewed
+    fork/branch, and empirically caused a `~/.cache/modflow-devtools`
+    resource-cleanliness surprise — the corpus-loading test's
+    "model registry" cache is siblings-in-the-same-cache-tree with the DFN
+    cache, so clearing one while testing this cleared the other too, purely
+    an artifact of local testing, not of the fix). Verified for real by
+    temporarily repointing `pyproject.toml` at the fork branch, running
+    `pixi run generate-classes` + the full suite, then reverting the
+    dependency and keeping only the resulting, hand-confirmed-correct
+    5-file diff — `chdg.py`/`drng.py`/`ghbg.py`/`rivg.py`/`welg.py` no
+    longer declare a `maxbound` field at all. `filters.py`'s
+    `field_metadata()` keeps its `auto_from` fallback, now reached only by
+    the separate, unverified `gwf-api`/`gwt-api` case.
 - Real MF6 test-fixture data-quality issues, tolerated silently by attrs
   (zero field validation) and correctly rejected by pydantic's real
   types, found only by running actual DFN-driven test/example files: IMS
@@ -783,14 +841,24 @@ migration results (2026-09-17)" above.
   the complete, working comparison basis issue #282 asked for, but merging
   `pydantic-plan` into `develop` is a separate decision this doc doesn't
   make.
-- ~~The `maxbound`/`auto_from="stress_period_data"` codegen gap~~ — fixed
-  at the codegen-logic root cause on this branch (`df6db25`), after
+- ~~The `maxbound`/`auto_from="stress_period_data"` codegen gap~~ — fully
+  resolved, in two steps (see "Full migration results" above): first
+  restored at the codegen-logic level on this branch (`df6db25`), after
   discovering it wasn't the pre-existing/permanent limitation first
-  assumed (see "Full migration results" above) but a live regression on
-  `develop` itself, from `67d0922` ("drop xattree (#356)"). **`develop`
-  still has the regression** — this branch's fix hasn't been ported
-  upstream; worth flagging/PRing separately from any `pydantic-plan`
-  merge decision, since it isn't pydantic-specific.
+  assumed but a live regression on `develop` itself, from `67d0922`
+  ("drop xattree (#356)"); then removed entirely (`812a906`) once the
+  Fortran source confirmed `MAXBOUND` is genuinely dead input for these 5
+  packages, with the real fix landing in a DFN schema branch pushed to
+  `wpbonelli/modflow-devtools` (`fix-gvariant-maxbound`, not yet merged
+  upstream — flopy4 was NOT repointed at it permanently; the resulting
+  5-file diff was verified against it and kept by hand). **`develop`
+  (flopy4) still has the codegen-level `auto_from` regression from
+  `67d0922`** (moot for `pydantic-plan` now, but still real there), **and
+  `MODFLOW-ORG/modflow-devtools` still has both the dead-`MAXBOUND`-field
+  DFN issue and the unrelated `Dfns.load()` dev2/dev3 bug the fix's own
+  verification surfaced** — three separate, independent things worth
+  upstreaming/PRing, none of them pydantic-specific, none blocking any
+  `pydantic-plan` merge decision.
 - Sequencing against `mf6-object-model-plan.md` Phase 1 (see "Related"
   below) — this migration did not wait for it, per the 2026-09-17
   decision; whether that causes any rebasing friction if Phase 1 lands
