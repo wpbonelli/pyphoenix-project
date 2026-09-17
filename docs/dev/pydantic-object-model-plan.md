@@ -2,25 +2,28 @@
 
 ## Status
 
-**tl;dr:** Recommendation is still "don't do this now" (see "Revised
-recommendation" / "Re-assessed recommendation" below) — nothing measured
-on this branch changes that. What changed: the cost picture is no longer
-guesswork. Three runnable prototypes (`docs/dev/prototypes/pydantic_
-{dis,chd,record}_prototype.py`, all pass as of `ea35eec`) port `Dis`, a
-list-heavy package (`Chd`), and the `Record`/`Item` row-type subsystem to
+**tl;dr:** The original "don't do this now" recommendation (see "Revised
+recommendation" / "Re-assessed recommendation" below) held through four
+rounds of prototyping, which is exactly why a full migration is now
+underway on this branch (see the 2026-09-17 update under "Next steps") —
+every mechanism the object model needs was independently de-risked first,
+cheaply, rather than discovered mid-migration. Four runnable prototypes
+(`docs/dev/prototypes/pydantic_{dis,chd,record,union_arm}_prototype.py`)
+port `Dis`, a list-heavy package (`Chd`), the `Record`/`Item` row-type
+subsystem, and the keystring-union-arm coercion path (`Oc`) to
 `pydantic.dataclasses.dataclass` against the *current* (post-xattree,
-post-`Row`) codebase shape, and measure real cost/ergonomics rather than
+post-`Row`) codebase shape, measuring real cost/ergonomics rather than
 trusting the stale January prototype. Headline findings: target
-`pydantic.dataclasses.dataclass`, never `BaseModel`; array-field and
-Item-list coercion both collapse to one reusable mechanism each, not
-per-field cost; `Component`/`Package`'s own mechanics (parent/child
-wiring, `MutableMapping`, Item-list coercion) port cleanly; `item.py`/
-`record.py` don't need to migrate at all, and would benefit from pydantic
-specifically (not just stdlib dataclasses) if they ever do. Real remaining
-cost is the ~50-call-site consumer surface outside the object model
-(`netcdf.py`, `converter/*`, `codec/*`) and the still-unmeasured
-keystring-union-arm coercion path — see "Next steps" at the bottom for
-what's left before a real go/no-go.
+`pydantic.dataclasses.dataclass`, never `BaseModel`; array-field,
+Item-list, and keystring-union-arm coercion all collapse to one reusable
+mechanism each, not per-field cost; `Component`/`Package`'s own mechanics
+(parent/child wiring, `MutableMapping`, Item-list coercion, union-arm
+dispatch) port cleanly; `item.py`/`record.py` don't need to migrate at
+all, and would benefit from pydantic specifically (not just stdlib
+dataclasses) if they ever do. The only cost never fully spiked in
+isolation — the codegen templates and the ~50-call-site consumer surface
+(`netcdf.py`, `converter/*`, `codec/*`) — is being measured directly by
+doing the real migration, per the 2026-09-17 decision.
 
 Supersedes the prototype on `origin/plan-codegen` (`a9b77e8`, "planning",
 2026-01-23) — six files (`pydantic_prototype.py`,
@@ -404,6 +407,58 @@ previous section, migrating them is still not *required* by a
 this can be sequenced independently, or skipped entirely, without
 blocking anything else in this plan.
 
+## Prototype results: keystring-union-arm coercion (2026-09-17)
+
+The one item "Prototype results: list-heavy package" explicitly left
+unmeasured: a package whose period data is a *union* of Item types
+dispatched by leading keyword token (LAK/SFR/MAW/UZF-style period
+settings), not a single Item type like `Chd`. `docs/dev/prototypes/
+pydantic_union_arm_prototype.py` ports this against the real `flopy4/mf6/
+gwf/oc.py` `Oc` package — the only in-repo package currently exercising
+this machinery at all (grepped: no `list[Union[...]]`-typed top-level
+period-data field exists yet in `gwf/`/`gwt/`/`gwe/`/`prt/` — LAK/SFR/MAW/
+UZF's own period-data fields turn out to be plain Item types, not unions;
+`Oc.stress_period_data` is the real thing to model, and it's actually a
+harder case than any of those four, since it exercises the coercion path
+at BOTH levels at once (see below)).
+
+`Oc` exercises two nested layers of the same mechanism:
+
+1. Top-level: `Oc._stress_period_data` holds `Save | Print` (a `tuple` of
+   arm classes, item.py's `construct_union_item()`/`dispatch_union_item()`,
+   called from `Package._coerce_item_list()`'s `isinstance(item_cls,
+   tuple)` branch — the branch `pydantic_chd_prototype.py`'s version of
+   this method didn't implement).
+2. Nested: `Save`/`Print`'s own `ocsetting` field is *itself* a
+   `All | First | Last | Frequency | Steps` union, dispatched the same way,
+   one level down (item.py's `construct_item()` detecting a nested-union
+   field via `_nested_union_classes()`).
+
+Confirmed against the real `Oc` package before writing any prototype code
+(`Oc(stress_period_data={0: [("SAVE", "HEAD", "ALL"), ("SAVE", "BUDGET",
+"STEPS", 1, 3, 5), ("PRINT", "HEAD", "ALL")]})`) and reproduced
+byte-for-byte by the prototype, including the untyped `steps=(1, 3, 5)`
+int tuple (not floats — `construct_item()`'s array-field branch does no
+numeric coercion; that only happens in the separate `from_tokens()` path,
+out of scope here and already measured independently in
+`pydantic_record_prototype.py`).
+
+**Result: no new mechanism needed.** This is a straight composition of
+findings already on record — `SkipValidation` (the list-heavy-package
+result) wrapping a field now typed `dict[int, list[Save | Print]]` instead
+of `dict[int, list[Row]]`, plus lazy forward-ref resolution (the Item/
+Record result) now resolving a `"OcProto.All | OcProto.First | ..."`
+string naming FIVE sibling classes instead of one — confirmed pydantic's
+lazy resolver handles a multi-name `|`-joined forward ref exactly like a
+single-name one. The one new piece of code, `_is_item_union()`, replaces
+item.py's `_nested_union_classes()` and is *simpler* than the original for
+the same reason `_nested_class()` was in the Item/Record section above: no
+qualname-walking string parse, just `get_origin`/`get_args` on the
+already-resolved `FieldInfo.annotation`.
+
+This was the harder of the two items "Next steps" listed as still open —
+see the updated list below.
+
 ## BaseModel vs. pydantic dataclasses
 
 Every pydantic-based sketch this codebase has produced so far — the
@@ -511,14 +566,14 @@ boilerplate (the array-coercion validator collapses to one reusable
 definition, not one per field or per package), not in translating type
 annotations to MF6's DFN vocabulary (a wash — see "Supporting-code
 complexity" above), and not in `Component`/`Package`'s own object-model
-mechanics (`MutableMapping`, Item-list coercion, parent/child wiring — all
-now measured and ported cleanly, at the cost of one `SkipValidation`
-opt-out per Item-list field and one small `item_list_type()` fix), but in
-(a) the ~50-call-site consumer surface outside the object model itself
-(`netcdf.py`, `converter/*`, `codec/*`) and (b) the still-unmeasured
-keystring-union-arm coercion path (LAK/SFR/MAW/UZF-style period settings).
-Both are one-time, codebase-wide costs rather than a cost that scales with
-how many packages get migrated. Target `pydantic.dataclasses.dataclass`,
+mechanics (`MutableMapping`, Item-list coercion, parent/child wiring, and
+now the keystring-union-arm coercion path — all measured and ported
+cleanly, at the cost of one `SkipValidation` opt-out per Item-list field
+and one small `item_list_type()` fix), but in the ~50-call-site consumer
+surface outside the object model itself (`netcdf.py`, `converter/*`,
+`codec/*`) and the codegen templates that would need to emit the pydantic
+shape. That's a one-time, codebase-wide cost rather than one that scales
+with how many packages get migrated. Target `pydantic.dataclasses.dataclass`,
 not `BaseModel`, for both — and leave `flopy4/mf6/item.py`/`record.py`
 attrs-based; they don't need to migrate (see the Item-list corollary
 above).
@@ -536,10 +591,20 @@ above).
    `_PackageSpec`, the smallest of the three) off `attrs.fields()`/
    `.metadata` to confirm the `__pydantic_fields__`/`json_schema_extra`
    swap is as mechanical there as it was in this prototype.
-3. Measure the keystring-union-arm coercion path (`construct_union_item`)
-   against a real package that uses it (LAK, SFR, MAW, or UZF).
-4. Re-decide go/no-go from (1)-(3), not from the January prototype or these
-   two single-package measurements alone.
+3. ~~Measure the keystring-union-arm coercion path~~ — done, see
+   "Prototype results: keystring-union-arm coercion" above.
+4. Re-decide go/no-go from (1)-(2), not from the January prototype or these
+   measurements alone.
+
+**2026-09-17 update:** the decision was made to skip (1)-(2) as isolated
+spikes and go straight to a full migration on this branch instead — a
+real, working migration is a better basis for team comparison than more
+prototyping, and every mechanism it would exercise (array/griddata
+coercion, `MutableMapping`, Item-list coercion including the
+keystring-union-arm case, parent/child wiring) is now independently
+confirmed to work with no open unknowns. The codegen template work and the
+`netcdf.py`/`converter/*`/`codec/*` consumer surface are being done as
+part of that migration directly, not spiked separately first.
 
 ## Related
 
@@ -554,6 +619,12 @@ above).
 - `docs/dev/prototypes/pydantic_record_prototype.py` — the `Record`/`Item`
   prototype behind "Item/Record: does it need attrs?" above. Self-contained
   (doesn't import from the other two prototypes). Runnable standalone.
+- `docs/dev/prototypes/pydantic_union_arm_prototype.py` — the
+  keystring-union-arm prototype behind "Prototype results:
+  keystring-union-arm coercion" above (imports `PackageBase` from
+  `pydantic_dis_prototype.py`, `record_fields`/`keyword_of` from
+  `pydantic_record_prototype.py`). Models the real `flopy4/mf6/gwf/oc.py`
+  `Oc` package. Runnable standalone.
 - `docs/dev/netcdf-spec-plan.md` — same schema-value-layering conclusion,
   applied to the NetCDF I/O object model.
 - `mf6-object-model-plan.md` — the in-flight refactor this should sequence
