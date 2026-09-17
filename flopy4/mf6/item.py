@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Union, get_args, get_origin
+from typing import Annotated, Any, Union, get_args, get_origin
 
 from flopy4.mf6.record import Record, _coerce, keyword_of, record_fields
 
@@ -428,18 +428,36 @@ def _unwrap_item(item) -> "type[Item] | tuple[type[Item], ...] | None":
     return None
 
 
+def _unwrap_skip_validation(t: Any) -> Any:
+    """Strip one `Annotated[X, SkipValidation()]` layer, if present.
+
+    Item-list fields are pydantic.SkipValidation-wrapped (codegen emits
+    this -- see Package._init_item_lists' own docstring for why: pydantic
+    validates an Item-list field's raw tuple/dict input eagerly by
+    default, unlike attrs, which applies no validation there at all).
+    get_origin() on the raw annotation returns Annotated, not dict/list,
+    so the unwrapping below needs this extra step attrs never did.
+    """
+    if get_origin(t) is Annotated:
+        return get_args(t)[0]
+    return t
+
+
 def item_list_type(field_type) -> "type[Item] | tuple[type[Item], ...] | None":
-    """For Optional[list[C]] or Optional[dict[int, list[C]]], return C (or
-    the tuple of arm classes for a Union item type)."""
+    """For Optional[list[C]] or Optional[dict[int, list[C]]] (each
+    optionally SkipValidation-wrapped), return C (or the tuple of arm
+    classes for a Union item type)."""
     args = get_args(field_type)
     inner = next((a for a in args if a is not type(None)), None)
     if inner is None:
         return None
+    inner = _unwrap_skip_validation(inner)
     origin = get_origin(inner)
     if origin is list:
         return _unwrap_item(get_args(inner)[0])
     if origin is dict:
         _, val = get_args(inner)
+        val = _unwrap_skip_validation(val)
         if get_origin(val) is list:
             return _unwrap_item(get_args(val)[0])
     return None
