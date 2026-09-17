@@ -2,7 +2,6 @@
 from pathlib import Path
 from typing import ClassVar, Optional
 
-from pydantic import Field
 from pydantic.dataclasses import dataclass
 
 from flopy4.mf6._types import FloatArrayLike, IntArrayLike, _optional_path

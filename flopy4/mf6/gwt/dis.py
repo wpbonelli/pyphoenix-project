@@ -35,28 +35,28 @@ class Dis(DisBase):
     nlay: int = field(default=1, block="dimensions")
     ncol: int = field(default=2, block="dimensions")
     nrow: int = field(default=2, block="dimensions")
-    delr: NDArray[np.float64] = field(
+    delr: Optional[NDArray[np.float64]] = field(
         default=1.0,
         block="griddata",
         shape=("ncol",),
         layered=False,
         netcdf=True,
     )
-    delc: NDArray[np.float64] = field(
+    delc: Optional[NDArray[np.float64]] = field(
         default=1.0,
         block="griddata",
         shape=("nrow",),
         layered=False,
         netcdf=True,
     )
-    top: NDArray[np.float64] = field(
+    top: Optional[NDArray[np.float64]] = field(
         default=1.0,
         block="griddata",
         shape=("ncpl",),
         layered=False,
         netcdf=True,
     )
-    botm: NDArray[np.float64] = field(
+    botm: Optional[NDArray[np.float64]] = field(
         default=0.0,
         block="griddata",
         shape=("nodes",),

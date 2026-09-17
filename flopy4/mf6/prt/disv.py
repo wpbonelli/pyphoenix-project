@@ -2,7 +2,7 @@ from typing import ClassVar, Optional
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic.dataclasses import dataclass
 
 from flopy4.mf6.gwf.disbase import CFG, DisBase
@@ -39,14 +39,14 @@ class Disv(DisBase):
     nlay: int = field(default=0, block="dimensions")
     ncpl: int = field(default=0, block="dimensions")
     nvert: int = field(default=0, block="dimensions")
-    top: NDArray[np.float64] = field(
+    top: Optional[NDArray[np.float64]] = field(
         default=None,
         block="griddata",
         shape=("ncpl",),
         layered=False,
         netcdf=False,
     )
-    botm: NDArray[np.float64] = field(
+    botm: Optional[NDArray[np.float64]] = field(
         default=None,
         block="griddata",
         shape=("nodes",),
@@ -63,6 +63,23 @@ class Disv(DisBase):
     iv: Optional[NDArray[np.int64]] = Field(default=None)
     xv: Optional[NDArray[np.float64]] = Field(default=None)
     yv: Optional[NDArray[np.float64]] = Field(default=None)
+
+    # iv/xv/yv are declared NDArray-typed but commonly constructed from a
+    # plain list/tuple (see from_grid() below) -- unlike Package's own
+    # griddata fields, these carry no block="griddata"/shape= metadata, so
+    # Package._coerce_arrays' shape-driven check doesn't reach them. Same
+    # underlying gap as Tdis.perlen/nstp/tsmult: attrs never validated the
+    # declared NDArray type against an actual list default/override at
+    # all; pydantic does, so this needs its own small mode="before" fix.
+    @field_validator("iv", mode="before")
+    @classmethod
+    def _coerce_iv(cls, v):
+        return v if v is None or isinstance(v, np.ndarray) else np.asarray(v, dtype=np.int64)
+
+    @field_validator("xv", "yv", mode="before")
+    @classmethod
+    def _coerce_xv_yv(cls, v):
+        return v if v is None or isinstance(v, np.ndarray) else np.asarray(v, dtype=np.float64)
     vertices: Optional[list[Vertices]] = field(default=None, block="vertices")
     cell2ddata: Optional[list] = Field(default=None)
     cell2d: Optional[list] = field(default=None, init=False, block="cell2d")

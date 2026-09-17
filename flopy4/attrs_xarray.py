@@ -65,21 +65,27 @@ def _leaf_fields_and_children(
     for name, finfo in type(obj).__pydantic_fields__.items():
         if name in _RESERVED_FIELD_NAMES:
             continue
+        # A private field (leading underscore) exposed under an alias --
+        # e.g. Context._workspace/alias="workspace" -- is keyed by that
+        # alias here, not its real (private) name, matching the public API
+        # the field is actually meant to be read/written through (same
+        # convention structure.py/unstructure.py already use).
+        exposed = finfo.alias if (finfo.alias and name.startswith("_")) else name
         value = getattr(obj, name, None)
         if value is None:
             continue
         if is_dataclass_instance(value):
-            single_children[name] = value
+            single_children[exposed] = value
         elif isinstance(value, dict) and value and all(
             is_dataclass_instance(v) for v in value.values()
         ):
-            collection_children[name] = value
+            collection_children[exposed] = value
         elif isinstance(value, (list, tuple)) and value and all(
             is_dataclass_instance(v) for v in value
         ):
-            collection_children[name] = list(value)
+            collection_children[exposed] = list(value)
         else:
-            leaves[name] = (finfo, value)
+            leaves[exposed] = (finfo, value)
     return leaves, single_children, collection_children
 
 
@@ -127,8 +133,17 @@ def attrs_to_dataset(obj) -> xr.Dataset:
 def _init_field_names(cls: type) -> set:
     # init=False fields (e.g. Dis's derived nodes/ncpl/nvert) have no
     # __init__ parameter -- they're recomputed by __post_init__, not
-    # round-tripped through the constructor.
-    return {name for name, f in cls.__pydantic_fields__.items() if f.init is not False}
+    # round-tripped through the constructor. Exposed under each field's
+    # alias when it has one and is itself private (leading underscore),
+    # matching _leaf_fields_and_children's own exposed-name convention --
+    # a dataset produced from Context.workspace (backed by the private
+    # _workspace/alias="workspace" field) is keyed "workspace", so lookups
+    # here must match that key, not the private real name.
+    return {
+        (f.alias if (f.alias and name.startswith("_")) else name)
+        for name, f in cls.__pydantic_fields__.items()
+        if f.init is not False
+    }
 
 
 def _leaf_kwargs_from_dataset(cls: type, dataset: xr.Dataset) -> dict:

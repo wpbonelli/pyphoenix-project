@@ -29,6 +29,14 @@ _DTYPE_MAP: dict = {
 }
 
 
+def _is_dask_array(v: Any) -> bool:
+    try:
+        from dask.array import Array as _DaskArray
+    except ImportError:
+        return False
+    return isinstance(v, _DaskArray)
+
+
 @dataclass(config=CFG, kw_only=True)
 class Package(Component, ABC):
     # A griddata field's *declared* type is an array type (NDArray[...]/
@@ -57,9 +65,36 @@ class Package(Component, ABC):
         meta = finfo.json_schema_extra or {}
         if not (isinstance(meta, dict) and meta.get("block") == "griddata" and meta.get("shape")):
             return v
-        if isinstance(v, np.ndarray):
+        if isinstance(v, np.ndarray) or _is_dask_array(v):
+            # Already a real ndarray, or specifically a dask.array.Array
+            # (the one duck array actually exercised here -- see
+            # codec/writer/filters.py's array2chunks). np.asarray() below
+            # would materialize a dask array into a real ndarray, losing
+            # its laziness (confirmed by running the real dask-array
+            # griddata test), so it's passed through untouched. Anything
+            # ELSE duck-array-shaped (an xr.DataArray, notably -- confirmed
+            # by running Disv.from_grid() with a DataArray-backed grid) is
+            # NOT preserved as-is: some hand-written fields (Dis/Disv's
+            # own top/botm/delr/delc/iv/xv/yv) declare the stricter
+            # NDArray[...] rather than the _ArrayLike Protocol most
+            # generated griddata fields use, and only real np.ndarray
+            # satisfies that -- so it still needs materializing below.
             return v
         dtype = _DTYPE_MAP.get(to_field_type(finfo.annotation), np.float64)
+        if isinstance(v, dict):
+            # An empty-dict griddata value (e.g. Chd(dims={}) with no
+            # explicit scalar override) is _broadcast_griddata's own
+            # "use the field's own scalar default" signal -- attrs let it
+            # reach __post_init__ as a raw {} unchanged; pydantic's
+            # NDArray/_ArrayLike type check has no such carve-out (and
+            # np.asarray({}, ...) itself raises, confirmed by running the
+            # real empty-dict-griddata test). Pre-resolve it into the same
+            # 0-d default-valued array a bare scalar default produces here
+            # -- _broadcast_griddata's existing size==1 branch (added for
+            # that scalar case) picks it up and broadcasts it exactly the
+            # same way.
+            default = finfo.default if isinstance(finfo.default, (int, float)) else 0
+            return np.asarray(default, dtype=dtype)
         return np.asarray(v, dtype=dtype)
 
     def __post_init__(self) -> None:

@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import ClassVar, Optional, Union
 
-from pydantic import Field, SkipValidation
+from pydantic import SkipValidation
 from pydantic.dataclasses import dataclass
 
 from flopy4.mf6._types import FloatArrayLike, _optional_path

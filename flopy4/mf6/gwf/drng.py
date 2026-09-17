@@ -2,7 +2,6 @@
 from pathlib import Path
 from typing import ClassVar, Optional
 
-from pydantic import Field
 from pydantic.dataclasses import dataclass
 
 from flopy4.mf6._types import FloatArrayLike, _optional_path
@@ -71,6 +70,7 @@ class Drng(Package):
         default=0,
         block="dimensions",
         optional=True,
+        auto_from="stress_period_data",
     )
     elev: Optional[FloatArrayLike] = field(
         default=None,
