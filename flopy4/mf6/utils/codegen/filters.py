@@ -445,6 +445,16 @@ def field_metadata(f: FieldV3, block_name: str) -> dict:
         kw["time_series"] = True
     if f.optional:
         kw["optional"] = True
+    if block_name == "dimensions" and f.name == "maxbound":
+        # Reached only for a maxbound field that build_component_spec did NOT
+        # skip via its _maxbound_is_computed `continue` -- i.e. a G-variant
+        # package (READARRAY period data, no row list to derive maxbound
+        # from live) or any other package whose maxbound stays a real,
+        # user-writable field rather than becoming a computed @property.
+        # MF6 infers maxbound itself when it's left at 0/unwritten, so it
+        # must never be written out as a literal 0 -- see
+        # unstructure.py's auto_from handling.
+        kw["auto_from"] = "stress_period_data"
     if is_file_record(f):
         child = file_child(f)
         assert child is not None  # is_file_record() already confirmed a File child exists

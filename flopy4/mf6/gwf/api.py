@@ -50,4 +50,5 @@ class Api(Package):
     maxbound: Optional[int] = field(
         default=0,
         block="dimensions",
+        auto_from="stress_period_data",
     )
