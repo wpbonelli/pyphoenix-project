@@ -2,6 +2,26 @@
 
 ## Status
 
+**tl;dr:** Recommendation is still "don't do this now" (see "Revised
+recommendation" / "Re-assessed recommendation" below) — nothing measured
+on this branch changes that. What changed: the cost picture is no longer
+guesswork. Three runnable prototypes (`docs/dev/prototypes/pydantic_
+{dis,chd,record}_prototype.py`, all pass as of `ea35eec`) port `Dis`, a
+list-heavy package (`Chd`), and the `Record`/`Item` row-type subsystem to
+`pydantic.dataclasses.dataclass` against the *current* (post-xattree,
+post-`Row`) codebase shape, and measure real cost/ergonomics rather than
+trusting the stale January prototype. Headline findings: target
+`pydantic.dataclasses.dataclass`, never `BaseModel`; array-field and
+Item-list coercion both collapse to one reusable mechanism each, not
+per-field cost; `Component`/`Package`'s own mechanics (parent/child
+wiring, `MutableMapping`, Item-list coercion) port cleanly; `item.py`/
+`record.py` don't need to migrate at all, and would benefit from pydantic
+specifically (not just stdlib dataclasses) if they ever do. Real remaining
+cost is the ~50-call-site consumer surface outside the object model
+(`netcdf.py`, `converter/*`, `codec/*`) and the still-unmeasured
+keystring-union-arm coercion path — see "Next steps" at the bottom for
+what's left before a real go/no-go.
+
 Supersedes the prototype on `origin/plan-codegen` (`a9b77e8`, "planning",
 2026-01-23) — six files (`pydantic_prototype.py`,
 `pydantic_prototype_summary.md`, `codegen_comparison.md`,
@@ -99,12 +119,13 @@ phases. Wait for one of:
 
 ## Purpose of this branch
 
-Staging ground for updated prototyping once one of the above triggers is
-met: port one real, current-shape package (e.g. `Dis` or `Npf`, using
-today's `Row`/`pk`/`fk` conventions, no xattree) to pydantic and re-measure
-ergonomics against the actual current codebase, rather than trusting the
-January prototype's conclusions at face value — those were produced against
-a codebase materially different from today's.
+Staging ground for updated prototyping, so that *whenever* one of the
+above triggers is met, the go/no-go decision is made from real, current
+measurements instead of the stale January prototype. The prototyping
+itself (below) was done ahead of either trigger firing — deliberately: the
+point was to de-risk the *cost estimate* now, cheaply, on a throwaway
+branch, not to jump the queue on doing the actual migration. The "wait for
+a trigger" recommendation is unchanged by any of it (see "Status" above).
 
 ## Prototype results (2026-09-16)
 
@@ -536,7 +557,11 @@ above).
 - `docs/dev/netcdf-spec-plan.md` — same schema-value-layering conclusion,
   applied to the NetCDF I/O object model.
 - `mf6-object-model-plan.md` — the in-flight refactor this should sequence
-  after.
+  after. **Not a file in this repo** — confirmed via `git log --all` it has
+  never been committed, on any branch; it's a local/uncommitted planning
+  note in someone's working tree. A fresh session won't have it — ask
+  wpbonelli for current status on `mf6-object-model-plan.md` Phase 1
+  (generalized structuring) rather than expecting to find or `git show` it.
 - Issue #282.
 - `origin/plan-codegen` (`a9b77e8`) — original prototype code/docs; mined
   for `pydantic_prototype.py`'s array-structuring pattern
