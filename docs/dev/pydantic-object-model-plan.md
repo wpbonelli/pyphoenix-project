@@ -534,13 +534,36 @@ prototypes' scoped-down demos):**
     hand-maintained `auto_from="stress_period_data"` value on `maxbound`
     when Stage 5 regenerated them — confirmed via a controlled before/
     after run of `test_quickstart_grid` against the *unmigrated* `develop`
-    branch (passes there) that this is a genuine, pre-existing codegen gap
-    (`make.py` never emits this for a readarray-period G-variant package),
-    not a migration regression, and that the 5 files' on-disk value was
-    itself a stale hand-patch nothing kept in sync. Restored by hand;
-    deliberately not fixed at the codegen-logic root cause, matching the
-    existing SFR/MAW/UZF exclusion precedent — flagged as a known
-    follow-up, out of scope here.
+    branch (passes there, since those 5 files' on-disk value there was
+    still a stale-but-present hand-patch, untouched since it was last
+    regenerated) that this wasn't caused by the attrs→pydantic swap
+    itself. **Follow-up correction (`df6db25`, same day): this was
+    mischaracterized just above as an old, permanent codegen limitation —
+    it is not.** Git archaeology (not guesswork) found `filters.py` had a
+    working, general `has_maxbound`-gated mechanism for this as recently
+    as `3db0e36` (2026-09-02), which `67d0922` ("drop xattree (#356)",
+    2026-09-16 — the same refactor this branch is based on) silently
+    dropped while reworking `maxbound` into a computed `@property` for
+    list-variant packages, with no explanation in that commit for why the
+    G-variant/`auto_from` half of the change went with it. Confirmed via
+    a scratch checkout of `origin/develop` (unmodified) that running
+    `pixi run -e dev generate-classes` there *today* silently strips
+    `auto_from` from the same 5 files — this is a **live, currently
+    unfixed regression on `develop` itself**, not a stable pre-existing
+    gap, and it also already-silently affects `gwf/api.py`/`gwt/api.py`
+    (no stale value there to mask it, just missed by every test so far).
+    Fixed at the actual root cause in `filters.py`'s `field_metadata()`:
+    since `build_component_spec` already `continue`s past every case
+    where `maxbound` becomes a computed property before
+    `field_metadata()` ever runs, every `maxbound` field that mechanism
+    still sees is unconditionally the "real, MF6-auto-inferred field"
+    case (confirmed against every historical plain-`maxbound` field at
+    `3db0e36` — zero counterexamples) — no `has_maxbound` parameter
+    needed, unlike the mechanism that regressed. Verified by regenerating
+    the full corpus: `chdg`/`drng`/`ghbg`/`rivg`/`welg` reproduce their
+    existing (till now hand-patched) content exactly, and `gwf/api.py`/
+    `gwt/api.py` gain the field too. This branch's copy is now fixed at
+    the codegen level; `develop`'s is not yet — worth reporting upstream.
 - Real MF6 test-fixture data-quality issues, tolerated silently by attrs
   (zero field validation) and correctly rejected by pydantic's real
   types, found only by running actual DFN-driven test/example files: IMS
@@ -760,10 +783,14 @@ migration results (2026-09-17)" above.
   the complete, working comparison basis issue #282 asked for, but merging
   `pydantic-plan` into `develop` is a separate decision this doc doesn't
   make.
-- The pre-existing `maxbound`/`auto_from="stress_period_data"` codegen gap
-  (see "Full migration results" above) — real, confirmed, deliberately
-  left unfixed at the codegen-logic level, same category as the
-  already-scoped-out SFR/MAW/UZF exclusion.
+- ~~The `maxbound`/`auto_from="stress_period_data"` codegen gap~~ — fixed
+  at the codegen-logic root cause on this branch (`df6db25`), after
+  discovering it wasn't the pre-existing/permanent limitation first
+  assumed (see "Full migration results" above) but a live regression on
+  `develop` itself, from `67d0922` ("drop xattree (#356)"). **`develop`
+  still has the regression** — this branch's fix hasn't been ported
+  upstream; worth flagging/PRing separately from any `pydantic-plan`
+  merge decision, since it isn't pydantic-specific.
 - Sequencing against `mf6-object-model-plan.md` Phase 1 (see "Related"
   below) — this migration did not wait for it, per the 2026-09-17
   decision; whether that causes any rebasing friction if Phase 1 lands
