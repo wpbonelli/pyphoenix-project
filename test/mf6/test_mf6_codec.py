@@ -749,7 +749,7 @@ def test_dumps_tas_inner_classes():
 def test_dumps_zero_field_exg():
     """Zero-field exchange classes (gwfprt, gwfgwe, gwfgwt) instantiate and unstructure
     to empty dicts, producing no output — the pass-only class body must not interfere
-    with xattree or the converter.
+    with the converter.
     """
     from flopy4.mf6.exg.gwfgwe import Gwfgwe
     from flopy4.mf6.exg.gwfgwt import Gwfgwt
@@ -851,6 +851,53 @@ def test_prt_prp_period_roundtrip():
     p1 = spd[1]
     assert len(p1) == 1
     assert isinstance(p1[0], Prp.First)
+
+
+def test_oc_ocsetting_typed_dispatch():
+    """OC's nested ocsetting union (Save/Print's own All/First/Last/
+    Frequency/Steps arms) dispatches to real typed instances, not a raw
+    tuple, and survives a dump->load->structure_component cycle -- same
+    coverage as test_prt_prp_period_roundtrip for the top-level case."""
+    from flopy4.mf6.converter.egress.unstructure import unstructure_component
+    from flopy4.mf6.converter.ingress.structure import structure_component
+    from flopy4.mf6.gwf import Oc
+
+    oc = Oc(
+        dims={"nper": 1},
+        stress_period_data={
+            0: [
+                ("SAVE", "BUDGET", "STEPS", 1, 3, 5),
+                ("PRINT", "HEAD", "ALL"),
+            ]
+        },
+    )
+    text = dumps(unstructure_component(oc))
+    raw = loads(text)
+    oc2 = structure_component(raw, Oc)
+
+    spd = oc2.stress_period_data
+    assert spd is not None and 0 in spd
+    rows = spd[0]
+    assert len(rows) == 2
+
+    save_row = next(r for r in rows if isinstance(r, Oc.Save))
+    assert isinstance(save_row.ocsetting, Oc.Steps)
+    assert save_row.ocsetting.steps == (1.0, 3.0, 5.0)
+
+    print_row = next(r for r in rows if isinstance(r, Oc.Print))
+    assert isinstance(print_row.ocsetting, Oc.All)
+
+
+def test_oc_ocsetting_construct_item_positional():
+    """A user-supplied positional tuple (construct_item's code path, e.g.
+    via COMPONENT_CONVERTER structuring) dispatches ocsetting the same way
+    from_tokens does."""
+    from flopy4.mf6.gwf import Oc
+
+    oc = Oc(stress_period_data={0: [("SAVE", "HEAD", "ALL")]})
+    row = oc.stress_period_data[0][0]
+    assert isinstance(row, Oc.Save)
+    assert isinstance(row.ocsetting, Oc.All)
 
 
 # ---------------------------------------------------------------------------
