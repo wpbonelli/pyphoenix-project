@@ -191,14 +191,6 @@ fix, not a per-field one):**
 over)** — each of these is real remaining migration surface, not yet
 priced:
 
-- `Component`'s full `MutableMapping` interface (`__getitem__`/
-  `__setitem__`/`__delitem__`, list/dict child collections) — `Dis` only
-  exercises the single-child ("only") case via `ncf`.
-- `Package`'s Item-list period-data coercion (`_init_item_lists`,
-  `construct_item`/`construct_union_item`) — `Dis` has no period block, so
-  this path is entirely untouched here. `Npf` (the plan's other suggested
-  candidate) wouldn't exercise it either; a list-heavy package (`Wel`,
-  `Chd`, ...) would be needed to measure this.
 - Every consumer that reads `attrs.fields()`/`.metadata` off a live
   `Package` today. Measured directly (not estimated): ~50 call sites across
   12 files (`component.py`, `package.py`, `dimensions.py`, `spec.py`,
@@ -217,6 +209,83 @@ priced:
   represents `Optional`/`Union` for a field type) — worth checking against
   the two largest files above before trusting the swap is mechanical
   everywhere.
+
+## Prototype results: list-heavy package (2026-09-16)
+
+`docs/dev/prototypes/pydantic_chd_prototype.py` prices out the two things
+the `Dis` prototype explicitly deferred: `Component`'s full `MutableMapping`
+interface for a *list*-kind child field (several packages in one slot, not
+just `Dis.ncf`'s single-child case), and `Package`'s Item-list period-data
+coercion, modeled on the real `Chd`/`Chd.StressPeriodData`
+(`flopy4/mf6/gwf/chd.py`). Run via
+`pixi run -e dev python docs/dev/prototypes/pydantic_chd_prototype.py`.
+
+**The MutableMapping half ports cleanly**, once one attrs convention is
+matched exactly: `Component._is_default_child_name()`'s check — is this
+child's `.name` still at its class-name default, not just `is None` — has
+to be replicated verbatim. Pydantic's dataclass `__post_init__` already
+defaults every child's `.name` before the parent ever sees it (same as
+`ComponentBase.__post_init__` in the `Dis` prototype), so by the time a
+list-kind parent's `_set_child_parents()` runs, `child.name` is never
+actually `None` — a naive `is None` check silently fails to disambiguate
+same-class siblings (confirmed by running this prototype with that bug in
+place: two fresh `ChdProto()` children both landed on `"chd1"` for their
+would-be `"chd0"`/`"chd1"` names, since only the second matched `used`).
+Fixed by porting the real `_is_default_child_name` equality check instead.
+Once that's right, `__getitem__`/`__setitem__`/`__delitem__`/`__iter__`/
+`__len__`, auto-naming (`f"{field}{i}"`), and parent-stamping on
+`__setitem__` all behave identically to `Component`'s real semantics
+(demo asserts construction-time naming, explicit-key replacement, and
+deletion all work).
+
+**The Item-list half surfaces one real, new problem pydantic-specific to
+this field shape, not the array-field one already solved:** attrs applies
+zero validation to a field like `Chd._stress_period_data` (no
+validator/converter declared) — raw tuples/dicts pass through attrs'
+`__init__` untouched, and `Package.__attrs_post_init__` coerces them
+afterward. A plain pydantic-typed equivalent
+(`Optional[dict[int, list[Row]]]`) does NOT behave this way: it's eagerly,
+strictly validated at construction, so the exact raw-tuple/raw-dict input
+`Chd(stress_period_data=...)` accepts today raises
+`ValidationError: Input should be an instance of Row` before any
+post-init coercion hook runs — confirmed directly, including a control
+case proving the identical field without the fix does reject the identical
+input the fixed version accepts. `pydantic.SkipValidation[...]` fixes it
+(confirmed: same raw input accepted, coercion still runs in
+`__post_init__` exactly like the attrs version), at two small, genuinely
+new costs:
+
+- `flopy4/mf6/item.py`'s `item_list_type()` needs one extra unwrap step
+  (`Annotated[X, SkipValidation()]` → `X`) before its existing
+  `get_origin`/`get_args` walk reaches `dict[int, list[Row]]` — confirmed
+  the real function's current logic doesn't do this and would silently
+  return `None` (no item type found) without it. Small, mechanical,
+  one-time addition to one function.
+- `SkipValidation` also opts the field out of `validate_assignment`
+  re-validation, confirmed directly (`pkg.stress_period_data = "junk"` is
+  silently accepted). Not a regression versus attrs (no validator is
+  declared on this field today either), but it is a per-field, explicit
+  opt-out rather than something that falls out of the shared config the
+  way array-field coercion does.
+
+**Corollary, worth stating plainly: `flopy4/mf6/item.py`/`record.py` (the
+`Item`/`Record` row-type subsystem — token round-tripping,
+`construct_item`/`construct_union_item`, cellid/aux/boundname handling) do
+not need to migrate to pydantic at all.** With `SkipValidation`, pydantic
+never inspects what's inside the list — `ChdRowProto` in this prototype is
+a genuine, unmodified `attrs.define` class, exactly like the real
+`Chd.StressPeriodData`. A real migration can leave `item.py`/`record.py`
+attrs-based indefinitely and only port `Component`/`Package` (and
+generated leaf classes) to pydantic — a materially smaller migration
+surface than porting the whole object model in one pass would suggest.
+
+**Still out of scope after this measurement:** the keystring-union-arm
+case (`construct_union_item` — LAK/SFR/MAW/UZF period settings, several
+`Item` subclasses sharing one field via a `Union`) — this prototype only
+covers the plain (non-union) coercion path `Chd`/`Wel`/`Drn`-style packages
+use. `Component`'s "dict"-kind child collection (as opposed to "list") is
+also still unexercised, though nothing found here suggests it would behave
+differently from the "list" case's `_children`/naming logic.
 
 ## BaseModel vs. pydantic dataclasses
 
@@ -322,33 +391,38 @@ replacement is more, less, or equally complex.
 The measurement doesn't change the "wait for a trigger" recommendation
 above. It does relocate where the real cost lives: not in per-field
 boilerplate (the array-coercion validator collapses to one reusable
-definition, not one per field or per package) and not in translating type
+definition, not one per field or per package), not in translating type
 annotations to MF6's DFN vocabulary (a wash — see "Supporting-code
-complexity" above), but in (a) faithfully porting
-`Component`/`Package`/`DimensionResolverMixin` themselves — the
-`MutableMapping` interface and Item-list coercion are still unmeasured —
-and (b) the ~50-call-site consumer surface outside the object model itself
-(`netcdf.py`, `converter/*`, `codec/*`). Both are one-time, codebase-wide
-costs rather than a cost that scales with how many packages get migrated.
-Target `pydantic.dataclasses.dataclass`, not `BaseModel`, for both.
+complexity" above), and not in `Component`/`Package`'s own object-model
+mechanics (`MutableMapping`, Item-list coercion, parent/child wiring — all
+now measured and ported cleanly, at the cost of one `SkipValidation`
+opt-out per Item-list field and one small `item_list_type()` fix), but in
+(a) the ~50-call-site consumer surface outside the object model itself
+(`netcdf.py`, `converter/*`, `codec/*`) and (b) the still-unmeasured
+keystring-union-arm coercion path (LAK/SFR/MAW/UZF-style period settings).
+Both are one-time, codebase-wide costs rather than a cost that scales with
+how many packages get migrated. Target `pydantic.dataclasses.dataclass`,
+not `BaseModel`, for both — and leave `flopy4/mf6/item.py`/`record.py`
+attrs-based; they don't need to migrate (see the Item-list corollary
+above).
 
 ## Next steps (when picked up for a real migration decision)
 
-1. Extend the prototype (or a new one) to a list-heavy package (`Wel`,
-   `Chd`) to measure the `MutableMapping`/Item-list surface this one
-   skipped.
-2. Prototype the codegen-side change: emit `Field(json_schema_extra=...)`
+1. Prototype the codegen-side change: emit `Field(json_schema_extra=...)`
    from `flopy4/mf6/utils/codegen/{make,filters}.py`'s templates in place
    of `attrs.field(metadata=...)` — no validator-emitting needed, per the
    corrected finding above; the existing `shape=` metadata is enough. Make
    sure the emitted `@dataclass(...)` config carries `extra="forbid"` (see
-   "Supporting-code complexity" above — required for `init=False` to work).
-3. Prototype migrating one real consumer (`flopy4/mf6/netcdf.py`'s
+   "Supporting-code complexity" above — required for `init=False` to work)
+   and that Item-list fields get `SkipValidation[...]` wrapped in.
+2. Prototype migrating one real consumer (`flopy4/mf6/netcdf.py`'s
    `_PackageSpec`, the smallest of the three) off `attrs.fields()`/
    `.metadata` to confirm the `__pydantic_fields__`/`json_schema_extra`
    swap is as mechanical there as it was in this prototype.
-4. Re-decide go/no-go from (1)-(3), not from the January prototype or this
-   single-package measurement alone.
+3. Measure the keystring-union-arm coercion path (`construct_union_item`)
+   against a real package that uses it (LAK, SFR, MAW, or UZF).
+4. Re-decide go/no-go from (1)-(3), not from the January prototype or these
+   two single-package measurements alone.
 
 ## Related
 
@@ -356,6 +430,10 @@ Target `pydantic.dataclasses.dataclass`, not `BaseModel`, for both.
   behind "Prototype results" above, built on `pydantic.dataclasses.dataclass`
   (v3 — see "BaseModel vs. pydantic dataclasses"). Runnable standalone; not
   wired into flopy4's real registry/codegen/write/load path.
+- `docs/dev/prototypes/pydantic_chd_prototype.py` — the list-heavy-package
+  prototype behind "Prototype results: list-heavy package" above (imports
+  `ComponentBase`/`PackageBase` from `pydantic_dis_prototype.py`). Runnable
+  standalone.
 - `docs/dev/netcdf-spec-plan.md` — same schema-value-layering conclusion,
   applied to the NetCDF I/O object model.
 - `mf6-object-model-plan.md` — the in-flight refactor this should sequence
