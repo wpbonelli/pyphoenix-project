@@ -2,12 +2,28 @@
 
 ## Status
 
-**tl;dr:** The original "don't do this now" recommendation (see "Revised
-recommendation" / "Re-assessed recommendation" below) held through four
-rounds of prototyping, which is exactly why a full migration is now
-underway on this branch (see the 2026-09-17 update under "Next steps") —
-every mechanism the object model needs was independently de-risked first,
-cheaply, rather than discovered mid-migration. Four runnable prototypes
+**The full migration is complete, on this branch (`pydantic-plan`), as of
+2026-09-17.** Every class in the MF6 object model — `Component`, `Package`,
+`Record`/`Item` (including — a scope expansion over this doc's earlier
+"they don't need to migrate" finding below — the decision was made to
+migrate them too, for a fully consistent codebase, once every mechanism
+they needed was already independently confirmed working), all 8 hand-written
+Dis/Disv pairs, `Ncf`, all 63 codegen-generated package files, and the full
+~50-call-site consumer surface (`netcdf.py`, `converter/*`, `codec/*`,
+`adapters.py`, `attrs_xarray.py`) — now targets
+`pydantic.dataclasses.dataclass`. The complete test suite passes: **910
+passed, 0 failed, 11 skipped (pre-existing/unrelated), 4 xfailed
+(pre-existing/unrelated)**, and a full-tree `ruff check .` is clean. See
+"Full migration results (2026-09-17)" below for what was found doing the
+real thing, as opposed to what the prototypes predicted.
+
+**tl;dr of how it got here:** The original "don't do this now"
+recommendation (see "Revised recommendation" / "Re-assessed recommendation"
+below) held through four rounds of prototyping, which is exactly why a full
+migration then went ahead on this branch (see the 2026-09-17 update under
+"Next steps") — every mechanism the object model needs was independently
+de-risked first, cheaply, rather than discovered mid-migration. Four
+runnable prototypes
 (`docs/dev/prototypes/pydantic_{dis,chd,record,union_arm}_prototype.py`)
 port `Dis`, a list-heavy package (`Chd`), the `Record`/`Item` row-type
 subsystem, and the keystring-union-arm coercion path (`Oc`) to
@@ -18,12 +34,13 @@ trusting the stale January prototype. Headline findings: target
 Item-list, and keystring-union-arm coercion all collapse to one reusable
 mechanism each, not per-field cost; `Component`/`Package`'s own mechanics
 (parent/child wiring, `MutableMapping`, Item-list coercion, union-arm
-dispatch) port cleanly; `item.py`/`record.py` don't need to migrate at
-all, and would benefit from pydantic specifically (not just stdlib
-dataclasses) if they ever do. The only cost never fully spiked in
-isolation — the codegen templates and the ~50-call-site consumer surface
-(`netcdf.py`, `converter/*`, `codec/*`) — is being measured directly by
-doing the real migration, per the 2026-09-17 decision.
+dispatch) port cleanly; `item.py`/`record.py` don't strictly need to
+migrate, but do so cleanly and delete real code
+(`_nested_class()`'s custom resolver) when they do. The cost never fully
+spiked in isolation — the codegen templates and the ~50-call-site consumer
+surface (`netcdf.py`, `converter/*`, `codec/*`) — was then measured
+directly by doing the real migration, per the 2026-09-17 decision, and is
+now known rather than estimated (see below).
 
 Supersedes the prototype on `origin/plan-codegen` (`a9b77e8`, "planning",
 2026-01-23) — six files (`pydantic_prototype.py`,
@@ -459,6 +476,137 @@ already-resolved `FieldInfo.annotation`.
 This was the harder of the two items "Next steps" listed as still open —
 see the updated list below.
 
+## Full migration results (2026-09-17)
+
+Staged as 7 commits on `pydantic-plan`
+(`249ffe9`, `75af85c`, `b6c2019`, `f5dc069`, `fbcbb3a`, `ab22c9f`,
+`f8a5359`, `b29dfc4`), each independently runnable/testable, in the order:
+`Record`/`Item` → `Component`+`DimensionResolverMixin` → `Package`+
+`disbase.py` → codegen pipeline → regenerate (63 files) → consumer surface
+→ full-suite fixup. Every mechanism the prototypes measured ported exactly
+as predicted; everything below is what the prototypes *couldn't* measure
+(the codegen templates and consumer surface were explicitly out of scope
+for isolated spiking, per the 2026-09-17 decision below) or got newly
+surfaced by running the real ~250-fixture MF6 corpus test and the full
+`test/` suite, not just hand-picked demo assertions.
+
+**Confirmed exactly as the prototypes predicted, at full scale:**
+
+- `pydantic.dataclasses.dataclass` (never `BaseModel`) with a shared
+  `ConfigDict(arbitrary_types_allowed=True, validate_assignment=True,
+  extra="forbid")`, applied per-class via `config=CFG` since pydantic
+  doesn't inherit class-level config the way attrs does.
+- One shared `field_validator("*", mode="before")` on `Package`
+  (`_coerce_arrays`), driven by each field's own `shape=`/`block=`
+  metadata, handles array coercion for all ~50 generated packages — no
+  per-field or per-package validator needed, exactly as measured.
+- `SkipValidation[...]` + `item_list_type()`'s one-line unwrap fix handles
+  every Item-list field, plain and keystring-union-arm alike (`Oc`
+  directly, plus `Lak`/`Lke`/`Lkt`/`Prp` transitively via the same
+  mechanism) — no new mechanism needed beyond what the union-arm prototype
+  already found.
+- `Record`/`Item` migrated cleanly to pydantic dataclasses and
+  `_nested_class()`'s custom qualname-walking resolver was deleted, as
+  predicted, replaced by a direct `isinstance` check on the now-real
+  `FieldInfo.annotation`.
+- The ~50-call-site consumer surface (`netcdf.py`, `converter/ingress/
+  structure.py`, `converter/egress/unstructure.py`, `adapters.py`,
+  `attrs_xarray.py`, `spec.py`) was indeed mechanical field-by-field
+  (`attrs.fields()`/`.metadata` → `__pydantic_fields__`/
+  `json_schema_extra`), confirming the prototype's estimate that the cost
+  here is the *count* of sites, not the difficulty of any one of them.
+
+**New findings, only visible at real scale (not predictable from the
+prototypes' scoped-down demos):**
+
+- Two real, pre-existing bugs it took the actual ~250-fixture corpus test
+  and full `test_quickstart_grid` mf6-binary integration test to surface —
+  neither reproducible from a hand-picked demo package:
+  - A Python `for` loop shadowing bug in
+    `converter/ingress/structure.py`: several loops used `name` as the
+    loop variable while `structure_component()` itself takes a `name`
+    keyword parameter (`for` loops don't scope in Python, unlike
+    comprehensions) — silently correct under attrs (which never validated
+    the resulting garbage against a real field type) but wrong under
+    pydantic's real validation, causing roughly 300 of the migration's
+    ~400 initial test failures. One rename (`name` → `fname`) fixed it.
+  - `chdg.py`/`drng.py`/`ghbg.py`/`rivg.py`/`welg.py` losing a
+    hand-maintained `auto_from="stress_period_data"` value on `maxbound`
+    when Stage 5 regenerated them — confirmed via a controlled before/
+    after run of `test_quickstart_grid` against the *unmigrated* `develop`
+    branch (passes there) that this is a genuine, pre-existing codegen gap
+    (`make.py` never emits this for a readarray-period G-variant package),
+    not a migration regression, and that the 5 files' on-disk value was
+    itself a stale hand-patch nothing kept in sync. Restored by hand;
+    deliberately not fixed at the codegen-logic root cause, matching the
+    existing SFR/MAW/UZF exclusion precedent — flagged as a known
+    follow-up, out of scope here.
+- Real MF6 test-fixture data-quality issues, tolerated silently by attrs
+  (zero field validation) and correctly rejected by pydantic's real
+  types, found only by running actual DFN-driven test/example files: IMS
+  stale legacy extra tokens on scalar fields ("OUTER_MAXIMUM 100 500"),
+  Gwf "NEWTON UNDER_RELAXATION" (bool/keyword field with a trailing
+  modifier token), a single-name `auxiliary` option missing `shape=`
+  metadata, `Tdis.start_date_time` splitting an ISO datetime into
+  multiple tokens or a bare-int year, pandas `NaN` for a missing optional
+  Item-list column, and `Npf.rewet`'s field name colliding with its own
+  inner Record's `_keyword`, causing wrong dispatch priority. All fixed
+  at the point where the real data meets the new (correct) validation,
+  not by loosening validation.
+- A distinction the array-coercion prototype didn't need to make because
+  its demo never exercised it: an `xr.DataArray` satisfies the same duck
+  typing as a real dask array (`hasattr(dtype)`/`hasattr(shape)`), but
+  only a dask array's laziness needs preserving — an `xr.DataArray` still
+  needs materializing via `np.asarray()` to satisfy a stricter bare
+  `NDArray[...]`-typed field (`Disv.top`/`botm` and similar). Fixed by
+  narrowing `_coerce_arrays`'s passthrough condition to
+  `isinstance(v, np.ndarray) or _is_dask_array(v)` specifically.
+- `Disv.iv`/`xv`/`yv` (all 4 model families) are commonly constructed from
+  a plain list (`from_grid()`) but carry no `shape=`/`block="griddata"`
+  metadata, so the shared `Package._coerce_arrays` validator never reaches
+  them — needed small, field-scoped `mode="before"` validators declared
+  locally on each `Disv` class, the one place per-field validators
+  (rather than the shared one) were actually necessary.
+- `Dis`/`Disv`'s `top`/`botm` fields (all 4 model families) were declared
+  as required `NDArray[...]` but given a real `default=None` (and
+  constructed with an explicit `None` on some grid-conversion paths) — a
+  type/default mismatch attrs never checked. Fixed by making them
+  `Optional[NDArray[...]]`, matching `idomain`'s already-correct pattern.
+- Field-redeclaration ordering differs: when a subclass redeclares a field
+  its base class already declared (`DisBase`'s `nlay`/`nrow`/`ncol`/...
+  vs. `Dis`'s own `nlay`/`ncol`/`nrow`), attrs moves the field to the
+  subclass's redeclaration position; pydantic (like plain stdlib
+  dataclasses) keeps it at the base class's original position. A real,
+  permanent behavioral difference, not a bug — confirmed via
+  `Dis.__pydantic_fields__` directly and reflected in updated test
+  expectations, not worked around.
+- `init=False` fields are fundamentally incompatible with `extra="allow"`
+  in pydantic — it refuses the combination outright
+  (`PydanticUserError`), confirmed empirically. Since `DisBase`'s derived
+  dimensions need `init=False` + `extra="forbid"` to work at all, this
+  closes off the specific kind of freeform post-construction attribute-
+  bolting attrs' `slots=False` tolerated; one flopy3-compat test needed
+  the same `object.__setattr__()` escape hatch the real source already
+  uses internally for the same reason.
+- Missing-required-field construction raises pydantic's own
+  `ValidationError` where attrs raised `TypeError` — a real, permanent
+  exception-type difference for any code that catches construction
+  errors narrowly.
+- A codegen bug newly introduced by the migration itself (not
+  pre-existing): `_generated_imports()` in `make.py` unconditionally
+  imported `Field` even for files with no `inner_classes` (the only place
+  a bare `Field()` call is ever emitted — everything else routes through
+  `spec.py`'s `field()`/`path()` wrappers), producing 49 unused-import
+  lint errors across the regenerated corpus. Fixed at the root cause
+  (scoped to `has_inner_classes`), plus a one-time `ruff --fix` sweep.
+
+**Not needed, contrary to what might have been assumed going in:** no
+change to `to_field_type()`/`get_field_type()`/`child_field_candidates()`
+beyond the mechanical `Attribute`→`FieldInfo` swap already measured; no
+change to how computed `@property` fields (e.g. `maxbound`) stay invisible
+to field introspection — `unstructure.py`'s existing
+`isinstance(..., property)` special-case needed no changes.
+
 ## BaseModel vs. pydantic dataclasses
 
 Every pydantic-based sketch this codebase has produced so far — the
@@ -578,33 +726,48 @@ not `BaseModel`, for both — and leave `flopy4/mf6/item.py`/`record.py`
 attrs-based; they don't need to migrate (see the Item-list corollary
 above).
 
-## Next steps (when picked up for a real migration decision)
+## Next steps
 
-1. Prototype the codegen-side change: emit `Field(json_schema_extra=...)`
-   from `flopy4/mf6/utils/codegen/{make,filters}.py`'s templates in place
-   of `attrs.field(metadata=...)` — no validator-emitting needed, per the
-   corrected finding above; the existing `shape=` metadata is enough. Make
-   sure the emitted `@dataclass(...)` config carries `extra="forbid"` (see
-   "Supporting-code complexity" above — required for `init=False` to work)
-   and that Item-list fields get `SkipValidation[...]` wrapped in.
-2. Prototype migrating one real consumer (`flopy4/mf6/netcdf.py`'s
-   `_PackageSpec`, the smallest of the three) off `attrs.fields()`/
-   `.metadata` to confirm the `__pydantic_fields__`/`json_schema_extra`
-   swap is as mechanical there as it was in this prototype.
+All items originally listed here are done — see "Full migration results
+(2026-09-17)" above for what running them for real found beyond what the
+prototypes predicted. Kept for history:
+
+1. ~~Prototype the codegen-side change~~ — done for real, not spiked; see
+   Stage 4 in "Full migration results" above.
+2. ~~Prototype migrating one real consumer~~ — done for real, all ~50 call
+   sites across the full consumer surface, not just `netcdf.py`; see
+   Stage 6 above.
 3. ~~Measure the keystring-union-arm coercion path~~ — done, see
    "Prototype results: keystring-union-arm coercion" above.
-4. Re-decide go/no-go from (1)-(2), not from the January prototype or these
-   measurements alone.
+4. ~~Re-decide go/no-go~~ — superseded by the 2026-09-17 decision below to
+   go straight to a full migration rather than spike further.
 
-**2026-09-17 update:** the decision was made to skip (1)-(2) as isolated
-spikes and go straight to a full migration on this branch instead — a
-real, working migration is a better basis for team comparison than more
-prototyping, and every mechanism it would exercise (array/griddata
-coercion, `MutableMapping`, Item-list coercion including the
-keystring-union-arm case, parent/child wiring) is now independently
-confirmed to work with no open unknowns. The codegen template work and the
-`netcdf.py`/`converter/*`/`codec/*` consumer surface are being done as
-part of that migration directly, not spiked separately first.
+**2026-09-17 decision-to-migrate note:** the decision was made to skip
+further isolated spiking and go straight to a full migration on this
+branch instead — a real, working migration is a better basis for team
+comparison than more prototyping, and every mechanism it would exercise
+(array/griddata coercion, `MutableMapping`, Item-list coercion including
+the keystring-union-arm case, parent/child wiring) was already
+independently confirmed to work with no open unknowns. The codegen
+template work and the `netcdf.py`/`converter/*`/`codec/*` consumer surface
+were done as part of that migration directly, not spiked separately
+first. **The migration is now complete** — see "Status" and "Full
+migration results (2026-09-17)" above.
+
+**What's genuinely left, if this is merged:**
+
+- The real go/no-go/merge decision itself — this doc and branch provide
+  the complete, working comparison basis issue #282 asked for, but merging
+  `pydantic-plan` into `develop` is a separate decision this doc doesn't
+  make.
+- The pre-existing `maxbound`/`auto_from="stress_period_data"` codegen gap
+  (see "Full migration results" above) — real, confirmed, deliberately
+  left unfixed at the codegen-logic level, same category as the
+  already-scoped-out SFR/MAW/UZF exclusion.
+- Sequencing against `mf6-object-model-plan.md` Phase 1 (see "Related"
+  below) — this migration did not wait for it, per the 2026-09-17
+  decision; whether that causes any rebasing friction if Phase 1 lands
+  first is unknown.
 
 ## Related
 
