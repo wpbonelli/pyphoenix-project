@@ -1,18 +1,19 @@
 from pathlib import Path
 from typing import ClassVar, Optional
 
-import attrs
 import numpy as np
 from numpy.typing import NDArray
+from pydantic import Field
+from pydantic.dataclasses import dataclass
 
 from flopy4.mf6._types import _optional_path
-from flopy4.mf6.gwf.disbase import DisBase
+from flopy4.mf6.gwf.disbase import CFG, DisBase
 from flopy4.mf6.spec import field, path
 from flopy4.mf6.utils.grid import StructuredGrid
 from flopy4.mf6.utl.ncf import Ncf
 
 
-@attrs.define(kw_only=True, slots=False)
+@dataclass(config=CFG, kw_only=True)
 class Dis(DisBase):
     dfn_name: ClassVar[str] = "gwf-dis"
 
@@ -30,7 +31,7 @@ class Dis(DisBase):
         optional=True,
         direction="in",
     )
-    ncf: Optional[Ncf] = attrs.field(default=None)
+    ncf: Optional[Ncf] = Field(default=None)
     nlay: int = field(default=1, block="dimensions")
     ncol: int = field(default=2, block="dimensions")
     nrow: int = field(default=2, block="dimensions")
@@ -66,12 +67,12 @@ class Dis(DisBase):
         default=1, block="griddata", shape=("nodes",), layered=True, netcdf=True
     )
 
-    def __attrs_post_init__(self):
+    def __post_init__(self):
         self.nodes = self.ncol * self.nrow * self.nlay
         self.ncpl = self.ncol * self.nrow
         self.nvert = (self.ncol + 1) * (self.nrow + 1)
         self._coerce_griddata()
-        super().__attrs_post_init__()
+        super().__post_init__()
 
     def get_dims(self) -> dict[str, int]:
         """Get all dimensions."""

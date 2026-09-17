@@ -1,15 +1,15 @@
 from typing import ClassVar, Optional
 
-import attrs
 import numpy as np
 from numpy.typing import NDArray
+from pydantic.dataclasses import dataclass
 
-from flopy4.mf6.gwf.disbase import DisBase
+from flopy4.mf6.gwf.disbase import CFG, DisBase
 from flopy4.mf6.spec import field
 from flopy4.mf6.utils.grid import StructuredGrid
 
 
-@attrs.define(kw_only=True, slots=False)
+@dataclass(config=CFG, kw_only=True)
 class Dis(DisBase):
     dfn_name: ClassVar[str] = "prt-dis"
 
@@ -59,12 +59,12 @@ class Dis(DisBase):
         netcdf=False,
     )
 
-    def __attrs_post_init__(self):
+    def __post_init__(self):
         self.nodes = self.ncol * self.nrow * self.nlay
         self.ncpl = self.ncol * self.nrow
         self.nvert = (self.ncol + 1) * (self.nrow + 1)
         self._coerce_griddata()
-        super().__attrs_post_init__()
+        super().__post_init__()
 
     def get_dims(self) -> dict[str, int]:
         """Get all dimensions."""

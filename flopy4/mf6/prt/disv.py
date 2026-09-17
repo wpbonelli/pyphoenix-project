@@ -1,28 +1,29 @@
 from typing import ClassVar, Optional
 
-import attrs
 import numpy as np
 from numpy.typing import NDArray
+from pydantic import Field
+from pydantic.dataclasses import dataclass
 
-from flopy4.mf6.gwf.disbase import DisBase
+from flopy4.mf6.gwf.disbase import CFG, DisBase
 from flopy4.mf6.item import Item
 from flopy4.mf6.spec import field
 from flopy4.mf6.utils.grid import VertexGrid
 
 
-@attrs.define(kw_only=True, slots=False)
+@dataclass(config=CFG, kw_only=True)
 class Disv(DisBase):
     dfn_name: ClassVar[str] = "prt-disv"
 
-    @attrs.define(slots=False)
+    @dataclass(config=CFG)
     class Cell2dRecord:
-        icell2d: int = attrs.field()
-        xc: float = attrs.field()
-        yc: float = attrs.field()
-        ncvert: int = attrs.field()
-        icvert: tuple[int, ...] = attrs.field()
+        icell2d: int = Field()
+        xc: float = Field()
+        yc: float = Field()
+        ncvert: int = Field()
+        icvert: tuple[int, ...] = Field()
 
-    @attrs.define
+    @dataclass(config=CFG)
     class Vertices(Item):
         iv: int
         xv: float
@@ -59,14 +60,14 @@ class Disv(DisBase):
         layered=True,
         netcdf=False,
     )
-    iv: Optional[NDArray[np.int64]] = attrs.field(default=None)
-    xv: Optional[NDArray[np.float64]] = attrs.field(default=None)
-    yv: Optional[NDArray[np.float64]] = attrs.field(default=None)
+    iv: Optional[NDArray[np.int64]] = Field(default=None)
+    xv: Optional[NDArray[np.float64]] = Field(default=None)
+    yv: Optional[NDArray[np.float64]] = Field(default=None)
     vertices: Optional[list[Vertices]] = field(default=None, block="vertices")
-    cell2ddata: Optional[list] = attrs.field(default=None)
+    cell2ddata: Optional[list] = Field(default=None)
     cell2d: Optional[list] = field(default=None, init=False, block="cell2d")
 
-    def __attrs_post_init__(self):
+    def __post_init__(self):
         if self.iv is not None and (not isinstance(self.iv, np.ndarray)):
             object.__setattr__(self, "iv", np.asarray(self.iv, dtype=np.int64))
         if self.xv is not None and (not isinstance(self.xv, np.ndarray)):
@@ -91,7 +92,7 @@ class Disv(DisBase):
         self.nrow = 0
         self.ncol = 0
         self._coerce_griddata()
-        super().__attrs_post_init__()
+        super().__post_init__()
 
     def get_dims(self) -> dict[str, int]:
         """Get all dimensions."""

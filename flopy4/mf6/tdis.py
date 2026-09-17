@@ -1,21 +1,22 @@
 from datetime import datetime
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
-import attrs
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from pydantic import field_validator
+from pydantic.dataclasses import dataclass
 
 from flopy4.mf6.item import Item
-from flopy4.mf6.package import Package
+from flopy4.mf6.package import CFG, Package
 from flopy4.mf6.spec import field
 from flopy4.mf6.utils.time import Time
 
 
-@attrs.define(kw_only=True, slots=False)
+@dataclass(config=CFG, kw_only=True)
 class Tdis(Package):
     dfn_name: ClassVar[str] = "sim-tdis"
 
-    @attrs.define
+    @dataclass(config=CFG)
     class PeriodData(Item):
         perlen: float
         nstp: int
@@ -29,12 +30,25 @@ class Tdis(Package):
         optional=True,
     )
     nper: int = field(default=1, block="dimensions")
-    perlen: NDArray[np.float64] = attrs.field(default=1.0)
-    nstp: NDArray[np.int64] = attrs.field(default=1)
-    tsmult: NDArray[np.float64] = attrs.field(default=1.0)
+    perlen: NDArray[np.float64] = field(default=1.0)
+    nstp: NDArray[np.int64] = field(default=1)
+    tsmult: NDArray[np.float64] = field(default=1.0)
     perioddata: Optional[list[PeriodData]] = field(default=None, block="perioddata")
 
-    def __attrs_post_init__(self):
+    # perlen/nstp/tsmult aren't Package "griddata" block fields (no
+    # block="griddata" metadata), so Package._coerce_arrays' shape-driven
+    # check doesn't touch them -- same underlying problem though (a
+    # declared array type with a bare-scalar default/override), so this
+    # needs its own mode="before" coercion, scoped to just these 3 fields
+    # by name rather than metadata.
+    @field_validator("perlen", "nstp", "tsmult", mode="before")
+    @classmethod
+    def _coerce_to_array(cls, v: Any) -> Any:
+        if isinstance(v, np.ndarray):
+            return v
+        return np.asarray(v)
+
+    def __post_init__(self):
         if self.perioddata:
             rows = [
                 row
@@ -48,27 +62,33 @@ class Tdis(Package):
             object.__setattr__(self, "perlen", np.array([r.perlen for r in rows], dtype=np.float64))
             object.__setattr__(self, "nstp", np.array([r.nstp for r in rows], dtype=np.int64))
             object.__setattr__(self, "tsmult", np.array([r.tsmult for r in rows], dtype=np.float64))
-            super().__attrs_post_init__()
+            super().__post_init__()
             return
         nper = self.nper
-        if isinstance(self.perlen, (int, float)):
-            object.__setattr__(self, "perlen", np.full(nper, self.perlen, dtype=np.float64))
-        elif not isinstance(self.perlen, np.ndarray):
-            object.__setattr__(self, "perlen", np.asarray(self.perlen, dtype=np.float64))
-        if isinstance(self.nstp, (int, float)):
-            object.__setattr__(self, "nstp", np.full(nper, int(self.nstp), dtype=np.int64))
-        elif not isinstance(self.nstp, np.ndarray):
-            object.__setattr__(self, "nstp", np.asarray(self.nstp, dtype=np.int64))
-        if isinstance(self.tsmult, (int, float)):
-            object.__setattr__(self, "tsmult", np.full(nper, self.tsmult, dtype=np.float64))
-        elif not isinstance(self.tsmult, np.ndarray):
-            object.__setattr__(self, "tsmult", np.asarray(self.tsmult, dtype=np.float64))
+        # A scalar/list-shaped value arrives here as a 0-d/plain ndarray
+        # already (this class's own _coerce_to_array validator, needed so
+        # pydantic's type check on the declared NDArray[...] annotation
+        # accepts it at all -- attrs applied no such check), not the bare
+        # int/float/list attrs would have left untouched -- so a size
+        # check replaces the old isinstance(..., (int, float)) one.
+        if self.perlen.size == 1:
+            object.__setattr__(self, "perlen", np.full(nper, self.perlen.item(), dtype=np.float64))
+        elif self.perlen.dtype != np.float64:
+            object.__setattr__(self, "perlen", self.perlen.astype(np.float64))
+        if self.nstp.size == 1:
+            object.__setattr__(self, "nstp", np.full(nper, int(self.nstp.item()), dtype=np.int64))
+        elif self.nstp.dtype != np.int64:
+            object.__setattr__(self, "nstp", self.nstp.astype(np.int64))
+        if self.tsmult.size == 1:
+            object.__setattr__(self, "tsmult", np.full(nper, self.tsmult.item(), dtype=np.float64))
+        elif self.tsmult.dtype != np.float64:
+            object.__setattr__(self, "tsmult", self.tsmult.astype(np.float64))
         rows = [
             Tdis.PeriodData(perlen=float(p), nstp=int(n), tsmult=float(t))
             for p, n, t in zip(self.perlen, self.nstp, self.tsmult)
         ]
         object.__setattr__(self, "perioddata", rows)
-        super().__attrs_post_init__()
+        super().__post_init__()
 
     def get_dims(self) -> dict[str, int]:
         """Get all dimensions."""
