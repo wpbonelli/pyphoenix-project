@@ -3,7 +3,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import attrs
 import numpy as np
 import xarray as xr
 
@@ -38,13 +37,13 @@ def _make_binding_blocks(value: Component) -> dict[str, dict[str, list[tuple[str
 
     blocks = {}  # type: ignore
 
-    for f in attrs.fields(type(value)):  # type: ignore[arg-type]
+    for child_name, f in type(value).__pydantic_fields__.items():
         if child_field_candidates(f) is None:
             continue
-        child_name = f.name
         if (child := getattr(value, child_name, None)) is None:
             continue
-        block_name = f.metadata.get("block")
+        meta = f.json_schema_extra or {}
+        block_name = meta.get("block") if isinstance(meta, dict) else None
         if block_name is None:
             continue
         if block_name not in blocks:
@@ -131,9 +130,9 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
     except ImportError:
         _DaskArray = type(None)  # type: ignore[misc,assignment]
 
-    for f in attrs.fields(cls):  # type: ignore[arg-type]
-        meta = f.metadata
-        block_name = meta.get("block")
+    for name, f in cls.__pydantic_fields__.items():
+        meta = f.json_schema_extra or {}
+        block_name = meta.get("block") if isinstance(meta, dict) else None
         if not block_name:
             continue
 
@@ -142,12 +141,12 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
             blocks.setdefault(block_name, {})
 
         # Private alias fields (e.g. _stress_period_data) → access via public name
-        attr_name = f.alias if (f.alias and f.name.startswith("_")) else f.name
+        attr_name = f.alias if (f.alias and name.startswith("_")) else name
         field_value = getattr(value, attr_name, None)
         if field_value is None:
             continue
 
-        dfn_type = to_field_type(f.type)
+        dfn_type = to_field_type(f.annotation)
 
         # ── PERIOD block ────────────────────────────────────────────────────────
         if block_name == "period":
@@ -158,7 +157,7 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
                 nper = field_value.shape[0]
                 # Aux field: shape (nper, ncpl, naux) → emit one named block per
                 # aux variable so MF6 reads e.g. "TRACER" not "AUX".
-                if f.name == "aux" and field_value.ndim == 3:
+                if name == "aux" and field_value.ndim == 3:
                     aux_names: list[str] = list(getattr(value, "auxiliary", None) or [])
                     naux = field_value.shape[2]
                     for kper in range(nper):
@@ -174,7 +173,7 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
                         da = xr.DataArray(layer_slice, dims=("nlay",) + extra_dims)
                     else:
                         da = xr.DataArray(layer_slice)
-                    readarray_period.setdefault(kper, {})[f.name] = da
+                    readarray_period.setdefault(kper, {})[name] = da
                 continue
             if not isinstance(field_value, dict):
                 continue
@@ -197,19 +196,19 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
 
         if dfn_type == "keyword":
             if field_value:
-                blocks[block_name][f.name] = field_value
+                blocks[block_name][name] = field_value
 
         elif meta.get("direction") and isinstance(field_value, Path):
-            t = _path_to_tuple(f.name, field_value, meta.get("direction", "out"))
+            t = _path_to_tuple(name, field_value, meta.get("direction", "out"))
             blocks[block_name][t[0].lower()] = t
 
         elif isinstance(field_value, list) and field_value and isinstance(field_value[0], Item):
             # packagedata / connectiondata / etc. -- list[ItemClass] block
-            blocks[block_name][f.name] = _rows_to_tuples(field_value)
+            blocks[block_name][name] = _rows_to_tuples(field_value)
 
         elif isinstance(field_value, list) and field_value and isinstance(field_value[0], tuple):
             # Pre-formatted list of row tuples (e.g. cell2d).
-            blocks[block_name][f.name] = field_value
+            blocks[block_name][name] = field_value
 
         elif meta.get("shape") and not isinstance(field_value, bool):
             # griddata-style array (shape is a non-empty tuple)
@@ -226,31 +225,31 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
                     _nlay = _dims_d.get("nlay", 0)
                     _ncpl = _dims_d.get("ncpl", 0)
                     if _nlay > 1 and _ncpl > 0 and field_value.size == _nlay * _ncpl:
-                        blocks[block_name][f.name] = xr.DataArray(
+                        blocks[block_name][name] = xr.DataArray(
                             field_value.reshape(_nlay, _ncpl),
                             dims=("nlay", "ncpl"),
                         )
                         continue
-                blocks[block_name][f.name] = _wrap_array(field_value)
+                blocks[block_name][name] = _wrap_array(field_value)
 
-        elif f.name == "auxiliary" and isinstance(field_value, list):
-            blocks[block_name][f.name] = ("AUXILIARY",) + tuple(field_value)
+        elif name == "auxiliary" and isinstance(field_value, list):
+            blocks[block_name][name] = ("AUXILIARY",) + tuple(field_value)
 
         elif isinstance(field_value, Record):
             # Inner-class record (e.g. Oc.Headprint)
-            blocks[block_name][f.name] = field_value.to_tokens()
+            blocks[block_name][name] = field_value.to_tokens()
 
         elif dfn_type in ("integer", "double", "double precision"):
             if field_value == 0 and meta.get("auto_from"):
                 continue
-            blocks[block_name][f.name] = field_value
+            blocks[block_name][name] = field_value
 
         elif dfn_type == "string" and field_value:
-            blocks[block_name][f.name] = field_value
+            blocks[block_name][name] = field_value
 
     # `maxbound` is a computed property on some generated classes (see
-    # make.py's ComputedFieldSpec), not a real attrs field -- attrs.fields()
-    # above never sees it, so inject it into the dimensions block directly.
+    # make.py's ComputedFieldSpec), not a real pydantic field -- the field
+    # walk above never sees it, so inject it into the dimensions block directly.
     # Skipping when 0 matches the plain-field case's auto_from behavior above.
     if isinstance(getattr(cls, "maxbound", None), property):
         maxbound = value.maxbound  # type: ignore[attr-defined]
@@ -291,10 +290,10 @@ def unstructure_component(value: Component) -> dict[str, Any]:
 
 def _unstructure_component(value: Component) -> dict[str, Any]:
     """Unstructure an internal-node component (Gwf, Simulation, etc.) with
-    attrs-typed child fields, including its child binding blocks."""
+    pydantic-typed child fields, including its child binding blocks."""
     blockspec = blocks_dict(type(value))
     blocks: dict[str, dict[str, Any]] = {}
-    fields_by_name = {f.name: f for f in attrs.fields(type(value))}  # type: ignore[arg-type]
+    fields_by_name = dict(type(value).__pydantic_fields__)
 
     # create child component binding blocks
     blocks.update(_make_binding_blocks(value))
@@ -306,11 +305,13 @@ def _unstructure_component(value: Component) -> dict[str, Any]:
         for field_name in block.keys():
             # Skip child components already processed as bindings
             field = fields_by_name.get(field_name)
+            field_meta = (field.json_schema_extra or {}) if field is not None else {}
             if (
                 isinstance(value, Context)
                 and field is not None
                 and child_field_candidates(field) is not None
-                and field.metadata.get("block") == block_name
+                and isinstance(field_meta, dict)
+                and field_meta.get("block") == block_name
             ):
                 continue
 
@@ -329,7 +330,7 @@ def _unstructure_component(value: Component) -> dict[str, Any]:
                     if field_value:
                         blocks[block_name][field_name] = field_value
                 case Path():
-                    direction = field.metadata.get("direction", "out") if field else "out"
+                    direction = field_meta.get("direction", "out") if field else "out"
                     t = _path_to_tuple(field_name, field_value, direction=direction)  # type: ignore[arg-type]
                     blocks[block_name][t[0]] = t
                 case datetime():

@@ -84,19 +84,16 @@ class _PackageSpec:
     _DTYPE_MAP = _PKG_DTYPE_MAP
 
     def __init__(self, cls):
-        import attrs as _attrs
-
         class _ArrayInfo:
-            def __init__(self, f):
-                is_ra_period = (
-                    f.metadata.get("block") == "period" and f.metadata.get("reader") == "readarray"
-                )
+            def __init__(self, name, f):
+                meta = f.json_schema_extra or {}
+                is_ra_period = meta.get("block") == "period" and meta.get("reader") == "readarray"
                 # Non-layered READARRAY period fields (e.g. RCHA recharge) have shape
                 # (nper, nrow, ncol), so use "ncpl" so _structured_shape maps to
                 # ["y", "x"] rather than ["layer", "y", "x"].
-                is_layered = f.metadata.get("layered", True)
+                is_layered = meta.get("layered", True)
                 default_spatial = "nodes" if (not is_ra_period or is_layered) else "ncpl"
-                raw_shape = f.metadata.get("shape") or (default_spatial,)
+                raw_shape = meta.get("shape") or (default_spatial,)
                 # normalize ncpl → nodes for layered fields only
                 if is_layered:
                     normalized = tuple("nodes" if d == "ncpl" else d for d in raw_shape)
@@ -106,24 +103,27 @@ class _PackageSpec:
                     normalized = ("nper",) + normalized
 
                 self.dtype = np.dtype(
-                    _PackageSpec._DTYPE_MAP.get(to_field_type(f.type), np.float64)
+                    _PackageSpec._DTYPE_MAP.get(to_field_type(f.annotation), np.float64)
                 )
                 self.dims = normalized
                 self.metadata = {
-                    "longname": f.name,
-                    "block": f.metadata.get("block", ""),
+                    "longname": name,
+                    "block": meta.get("block", ""),
                     "netcdf": True,
                 }
 
         def _include(f) -> bool:
-            block = f.metadata.get("block", "")
-            if block == "griddata" and f.metadata.get("netcdf"):
+            meta = f.json_schema_extra or {}
+            block = meta.get("block", "")
+            if block == "griddata" and meta.get("netcdf"):
                 return True
-            if block == "period" and f.metadata.get("reader") == "readarray":
+            if block == "period" and meta.get("reader") == "readarray":
                 return True
             return False
 
-        self.arrays = {f.name: _ArrayInfo(f) for f in _attrs.fields(cls) if _include(f)}
+        self.arrays = {
+            name: _ArrayInfo(name, f) for name, f in cls.__pydantic_fields__.items() if _include(f)
+        }
 
 
 def _field_shape(package_name: str, field_name: str) -> tuple | None:
@@ -230,8 +230,6 @@ class NetCDFModel(BaseModel, NetCDFInput):
                 "params": [],
             }
 
-            import attrs as _attrs
-
             # compute total nodes for broadcasting scalars to full grid
             _dis = getattr(model, "dis", None)
             d = _dis.get_dims() if _dis is not None else {}
@@ -243,23 +241,24 @@ class NetCDFModel(BaseModel, NetCDFInput):
             else:
                 _nodes = d.get("nodes", _nlay)
 
-            for f in _attrs.fields(type(package)):
-                block = f.metadata.get("block")
-                if block == "griddata" and f.metadata.get("netcdf"):
-                    val = getattr(package, f.name)
+            for name, f in type(package).__pydantic_fields__.items():
+                meta = f.json_schema_extra or {}
+                block = meta.get("block")
+                if block == "griddata" and meta.get("netcdf"):
+                    val = getattr(package, name)
                     if val is None:
                         continue
                     arr = np.asarray(val, dtype=np.float64)
                     # Only broadcast scalars to full grid for nodes-shaped fields
-                    shape_meta = f.metadata.get("shape", ())
+                    shape_meta = meta.get("shape", ())
                     if "nodes" in shape_meta and arr.size < _nodes:
                         arr = np.full(_nodes, float(arr.ravel()[0]))
-                    p["params"].append({"name": f.name, "data": arr})
-                elif block == "period" and f.metadata.get("reader") == "readarray":
-                    val = getattr(package, f.name)
+                    p["params"].append({"name": name, "data": arr})
+                elif block == "period" and meta.get("reader") == "readarray":
+                    val = getattr(package, name)
                     if val is None:
                         continue
-                    p["params"].append({"name": f.name, "data": np.asarray(val, dtype=np.float64)})
+                    p["params"].append({"name": name, "data": np.asarray(val, dtype=np.float64)})
 
             if len(p["params"]) > 0:
                 packages.append(p)
