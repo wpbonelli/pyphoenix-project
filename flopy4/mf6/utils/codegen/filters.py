@@ -554,7 +554,7 @@ def item_class(
     ``role="nested_union"`` column -- it qualifies that field's
     forward-reference union annotation (``"Oc.All | Oc.First | ..."``).
 
-    Produces a 4-space-indented ``@attrs.define`` class whose fields carry
+    Produces a 4-space-indented ``@dataclass(config=CFG)`` class whose fields carry
     real metadata (``index=``/``pk=``/``fk=``/``cellid=``/``time_series=``/
     ``prefix=``/``tagged=``, via ``field()``) -- the class itself is the schema.
 
@@ -697,7 +697,7 @@ def item_class(
             return f"        {col['name']}: {py_type} = field({margs})"
         # A bare annotation here is equivalent to field() at runtime (both
         # mean "no default") -- but mypy's attrs plugin doesn't recognize
-        # field() (a flopy4.mf6.spec wrapper, not attrs.field itself) as a
+        # field() (a flopy4.mf6.spec wrapper, not pydantic.Field itself) as a
         # field specifier, so it can't tell field()-declared columns above
         # (e.g. pk=/cellid=) don't actually have a default either. Left
         # bare, that misreading makes mypy treat *this* column as a
@@ -727,7 +727,7 @@ def item_class(
     optional_non_boundname = [col for col in optional if col["role"] != "boundname"]
     boundname_cols = [col for col in optional if col["role"] == "boundname"]
 
-    lines = ["    @attrs.define"]
+    lines = ["    @dataclass(config=CFG)"]
     lines.append(f"    class {class_name}(Item):")
     if keyword:
         lines.append(f'        _keyword: ClassVar[str] = "{keyword}"')
