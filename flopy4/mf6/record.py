@@ -9,114 +9,126 @@ A Record can also compose another Record (a DFN record nested inside
 another) rather than flattening the nested one's fields into itself --
 see _nested_class, inferred from the field's own type annotation rather
 than a declared flag, and make.py's _build_record_class_specs.
+
+Generated Record/Item subclasses are `pydantic.dataclasses.dataclass`, not
+`attrs.define` -- `record_fields()`/`_nested_class()` below read
+`__pydantic_fields__`/`FieldInfo.json_schema_extra` accordingly. A nested/
+composed field's annotation (e.g. `Headprint.formatrecord: "Oc.Format"`) is
+a forward-reference string naming a SIBLING class inside the same enclosing
+package class -- unresolvable via any module-global lookup at class-body-
+execution time (Python class bodies can't see sibling names in an enclosing
+class's scope). Unlike attrs (which leaves this unresolved forever, forcing
+a qualname-walking string resolver), pydantic resolves it lazily and
+self-heals on first construction -- `record_fields()`'s guarded
+`rebuild_dataclass()` call handles the one case that doesn't self-heal on
+its own: something (like `from_tokens()`) inspecting a class's fields
+before any instance of it has ever been built.
 """
 
-import sys
-import types
-from functools import lru_cache
-from pathlib import Path
-from typing import Any, Union, cast, get_args, get_origin
+from __future__ import annotations
 
-import attrs
+import types
+from pathlib import Path
+from typing import Any, Union, get_args, get_origin
+
+from pydantic import ConfigDict
+from pydantic.dataclasses import rebuild_dataclass
+
+CFG = ConfigDict(arbitrary_types_allowed=True, validate_assignment=True, extra="forbid")
 
 
 def keyword_of(cls: type) -> str:
     return vars(cls).get("_keyword", "")
 
 
-def _resolve_sibling_class(cls: type, name: str) -> Any | None:
-    """Resolve a bare sibling class name one level up from `cls` in
-    `__qualname__`, where every generated flat-sibling class (composed
-    Records, keystring-union arms) lives regardless of DFN nesting depth.
-    No type check here -- callers (`_nested_class`, item.py's
-    `_nested_union_classes`) apply their own, against different base
-    classes.
+def record_fields(cls: type) -> dict[str, Any]:
+    """Non-private fields of a Record (or Item) class, in declaration
+    order, keyed by name -- each value a pydantic `FieldInfo`.
 
-    Must resolve at runtime: a class body can't see sibling names from an
-    enclosing scope, which is why the qualified string form
-    (``"Oc.Format"``) exists at all -- purely for mypy.
+    Guards with a `rebuild_dataclass()` call so a nested/composed field's
+    annotation is the real class, not a stale `ForwardRef`, even when
+    called before any instance of `cls` has ever been constructed (exactly
+    what `from_tokens()` does).
     """
-    obj = sys.modules[cls.__module__]
-    for part in cls.__qualname__.split(".")[:-1]:
-        obj = getattr(obj, part)
-    return getattr(obj, name, None)
+    if not cls.__pydantic_complete__:  # type: ignore[attr-defined]
+        rebuild_dataclass(cls, force=True, _parent_namespace_depth=4)  # type: ignore[arg-type]
+    return {n: f for n, f in cls.__pydantic_fields__.items() if not n.startswith("_")}  # type: ignore[attr-defined]
 
 
-@lru_cache(maxsize=None)
-def _nested_class(cls: type, type_str: str) -> "type[Record] | None":
-    """If a field's raw type annotation (e.g. ``"Format"`` or
-    ``"Optional[Oc.Format]"``) names a Record subclass, return it; else
-    None. Resolvability against a real Record subclass is itself the
-    signal -- no declared "is this nested" flag needed.
+def _nested_class(cls: type, annotation: Any) -> "type[Record] | None":
+    """If a field's (already-resolved) annotation is -- or wraps, via
+    `Optional[...]` -- a Record subclass, return it; else None.
+    Resolvability against a real Record subclass is itself the signal, no
+    declared "is this nested" flag needed.
 
-    Cached since to_tokens/from_tokens call this per field, often
-    repeatedly while parsing many rows.
+    Replaces the attrs original's qualname-walking string resolver
+    entirely: by the time `record_fields()` above has run, `annotation`
+    (a pydantic `FieldInfo.annotation`) IS the real class object already,
+    not a string -- no `sys.modules`/qualname lookup needed.
     """
-    name = type_str
-    if name.startswith("Optional[") and name.endswith("]"):
-        name = name[len("Optional[") : -1]
-    name = name.rsplit(".", 1)[-1]
-    resolved = _resolve_sibling_class(cls, name)
-    return resolved if isinstance(resolved, type) and issubclass(resolved, Record) else None
+    args = get_args(annotation)
+    candidate = next((a for a in args if a is not type(None)), annotation)
+    return candidate if isinstance(candidate, type) and issubclass(candidate, Record) else None
 
 
-def record_fields(cls: type) -> list[attrs.Attribute]:
-    """Non-private fields of a Record (or Item) class, in declaration order."""
-    all_fields = attrs.fields(cast(type[attrs.AttrsInstance], cls))
-    return [f for f in all_fields if not f.name.startswith("_")]
-
-
-def _is_bool_field(f: attrs.Attribute) -> bool:
-    t = f.type
+def _is_bool_field(finfo: Any) -> bool:
+    t = finfo.annotation
     origin = get_origin(t)
     if origin is types.UnionType or origin is Union:
         t = next((a for a in get_args(t) if a is not type(None)), t)
-    return t in (bool, "bool")
+    return t is bool
 
 
-def _coerce(token: Any, f: attrs.Attribute) -> Any:
+def _coerce(token: Any, finfo: Any) -> Any:
     """Cast a raw token to a field's declared type (time_series falls back
     to the raw string if it isn't a float). Only Optional[X] (a single
     non-None union arm) is unwrapped -- a genuine multi-type union like
     Union[float, str] is deliberately ambiguous and left as the raw token."""
-    if f.metadata.get("time_series"):
+    meta = finfo.json_schema_extra or {}
+    if isinstance(meta, dict) and meta.get("time_series"):
         try:
             return float(token)
         except (ValueError, TypeError):
             return str(token)
-    t = f.type
+    t = finfo.annotation
     origin = get_origin(t)
     if origin is types.UnionType or origin is Union:
         args = [a for a in get_args(t) if a is not type(None)]
         if len(args) != 1:
             return token
         t = args[0]
-    if t in (int, "int"):
+    if t is int:
         return int(float(str(token)))
-    if t in (float, "float"):
+    if t is float:
         return float(token)
-    if t in (Path, "Path"):
+    if t is Path:
         return Path(token)
     return token
 
 
-def _tagged_tokens(f: attrs.Attribute, v: Any) -> list:
+def _is_tagged(finfo: Any) -> bool:
+    meta = finfo.json_schema_extra or {}
+    return bool(isinstance(meta, dict) and meta.get("tagged"))
+
+
+def _tagged_tokens(name: str, v: Any) -> list:
     """Bare ``NAME`` for a true bool flag, ``NAME value`` otherwise."""
     if isinstance(v, bool):
-        return [f.name.upper()] if v else []
-    return [f.name.upper(), v]
+        return [name.upper()] if v else []
+    return [name.upper(), v]
 
 
-def _consume_tagged(tokens: list, i: int, f: attrs.Attribute) -> "tuple[Any, int] | None":
-    """Match field f's tagged keyword at tokens[i]; a bool field needs no
-    value token, anything else does. None if unmatched or value missing."""
-    if str(tokens[i]).upper() != f.name.upper():
+def _consume_tagged(tokens: list, i: int, name: str, finfo: Any) -> "tuple[Any, int] | None":
+    """Match field `name`'s tagged keyword at tokens[i]; a bool field needs
+    no value token, anything else does. None if unmatched or value
+    missing."""
+    if str(tokens[i]).upper() != name.upper():
         return None
-    if _is_bool_field(f):
+    if _is_bool_field(finfo):
         return True, 1
     if i + 1 >= len(tokens):
         return None
-    return _coerce(tokens[i + 1], f), 2
+    return _coerce(tokens[i + 1], finfo), 2
 
 
 class Record:
@@ -132,25 +144,25 @@ class Record:
         for tok in vars(inner_cls).get("_extra_tokens", ()):
             tokens.append(tok)
         all_fields = record_fields(inner_cls)
-        tagged = [a for a in all_fields if a.metadata.get("tagged")]
-        untagged = [a for a in all_fields if not a.metadata.get("tagged")]
-        for a in tagged + untagged:
-            v = getattr(self, a.name)
+        tagged = [(n, f) for n, f in all_fields.items() if _is_tagged(f)]
+        untagged = [(n, f) for n, f in all_fields.items() if not _is_tagged(f)]
+        for name, finfo in tagged + untagged:
+            v = getattr(self, name)
             if v is None:
                 continue
             if isinstance(v, Record):
                 tokens.extend(v.to_tokens())
-            elif a.metadata.get("tagged"):
-                tokens.extend(_tagged_tokens(a, v))
+            elif _is_tagged(finfo):
+                tokens.extend(_tagged_tokens(name, v))
             elif isinstance(v, bool):
                 if v:
-                    tokens.append(a.name.upper())
+                    tokens.append(name.upper())
             else:
                 tokens.append(v)
         return tuple(tokens)
 
     @classmethod
-    def from_tokens(cls, tokens: str | list[str]) -> "Record":
+    def from_tokens(cls, tokens: "str | list[str]") -> "Record":
         """Parse a token string/list back into an instance.
 
         Tagged fields are matched by keyword wherever it appears; whatever's
@@ -170,12 +182,11 @@ class Record:
         if [t.upper() for t in tokens[: len(skip)]] == skip:
             tokens = tokens[len(skip) :]
 
-        all_fields = record_fields(cast(type, cls))
+        all_fields = record_fields(cls)
 
-        def _nested(f: attrs.Attribute) -> "type[Record] | None":
-            return _nested_class(cast(type, cls), f.type) if isinstance(f.type, str) else None
-
-        nested_fields = [f for f in all_fields if _nested(f) is not None]
+        nested_fields = [
+            (n, f) for n, f in all_fields.items() if _nested_class(cls, f.annotation) is not None
+        ]
         if nested_fields:
             # A record composed of nested record(s) has, in the current
             # corpus, no other fields of its own once _keyword/_extra_tokens
@@ -184,38 +195,38 @@ class Record:
                 f"{cls.__name__}: exactly one nested record field, with no plain "
                 "fields of its own, is the only shape supported so far"
             )
-            nf = nested_fields[0]
-            nested_cls = _nested(nf)
+            nf_name, nf_finfo = nested_fields[0]
+            nested_cls = _nested_class(cls, nf_finfo.annotation)
             assert nested_cls is not None
-            return cls(**{nf.name: nested_cls.from_tokens(tokens)})
+            return cls(**{nf_name: nested_cls.from_tokens(tokens)})
 
-        tagged = {f.name.upper(): f for f in all_fields if f.metadata.get("tagged")}
-        untagged = [f for f in all_fields if not f.metadata.get("tagged")]
+        tagged = {n.upper(): (n, f) for n, f in all_fields.items() if _is_tagged(f)}
+        untagged = [(n, f) for n, f in all_fields.items() if not _is_tagged(f)]
 
         kwargs: dict = {}
         consumed: set[int] = set()
 
         i = 0
         while i < len(tokens):
-            f = tagged.get(tokens[i].upper())
-            result = None if f is None else _consume_tagged(tokens, i, f)
-            if f is None or result is None:
+            entry = tagged.get(tokens[i].upper())
+            result = None if entry is None else _consume_tagged(tokens, i, entry[0], entry[1])
+            if entry is None or result is None:
                 i += 1
                 continue
             val, width = result
-            kwargs[f.name] = val
+            kwargs[entry[0]] = val
             for j in range(width):
                 consumed.add(i + j)
             i += width
 
         required_tagged = [
-            f
-            for f in all_fields
-            if f.metadata.get("tagged") and f.default is attrs.NOTHING and f.name not in kwargs
+            (n, f)
+            for n, f in all_fields.items()
+            if _is_tagged(f) and f.is_required() and n not in kwargs
         ]
         positional_queue = required_tagged + untagged
         remaining = [t for j, t in enumerate(tokens) if j not in consumed]
-        for f, tok in zip(positional_queue, remaining):
-            kwargs[f.name] = _coerce(tok, f)
+        for (name, finfo), tok in zip(positional_queue, remaining):
+            kwargs[name] = _coerce(tok, finfo)
 
         return cls(**kwargs)
