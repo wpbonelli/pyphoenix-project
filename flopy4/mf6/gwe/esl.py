@@ -2,21 +2,22 @@
 from pathlib import Path
 from typing import ClassVar, Optional, Union
 
-import attrs
+from pydantic import Field, SkipValidation
+from pydantic.dataclasses import dataclass
 
 from flopy4.mf6._types import _optional_path
 from flopy4.mf6.item import Item
-from flopy4.mf6.package import Package
+from flopy4.mf6.package import CFG, Package
 from flopy4.mf6.spec import field, path
 
 
-@attrs.define(kw_only=True, slots=False)
+@dataclass(config=CFG, kw_only=True)
 class Esl(Package):
     dfn_name: ClassVar[str] = "gwe-esl"
 
     multi_package: ClassVar[bool] = True
 
-    @attrs.define
+    @dataclass(config=CFG)
     class StressPeriodData(Item):
         cellid: tuple = field(cellid=True)
         senerrate: Union[float, str] = field(time_series=True)
@@ -67,7 +68,7 @@ class Esl(Package):
         optional=True,
         direction="in",
     )
-    _stress_period_data: Optional[dict[int, list[StressPeriodData]]] = field(
+    _stress_period_data: Optional[SkipValidation[dict[int, list[StressPeriodData]]]] = field(
         alias="stress_period_data",
         default=None,
         repr=False,
@@ -85,6 +86,5 @@ class Esl(Package):
         if not self.stress_period_data:
             return 0
         return max(len(v) for v in self.stress_period_data.values())
-
 
 EslStressPeriodData = Esl.StressPeriodData

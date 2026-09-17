@@ -2,14 +2,15 @@
 from pathlib import Path
 from typing import ClassVar, Optional
 
-import attrs
+from pydantic import Field
+from pydantic.dataclasses import dataclass
 
 from flopy4.mf6._types import FloatArrayLike, _optional_path
-from flopy4.mf6.package import Package
+from flopy4.mf6.package import CFG, Package
 from flopy4.mf6.spec import field, path
 
 
-@attrs.define(kw_only=True, slots=False)
+@dataclass(config=CFG, kw_only=True)
 class Ghbg(Package):
     dfn_name: ClassVar[str] = "gwf-ghbg"
 
@@ -65,7 +66,6 @@ class Ghbg(Package):
         default=0,
         block="dimensions",
         optional=True,
-        auto_from="stress_period_data",
     )
     bhead: Optional[FloatArrayLike] = field(
         default=None,
