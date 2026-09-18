@@ -7,23 +7,12 @@ import attrs
 from flopy4.mf6._types import _optional_path
 from flopy4.mf6.item import Item
 from flopy4.mf6.package import Package
-from flopy4.mf6.record import Record
 from flopy4.mf6.spec import field, path
 
 
 @attrs.define(kw_only=True, slots=False)
 class Oc(Package):
     dfn_name: ClassVar[str] = "prt-oc"
-
-    @attrs.define
-    class TrackTimes(Record):
-        _keyword: ClassVar[str] = "track_times"
-        times: list[float] = attrs.field()
-
-    @attrs.define
-    class TrackTimesfile(Record):
-        _keyword: ClassVar[str] = "track_timesfile"
-        timesfile: str = attrs.field()
 
     @attrs.define
     class Tracktimes(Item):
@@ -132,14 +121,6 @@ class Oc(Package):
         default=False,
         block="options",
         optional=True,
-    )
-    track_times: Optional[TrackTimes] = field(
-        default=None,
-        block="options",
-    )
-    track_timesfile: Optional[TrackTimesfile] = field(
-        default=None,
-        block="options",
     )
     scratch_buffer: bool = field(
         default=False,

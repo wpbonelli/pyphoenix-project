@@ -353,11 +353,17 @@ def flat_fields(component: Component, *, developmode: bool = False) -> list[tupl
         The component definition.
     developmode :
         If False (default), fields marked developmode are excluded.
+
+    Fields marked `removed` are always excluded -- MF6 no longer parses
+    that syntax at all (unlike `deprecated`, which still parses and stays
+    generated). See InputFieldBase.removed's docstring.
     """
     result: list[tuple[str, FieldV3]] = []
     for block_name, block in (component.blocks or {}).items():
         for f in block.fields.values():
             if f.developmode and not developmode:
+                continue
+            if getattr(f, "removed", None):
                 continue
             result.append((block_name, f))
     return result
