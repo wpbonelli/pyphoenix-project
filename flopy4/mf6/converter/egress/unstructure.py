@@ -192,11 +192,13 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
             continue
 
         # Time-array-series field (utl-tas.tas_array): dict[float, ndarray]
-        # -> one block per entry, with a bare (unnamed) array body -- no
-        # field-name token before the control record, unlike griddata.
+        # -> one block per entry. Whether the array body gets a leading
+        # field-name token (like griddata) or is bare (tas_array: "" key)
+        # is driven by the field's own `tagged` attribute, not assumed.
         if meta.get("reader") == "readarray" and isinstance(field_value, dict):
+            array_key = f.name if meta.get("tagged") else ""
             for tval, arr in field_value.items():
-                blocks[f"{block_name} {tval}"] = {"": _wrap_array(arr)}
+                blocks[f"{block_name} {tval}"] = {array_key: _wrap_array(arr)}
             continue
 
         # ── Non-period blocks ───────────────────────────────────────────────────

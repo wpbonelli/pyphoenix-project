@@ -920,12 +920,17 @@ def build_component_spec(
         if filters.is_readarray_field(f):
             _time_array_series_fields.append(f)
             _tas_base = "IntArrayLike" if getattr(f, "dtype", "") == "integer" else "FloatArrayLike"
+            _tas_meta = {"block": block_name, "reader": "readarray"}
+            if getattr(f, "tagged", True):
+                # field()'s `tagged` kwarg only ever records True -- absence
+                # already means untagged (see record.py's same convention).
+                _tas_meta["tagged"] = True
             data_specs.append(
                 FieldSpec(
                     dfn_name=f.name,
                     py_name=filters.safe_name(f.name),
                     type_annotation=f"Optional[dict[float, {_tas_base}]]",
-                    spec_call=_ml_field(metadata={"block": block_name, "reader": "readarray"}),
+                    spec_call=_ml_field(metadata=_tas_meta),
                     generatable=True,
                 )
             )
