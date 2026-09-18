@@ -18,6 +18,11 @@ class Prp(Package):
     multi_package: ClassVar[bool] = True
 
     @attrs.define
+    class ReleaseTimes(Record):
+        _keyword: ClassVar[str] = "release_times"
+        times: list[float] = attrs.field()
+
+    @attrs.define
     class ReleaseTimesfile(Record):
         _keyword: ClassVar[str] = "release_timesfile"
         timesfile: str = attrs.field()
@@ -129,7 +134,10 @@ class Prp(Package):
         block="options",
         optional=True,
     )
-    # TODO: release_timesrecord — type 'record' not yet supported
+    release_times: Optional[ReleaseTimes] = field(
+        default=None,
+        block="options",
+    )
     release_timesfile: Optional[ReleaseTimesfile] = field(
         default=None,
         block="options",

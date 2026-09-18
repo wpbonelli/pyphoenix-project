@@ -239,6 +239,11 @@ def to_field_type(t: type) -> FieldType:
             return "integer"
         case t if t is FloatArrayLike:
             return "double"
+        case t if get_origin(t) is dict:
+            # A time-array-series field (e.g. utl-tas.tas_array), typed
+            # dict[float, IntArrayLike | FloatArrayLike] -- the dtype lives
+            # in the dict's value type, not the field's own top-level type.
+            return to_field_type(get_args(t)[-1])
         case t if get_origin(t) in (Union, types.UnionType):
             args = get_args(t)
             if args[-1] is types.NoneType:
@@ -259,6 +264,8 @@ def to_field_type(t: type) -> FieldType:
                         return "integer"
                     case tt if tt is FloatArrayLike:
                         return "double"
+                    case tt if get_origin(tt) is dict:
+                        return to_field_type(get_args(tt)[-1])
                     case _:
                         return "record"
             return "list"

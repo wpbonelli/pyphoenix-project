@@ -475,6 +475,9 @@ def _strip_record_words(name: str) -> list[str]:
     return [w for w in words if w]
 
 
+_RECORD_LIST_CHILD_PY_TYPES: dict[str, str] = {"string": "str", "double": "float", "integer": "int"}
+
+
 def _build_record_class_specs(
     f: Record, dfn_name: str, used_names: set[str], *, parent_hint: str = ""
 ) -> list[InnerClassSpec]:
@@ -547,6 +550,19 @@ def _build_record_class_specs(
                         optional=True,
                     )
                 )
+        elif isinstance(child, Array):
+            # Trailing-tokens field, no fixed dim -- see is_record_list_field.
+            elem_type = _RECORD_LIST_CHILD_PY_TYPES.get(child.dtype, "str")
+            base_type = f"list[{elem_type}]"
+            type_annotation = f"Optional[{base_type}]" if is_optional else base_type
+            inner_fields.append(
+                InnerClassFieldSpec(
+                    py_name=filters.safe_name(child.name),
+                    type_annotation=type_annotation,
+                    tagged=tagged,
+                    optional=is_optional,
+                )
+            )
         else:
             base_type = filters._SCALAR_PY_TYPES.get(type(child), "Any")
             type_annotation = f"Optional[{base_type}]" if is_optional else base_type
@@ -860,6 +876,7 @@ def build_component_spec(
     period_schema: list[dict] = []
     period_arms: list[PeriodArmSpec] = []
     _readarray_period_fields: list[FieldV3] = []  # READARRAY period fields (CHDG, DRNG …)
+    _time_array_series_fields: list[FieldV3] = []  # e.g. utl-tas.tas_array
     _standard_period_list: FieldV3 | None = None  # standard (non-keystring) period List field
 
     for block_name, f in all_fields:
@@ -895,6 +912,24 @@ def build_component_spec(
         # maxbound: emitted as a computed property (see computed_field_specs
         # below), not a stored field -- skip normal field-building entirely.
         if block_name == "dimensions" and f.name == "maxbound" and _maxbound_is_computed:
+            continue
+
+        # Time-array-series field (utl-tas.tas_array) -- see is_readarray_field.
+        # time_from_model_start isn't a stored field, same as kper isn't for
+        # period blocks; it's carried by the dict's own keys.
+        if filters.is_readarray_field(f):
+            _time_array_series_fields.append(f)
+            _tas_base = "IntArrayLike" if getattr(f, "dtype", "") == "integer" else "FloatArrayLike"
+            data_specs.append(
+                FieldSpec(
+                    dfn_name=f.name,
+                    py_name=filters.safe_name(f.name),
+                    type_annotation=f"Optional[dict[float, {_tas_base}]]",
+                    spec_call=_ml_field(metadata={"block": block_name, "reader": "readarray"}),
+                    generatable=True,
+                )
+            )
+            generatable_field_objects.append((block_name, f))
             continue
 
         if block_name in ("options", "dimensions"):
@@ -1054,9 +1089,11 @@ def build_component_spec(
     _has_griddata = any(
         bn == "griddata" and filters.is_array(f) for bn, f in generatable_field_objects
     )
-    _arraylike_types = {
-        getattr(f, "dtype", None) for bn, f in generatable_field_objects if bn == "griddata"
-    } | {getattr(f, "dtype", "double") for f in _readarray_period_fields}
+    _arraylike_types = (
+        {getattr(f, "dtype", None) for bn, f in generatable_field_objects if bn == "griddata"}
+        | {getattr(f, "dtype", "double") for f in _readarray_period_fields}
+        | {getattr(f, "dtype", "double") for f in _time_array_series_fields}
+    )
     _needs_int_arraylike = "integer" in _arraylike_types
     _needs_float_arraylike = bool(_arraylike_types - {"integer", None})
     _has_field_call = any(

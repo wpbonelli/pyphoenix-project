@@ -674,6 +674,18 @@ def structure_component(
         else:
             block_item_fields[block] = (f, item_cls)
 
+    # Time-array-series fields (utl-tas.tas_array): readarray fields whose
+    # own block repeats per header value -- dict[float, ndarray]. Mirrors
+    # egress/unstructure.py's write path.
+    tar_fields = {
+        f.name: f
+        for f in attrs.fields(cls)
+        if f.metadata.get("reader") == "readarray"
+        and f.metadata.get("block") not in (None, "", "period")
+        and f.init is not False
+    }
+    tar_block_prefixes = {f.metadata["block"] for f in tar_fields.values()}
+
     # ── Pass 1: scalar blocks (options, dimensions, etc.) ────────────────────
     kwargs: dict[str, Any] = {}
     for block_name, rows in raw_lower.items():
@@ -683,6 +695,7 @@ def structure_component(
             block_name in block_item_fields
             or block_name.startswith("period")
             or block_name == "griddata"
+            or block_name.split()[0] in tar_block_prefixes
         ):
             continue
         for row in rows:
@@ -794,6 +807,44 @@ def structure_component(
                     for fname, arr in parsed.items():
                         accum[fname][kper] = arr
                 kwargs.update(accum)
+
+    # ── Pass 3c: time-array-series blocks (e.g. utl-tas.tas_array) ───────────
+    # No `layered` form (single flat control record, always) -- and TAS is
+    # only ever consumed by single-layer array packages (gwf-rcha, gwf-evta,
+    # utl-spca; their own array fields are likewise ncpl-shaped, no layered
+    # form), so the flat length is ncpl, not the full-grid nodes count. Same
+    # derivation as Pass 3b's READARRAY period fields.
+    if tar_fields:
+        effective_dims = dims or _self_dims_from_kwargs(kwargs)
+        nodes = effective_dims.get("nodes", 0)
+        if nodes:
+            nlay = effective_dims.get("nlay", 1)
+            ncpl = nodes // nlay if nlay > 1 else nodes
+            tar_series_rows: dict[str, dict[float, list]] = {}
+            for block_name, rows in raw_lower.items():
+                parts = block_name.split()
+                if len(parts) < 2 or parts[0] not in tar_block_prefixes:
+                    continue
+                try:
+                    tval = float(parts[1])
+                except ValueError:
+                    continue
+                tar_series_rows.setdefault(parts[0], {})[tval] = rows
+            for fname, f in tar_fields.items():
+                series_rows = tar_series_rows.get(f.metadata["block"])
+                if not series_rows:
+                    continue
+                dtype = np.int64 if to_field_type(f.type) == "integer" else np.float64
+                length = _griddata_flat_length(f, effective_dims, ncpl)
+                series: dict[float, np.ndarray] = {}
+                for tval, rows in sorted(series_rows.items()):
+                    if not rows:
+                        continue
+                    value, _ = _read_control_record(rows, 0, workspace, dtype, length)
+                    series[tval] = value
+                if series:
+                    init_key = f.alias if f.alias else fname
+                    kwargs[init_key] = series
 
     # ── Pass 4: griddata block ────────────────────────────────────────────────
     griddata_rows = raw_lower.get("griddata", [])

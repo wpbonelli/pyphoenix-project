@@ -151,9 +151,10 @@ def is_scalar(f: FieldV3) -> bool:
 def is_array(f: FieldV3) -> bool:
     """True for array fields (numeric or string type with a shape).
 
-    Excludes auxiliary variable name lists (shape == [], see is_aux_list_field)
-    and other unshaped arrays (variadic-count fields with no static dim --
-    see devtools/todo.md 2026-08-18 entry on Array.repeat).
+    Excludes self-sizing arrays (shape == []) -- these cover two different
+    wire formats dev3 can't tell apart by shape alone: plain trailing
+    tokens (is_record_list_field) and utl-tas's griddata-style tas_array
+    (is_readarray_field).
     """
     return isinstance(f, Array) and bool(f.shape) and f.dtype != "keyword"
 
@@ -196,6 +197,16 @@ def is_aux_list_field(f: FieldV3) -> bool:
     since the count *is* len() of the list itself, nothing to declare.)
     """
     return isinstance(f, Array) and f.dtype == "string" and f.shape == [] and f.name == "auxiliary"
+
+
+def is_readarray_field(f: FieldV3) -> bool:
+    """True for utl-tas's ``tas_array``: a griddata-style Array field whose
+    own block (``time``) repeats per header value (``BEGIN TIME <t> ...
+    END TIME``), unlike a plain trailing-tokens self-sizing array. Only
+    field of this shape in the corpus, so matched by name (same precedent
+    as ``is_aux_list_field``).
+    """
+    return isinstance(f, Array) and f.dtype != "keyword" and f.shape == [] and f.name == "tas_array"
 
 
 def is_period_array(f: FieldV3, block_name: str) -> bool:
@@ -243,13 +254,23 @@ def _is_expandable_child(child: FieldV3) -> bool:
     return isinstance(child, KeywordField)
 
 
+def is_record_list_field(c: FieldV3) -> bool:
+    """True for a record child that's a plain trailing-tokens array: no
+    fixed dim (shape == []), or a dim naming a sibling field instead of a
+    resolvable extent (e.g. sfacval's shape == ["time_series_name"]) --
+    either way it just consumes whatever tokens remain. See record.py's
+    from_tokens/to_tokens.
+    """
+    return isinstance(c, Array) and c.dtype != "keyword" and len(c.shape) <= 1
+
+
 def _record_child_supported(c: FieldV3) -> bool:
-    """True if a record child is a scalar/keyword, or a Record whose own
-    children are (recursively) supported -- arbitrarily deep, since nested
-    Records now compose as their own classes (make.py's
-    _build_record_class_specs) rather than needing to flatten into a fixed
-    depth. Lists and unions still fall back to TODO."""
+    """True if a record child is a scalar/keyword, a trailing-tokens array
+    (is_record_list_field), or a Record of supported children (recursive).
+    Recarray-typed Lists and unions still fall back to TODO."""
     if isinstance(c, _RECORD_CLASS_SCALAR_TYPES + (KeywordField,)):
+        return True
+    if is_record_list_field(c):
         return True
     if isinstance(c, Record) and c.fields:
         return all(_record_child_supported(gc) for gc in c.fields.values())
@@ -259,29 +280,28 @@ def _record_child_supported(c: FieldV3) -> bool:
 def can_generate_record_class(f: FieldV3) -> bool:
     """True when a compound record should be rendered as an inner attrs class.
 
-    All non-file records whose children are entirely scalars, keywords, and/or
-    nested records (of supported shape, see _record_child_supported) become
-    inner attrs classes. The first keyword child (if any) is the trigger
-    token (``_keyword``); remaining keyword children become ``Optional[bool]``
-    fields so related options stay grouped. A child that is itself a Record
-    becomes its own composed class rather than being flattened in (the
-    `head/temperature/concentration/qoutflow/cim` printrecord family: outer
-    record composes `formatrecord: Record{columns, width, digits, format}`).
+    All non-file records whose children are entirely scalars, keywords,
+    trailing-tokens arrays, and/or nested records (see
+    _record_child_supported) become inner attrs classes. The first keyword
+    child (if any) is the trigger token (``_keyword``); remaining keyword
+    children become ``Optional[bool]`` fields. A child that is itself a
+    Record becomes its own composed class rather than being flattened in.
 
-    All-keyword records with only one child (a lone flag keyword) are left to
-    :func:`can_expand_record` -- a bare bool field is cleaner there than an
-    empty inner class. Records with unsupported child types (list, union)
-    fall back to TODO comments.
+    All-keyword records with only one child are left to
+    :func:`can_expand_record` instead. Records with unsupported child types
+    (recarray list, union) fall back to TODO comments.
     """
     if not isinstance(f, Record) or is_file_record(f) or not f.fields:
         return False
     children = list(f.fields.values())
     if not all(_record_child_supported(c) for c in children):
         return False
-    has_scalar = any(isinstance(c, _RECORD_CLASS_SCALAR_TYPES) for c in children)
+    has_data = any(
+        isinstance(c, _RECORD_CLASS_SCALAR_TYPES) or is_record_list_field(c) for c in children
+    )
     # All-keyword records need at least 2 children (trigger + modifier) to
     # justify a class; a single lone keyword expands more cleanly to a bool.
-    if not has_scalar:
+    if not has_data:
         return len(children) >= 2
     return True
 

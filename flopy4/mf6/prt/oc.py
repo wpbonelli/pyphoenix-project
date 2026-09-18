@@ -16,6 +16,11 @@ class Oc(Package):
     dfn_name: ClassVar[str] = "prt-oc"
 
     @attrs.define
+    class TrackTimes(Record):
+        _keyword: ClassVar[str] = "track_times"
+        times: list[float] = attrs.field()
+
+    @attrs.define
     class TrackTimesfile(Record):
         _keyword: ClassVar[str] = "track_timesfile"
         timesfile: str = attrs.field()
@@ -128,7 +133,10 @@ class Oc(Package):
         block="options",
         optional=True,
     )
-    # TODO: track_timesrecord — type 'record' not yet supported
+    track_times: Optional[TrackTimes] = field(
+        default=None,
+        block="options",
+    )
     track_timesfile: Optional[TrackTimesfile] = field(
         default=None,
         block="options",

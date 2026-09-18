@@ -100,6 +100,32 @@ def _coerce(token: Any, f: attrs.Attribute) -> Any:
     return token
 
 
+def _is_list_field(f: attrs.Attribute) -> bool:
+    """True for a ``list[X]``/``Optional[list[X]]`` field -- consumes every
+    remaining token instead of exactly one."""
+    t = f.type
+    origin = get_origin(t)
+    if origin is types.UnionType or origin is Union:
+        t = next((a for a in get_args(t) if a is not type(None)), t)
+        origin = get_origin(t)
+    return origin is list
+
+
+def _list_elem_coerce(token: Any, f: attrs.Attribute) -> Any:
+    """Coerce one token to a list field's declared element type."""
+    t = f.type
+    origin = get_origin(t)
+    if origin is types.UnionType or origin is Union:
+        t = next((a for a in get_args(t) if a is not type(None)), t)
+    args = get_args(t)
+    elem_t = args[0] if args else str
+    if elem_t is int:
+        return int(float(str(token)))
+    if elem_t is float:
+        return float(token)
+    return token
+
+
 def _tagged_tokens(f: attrs.Attribute, v: Any) -> list:
     """Bare ``NAME`` for a true bool flag, ``NAME value`` otherwise."""
     if isinstance(v, bool):
@@ -145,6 +171,8 @@ class Record:
             elif isinstance(v, bool):
                 if v:
                     tokens.append(a.name.upper())
+            elif isinstance(v, (list, tuple)):
+                tokens.extend(v)
             else:
                 tokens.append(v)
         return tuple(tokens)
@@ -215,7 +243,22 @@ class Record:
         ]
         positional_queue = required_tagged + untagged
         remaining = [t for j, t in enumerate(tokens) if j not in consumed]
-        for f, tok in zip(positional_queue, remaining):
-            kwargs[f.name] = _coerce(tok, f)
+
+        list_field = next((f for f in positional_queue if _is_list_field(f)), None)
+        if list_field is not None:
+            idx = positional_queue.index(list_field)
+            assert idx == len(positional_queue) - 1, (
+                f"{cls.__name__}.{list_field.name}: a list-typed record field must be "
+                "the last positional field -- it consumes all remaining tokens"
+            )
+            scalar_fields = positional_queue[:idx]
+            for f, tok in zip(scalar_fields, remaining):
+                kwargs[f.name] = _coerce(tok, f)
+            kwargs[list_field.name] = [
+                _list_elem_coerce(tok, list_field) for tok in remaining[len(scalar_fields) :]
+            ]
+        else:
+            for f, tok in zip(positional_queue, remaining):
+                kwargs[f.name] = _coerce(tok, f)
 
         return cls(**kwargs)

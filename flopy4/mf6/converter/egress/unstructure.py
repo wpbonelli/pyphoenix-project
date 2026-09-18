@@ -191,6 +191,14 @@ def _unstructure_package(value: Package) -> dict[str, Any]:
                 spd_period.setdefault(kper_int, []).extend(rows)
             continue
 
+        # Time-array-series field (utl-tas.tas_array): dict[float, ndarray]
+        # -> one block per entry, with a bare (unnamed) array body -- no
+        # field-name token before the control record, unlike griddata.
+        if meta.get("reader") == "readarray" and isinstance(field_value, dict):
+            for tval, arr in field_value.items():
+                blocks[f"{block_name} {tval}"] = {"": _wrap_array(arr)}
+            continue
+
         # ── Non-period blocks ───────────────────────────────────────────────────
         if block_name not in blocks:
             blocks[block_name] = {}
