@@ -757,6 +757,23 @@ def test_dumps_tas_inner_classes_multi_value():
     assert "SFAC 1.5 2.0" in dumped
 
 
+def test_load_tas_inner_classes_name_collision():
+    """A record keyword ("NAME"/"SFAC") must never be shadowed by an
+    unrelated field (Package.name) or the record's own outer field name."""
+    from flopy4.mf6.converter.ingress.structure import structure_component
+    from flopy4.mf6.utl.tas import Tas
+
+    tas = Tas(
+        time_series_name=Tas.TimeSeriesName(time_series_name=["ts1", "ts2"]),
+        sfac=Tas.Sfac(sfacval=[1.5, 2.0]),
+    )
+    dumped = dumps(COMPONENT_CONVERTER.unstructure(tas))
+    structured = structure_component(loads(dumped), Tas)
+    assert structured.name == "tas"  # not clobbered by the "NAME ts1 ts2" row
+    assert structured.time_series_name.time_series_name == ["ts1", "ts2"]
+    assert structured.sfac.sfacval == [1.5, 2.0]
+
+
 def test_tas_array_roundtrip():
     """tas_array: a griddata-style array whose own block ("time") repeats
     per header value (BEGIN TIME <t> ... END TIME), dict[float, ndarray]."""

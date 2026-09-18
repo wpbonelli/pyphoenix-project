@@ -195,7 +195,7 @@ class Record:
         if kw := keyword_of(cls):
             skip.append(kw.upper())
         skip.extend(t.upper() for t in vars(cls).get("_extra_tokens", ()))
-        if [t.upper() for t in tokens[: len(skip)]] == skip:
+        if [str(t).upper() for t in tokens[: len(skip)]] == skip:
             tokens = tokens[len(skip) :]
 
         all_fields = record_fields(cast(type, cls))
@@ -225,7 +225,7 @@ class Record:
 
         i = 0
         while i < len(tokens):
-            f = tagged.get(tokens[i].upper())
+            f = tagged.get(str(tokens[i]).upper())
             result = None if f is None else _consume_tagged(tokens, i, f)
             if f is None or result is None:
                 i += 1

@@ -636,8 +636,13 @@ def structure_component(
     raw_lower = {k.lower(): v for k, v in raw.items()}
     binding_kwargs = _resolve_bindings(cls, raw_lower, workspace) if workspace else {}
 
-    # Index all init-eligible fields by name and alias
-    all_fields = {f.name: f for f in attrs.fields(cls) if f.init is not False}
+    # Only DFN-block-derived fields -- excludes identity/bookkeeping
+    # attributes (Component.name, filename, ...) with no `block` metadata,
+    # so a block keyword can't shadow them (e.g. utl-tas's "NAME ..." row
+    # is for time_series_name, not Package.name).
+    all_fields = {
+        f.name: f for f in attrs.fields(cls) if f.init is not False and "block" in f.metadata
+    }
     alias_map: dict[str, str] = {}  # alias → name
     for f in attrs.fields(cls):
         if f.alias and f.alias != f.name:
@@ -710,6 +715,14 @@ def structure_component(
                     kwargs[cand_init] = inner_cls.from_tokens(row)
                 continue
             init_key = f.alias if f.alias else f.name
+            # A Record-typed field must go through from_tokens(), even when
+            # the matched token is the field's own name rather than the
+            # record's separate trigger keyword (e.g. sfacrecord's outer
+            # field is itself named "sfac").
+            inner_cls = _inner_class_type(f.type)
+            if inner_cls is not None:
+                kwargs[init_key] = inner_cls.from_tokens(row)
+                continue
             if len(row) == 1:
                 kwargs[init_key] = True
             else:
