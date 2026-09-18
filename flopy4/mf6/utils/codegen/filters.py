@@ -151,10 +151,13 @@ def is_scalar(f: FieldV3) -> bool:
 def is_array(f: FieldV3) -> bool:
     """True for array fields (numeric or string type with a shape).
 
-    Excludes self-sizing arrays (shape == []) -- these cover two different
-    wire formats dev3 can't tell apart by shape alone: plain trailing
-    tokens (is_record_list_field) and utl-tas's griddata-style tas_array
-    (is_readarray_field).
+    Excludes shape == [] fields -- dev3 can't tell apart by shape alone
+    which of two different wire formats these are: genuinely self-sizing
+    trailing tokens (is_record_list_field / is_aux_list_field) vs.
+    utl-tas's griddata-style tas_array (is_readarray_field), whose shape
+    (ncpl) is actually knowable but not yet declarable in dev3 -- not
+    self-sizing at all, just unshaped for a different reason. See
+    is_readarray_field.
     """
     return isinstance(f, Array) and bool(f.shape) and f.dtype != "keyword"
 
@@ -191,22 +194,27 @@ def file_child(f: Record) -> File | None:
 def is_aux_list_field(f: FieldV3) -> bool:
     """True for auxiliary variable name lists (options block, shape []).
 
-    dev3 represents this as Array(dtype="string", shape=[], name="auxiliary")
-    -- an unshaped string array. (Legacy encoded this as a shaped field with
-    a self-referential dim "naux"; dev3 drops the fake dimension entirely
-    since the count *is* len() of the list itself, nothing to declare.)
+    dev3 represents this as Array(dtype="string", shape=[], tagged=True) --
+    an unshaped, tagged string array. (Legacy encoded this as a shaped field
+    with a self-referential dim "naux"; dev3 drops the fake dimension
+    entirely since the count *is* len() of the list itself, nothing to
+    declare.) `tagged` (not the field's name) is what distinguishes this
+    from is_readarray_field -- verified exhaustively across the whole DFN
+    corpus: every shape == [] non-keyword Array field is either this
+    (tagged) or tas_array's case (untagged), with no exceptions.
     """
-    return isinstance(f, Array) and f.dtype == "string" and f.shape == [] and f.name == "auxiliary"
+    return isinstance(f, Array) and f.dtype == "string" and f.shape == [] and f.tagged
 
 
 def is_readarray_field(f: FieldV3) -> bool:
     """True for utl-tas's ``tas_array``: a griddata-style Array field whose
     own block (``time``) repeats per header value (``BEGIN TIME <t> ...
-    END TIME``), unlike a plain trailing-tokens self-sizing array. Only
-    field of this shape in the corpus, so matched by name (same precedent
-    as ``is_aux_list_field``).
+    END TIME``), unlike a plain trailing-tokens self-sizing array (see
+    is_aux_list_field). Only field of this shape in the corpus today, but
+    matched structurally (untagged, shape == []) rather than by name --
+    verified exhaustively, see is_aux_list_field.
     """
-    return isinstance(f, Array) and f.dtype != "keyword" and f.shape == [] and f.name == "tas_array"
+    return isinstance(f, Array) and f.dtype != "keyword" and f.shape == [] and not f.tagged
 
 
 def is_period_array(f: FieldV3, block_name: str) -> bool:
