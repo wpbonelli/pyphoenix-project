@@ -46,4 +46,5 @@ class Tas(Package):
         default=None,
         block="time",
         reader="readarray",
+        shape=("ncpl",),
     )

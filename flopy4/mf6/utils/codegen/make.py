@@ -715,11 +715,16 @@ def _generated_imports(
     period_schema: list[dict] | None = None,
     period_arms: "list[PeriodArmSpec] | None" = None,
     block_schemas: dict[str, list[dict]] | None = None,
+    repeating_blocks: frozenset[str] = frozenset(),
 ) -> dict[str, list[str]]:
     """Compute import lines for generated packages."""
     has_array = any(
-        (filters.is_array(f) or filters.is_keyword_array(f))
-        and block_name != "griddata"  # griddata fields → Int/FloatArrayLike, not NDArray[np.xxx]
+        block_name != "griddata"  # griddata fields → Int/FloatArrayLike, not NDArray[np.xxx]
+        and (
+            filters.is_keyword_array(f)
+            # repeating block's own array → dict[header, ...], not NDArray
+            or (filters.is_array(f) and block_name not in repeating_blocks)
+        )
         for block_name, f in generatable_fields
     )
     has_file_records = any(
@@ -841,6 +846,11 @@ def build_component_spec(
     """Build all template context for a DFN component."""
     all_fields = filters.flat_fields(component, developmode=developmode)
 
+    # Block names where Block.repeats is True (Block.header is not None).
+    _repeating_blocks = frozenset(
+        name for name, block in (component.blocks or {}).items() if block.repeats
+    )
+
     has_maxbound = filters.has_dimensions_block(component)
     # maxbound becomes a computed property only with a real Item-list period
     # field to derive it from (see has_dimensions_block's docstring).
@@ -876,7 +886,7 @@ def build_component_spec(
     period_schema: list[dict] = []
     period_arms: list[PeriodArmSpec] = []
     _readarray_period_fields: list[FieldV3] = []  # READARRAY period fields (CHDG, DRNG …)
-    _time_array_series_fields: list[FieldV3] = []  # e.g. utl-tas.tas_array
+    _time_array_series_fields: list[FieldV3] = []  # repeating block's own array field
     _standard_period_list: FieldV3 | None = None  # standard (non-keystring) period List field
 
     for block_name, f in all_fields:
@@ -914,16 +924,16 @@ def build_component_spec(
         if block_name == "dimensions" and f.name == "maxbound" and _maxbound_is_computed:
             continue
 
-        # Time-array-series field (utl-tas.tas_array) -- see is_readarray_field.
-        # time_from_model_start isn't a stored field, same as kper isn't for
-        # period blocks; it's carried by the dict's own keys.
-        if filters.is_readarray_field(f):
+        # Array field whose own block repeats. Header value isn't a stored
+        # field -- carried by the dict's own keys.
+        if filters.is_array(f) and block_name in _repeating_blocks:
             _time_array_series_fields.append(f)
             _tas_base = "IntArrayLike" if getattr(f, "dtype", "") == "integer" else "FloatArrayLike"
             _tas_meta = {"block": block_name, "reader": "readarray"}
+            if getattr(f, "shape", None):
+                _tas_meta["shape"] = tuple(f.shape)
             if getattr(f, "tagged", True):
-                # field()'s `tagged` kwarg only ever records True -- absence
-                # already means untagged (see record.py's same convention).
+                # field()'s tagged kwarg only ever records True.
                 _tas_meta["tagged"] = True
             data_specs.append(
                 FieldSpec(
@@ -1120,6 +1130,7 @@ def build_component_spec(
         period_schema=period_schema,
         period_arms=period_arms,
         block_schemas=block_schemas,
+        repeating_blocks=_repeating_blocks,
     )
 
     computed_field_specs = (
