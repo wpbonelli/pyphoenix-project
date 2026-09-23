@@ -5,13 +5,16 @@ _list: line*
 line: item* _NL+
 item: word | NUMBER
 word: /[a-zA-Z0-9'().\/:;<=>?@_~+\[\\-]+/
+// common.NUMBER, but only as a whole token. Otherwise a token that starts
+// like a number lexes as a NUMBER followed by a word, e.g. an ISO datetime
+// `1997-07-16T19:20:30` as `1997` and `-07-16T19:20:30`.
+NUMBER: /(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?(?![^\s,#])/
 COMMA: ","
 
 %import common.NEWLINE -> _NL
 %import common.WS_INLINE
 %import common.CNAME
 %import common.WORD
-%import common.NUMBER
 %import common.INT
 %import common.SH_COMMENT
 %import common._STRING_INNER
