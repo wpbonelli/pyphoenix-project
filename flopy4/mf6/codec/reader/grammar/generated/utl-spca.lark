@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,13 +20,13 @@
 start: _NL* (block _NL*)*
 block: options_block | period_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-period_block: "begin"i "period"i block_index [_remark] _NL _NL* period_fields _NL* "end"i "period"i [block_index]
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+period_block: "begin"i "period"i block_index _NL _NL* period_fields _NL* "end"i "period"i [block_index]
 block_index: number
 options_fields: ((readasarrays | print_input | tas_filerecord | open_close_redirect) _NL*)*
 period_fields: ((concentration | temperature | open_close_redirect) _NL*)*
-readasarrays: "readasarrays"i  [_remark] _NL
-print_input: "print_input"i  [_remark] _NL
-tas_filerecord: "tas6"i "filein"i word [_remark] _NL
-concentration: "concentration"i [_remark] [_NL] array
-temperature: "temperature"i [_remark] [_NL] array
+readasarrays: "readasarrays"i  _NL
+print_input: "print_input"i  _NL
+tas_filerecord: "tas6"i "filein"i word _NL
+concentration: "concentration"i [_NL] array
+temperature: "temperature"i [_NL] array

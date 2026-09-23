@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,32 +20,32 @@
 start: _NL* (block _NL*)*
 block: options_block | dimensions_block | tracktimes_block | period_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-dimensions_block: "begin"i "dimensions"i [_remark] _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
-tracktimes_block: "begin"i "tracktimes"i [_remark] _NL _NL* tracktimes_fields _NL* "end"i "tracktimes"i
-period_block: "begin"i "period"i block_index [_remark] _NL _NL* period_fields _NL* "end"i "period"i [block_index]
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+dimensions_block: "begin"i "dimensions"i _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
+tracktimes_block: "begin"i "tracktimes"i _NL _NL* tracktimes_fields _NL* "end"i "tracktimes"i
+period_block: "begin"i "period"i block_index _NL _NL* period_fields _NL* "end"i "period"i [block_index]
 block_index: number
 options_fields: ((budget_filerecord | budgetcsv_filerecord | track_filerecord | trackcsv_filerecord | track_release | track_exit | track_subfeature_exit | track_timestep | track_terminate | track_weaksink | track_usertime | track_dropped | dev_dump_event_trace | scratch_buffer | open_close_redirect) _NL*)*
 dimensions_fields: ((ntracktimes | open_close_redirect) _NL*)*
 tracktimes_fields: ((tracktimesdata | open_close_redirect) _NL*)*
 period_fields: ((saverecord | printrecord | open_close_redirect) _NL*)*
-budget_filerecord: "budget"i "fileout"i word [_remark] _NL
-budgetcsv_filerecord: "budgetcsv"i "fileout"i word [_remark] _NL
-track_filerecord: "track"i "fileout"i word [_remark] _NL
-trackcsv_filerecord: "trackcsv"i "fileout"i word [_remark] _NL
-track_release: "track_release"i  [_remark] _NL
-track_exit: "track_exit"i  [_remark] _NL
-track_subfeature_exit: "track_subfeature_exit"i  [_remark] _NL
-track_timestep: "track_timestep"i  [_remark] _NL
-track_terminate: "track_terminate"i  [_remark] _NL
-track_weaksink: "track_weaksink"i  [_remark] _NL
-track_usertime: "track_usertime"i  [_remark] _NL
-track_dropped: "track_dropped"i  [_remark] _NL
-dev_dump_event_trace: "dev_dump_event_trace"i  [_remark] _NL
-scratch_buffer: "scratch_buffer"i  [_remark] _NL
-ntracktimes: "ntracktimes"i integer [_remark] _NL
-saverecord: "save"i word ocsetting [_remark] _NL
-printrecord: "print"i word ocsetting [_remark] _NL
+budget_filerecord: "budget"i "fileout"i word _NL
+budgetcsv_filerecord: "budgetcsv"i "fileout"i word _NL
+track_filerecord: "track"i "fileout"i word _NL
+trackcsv_filerecord: "trackcsv"i "fileout"i word _NL
+track_release: "track_release"i  _NL
+track_exit: "track_exit"i  _NL
+track_subfeature_exit: "track_subfeature_exit"i  _NL
+track_timestep: "track_timestep"i  _NL
+track_terminate: "track_terminate"i  _NL
+track_weaksink: "track_weaksink"i  _NL
+track_usertime: "track_usertime"i  _NL
+track_dropped: "track_dropped"i  _NL
+dev_dump_event_trace: "dev_dump_event_trace"i  _NL
+scratch_buffer: "scratch_buffer"i  _NL
+ntracktimes: "ntracktimes"i integer _NL
+saverecord: "save"i word ocsetting _NL
+printrecord: "print"i word ocsetting _NL
 ocsetting: ocsetting_all | ocsetting_first | ocsetting_last | ocsetting_frequency | ocsetting_steps
 ocsetting_all: "all"i
 ocsetting_first: "first"i

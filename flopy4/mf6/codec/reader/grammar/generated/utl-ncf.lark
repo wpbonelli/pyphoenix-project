@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,22 +20,22 @@
 start: _NL* (block _NL*)*
 block: options_block | dimensions_block | griddata_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-dimensions_block: "begin"i "dimensions"i [_remark] _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
-griddata_block: "begin"i "griddata"i [_remark] _NL _NL* griddata_fields _NL* "end"i "griddata"i
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+dimensions_block: "begin"i "dimensions"i _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
+griddata_block: "begin"i "griddata"i _NL _NL* griddata_fields _NL* "end"i "griddata"i
 options_fields: ((wkt | crs_wkt | deflate | shuffle | chunk_time | chunk_face | chunk_z | chunk_y | chunk_x | modflow6_attr_off | open_close_redirect) _NL*)*
 dimensions_fields: ((ncpl | open_close_redirect) _NL*)*
 griddata_fields: ((latitude | longitude | open_close_redirect) _NL*)*
 wkt: "wkt"i string
 crs_wkt: "crs_wkt"i string
-deflate: "deflate"i integer [_remark] _NL
-shuffle: "shuffle"i  [_remark] _NL
-chunk_time: "chunk_time"i integer [_remark] _NL
-chunk_face: "chunk_face"i integer [_remark] _NL
-chunk_z: "chunk_z"i integer [_remark] _NL
-chunk_y: "chunk_y"i integer [_remark] _NL
-chunk_x: "chunk_x"i integer [_remark] _NL
-modflow6_attr_off: "modflow6_attr_off"i  [_remark] _NL
-ncpl: "ncpl"i integer [_remark] _NL
-latitude: "latitude"i [_remark] [_NL] array
-longitude: "longitude"i [_remark] [_NL] array
+deflate: "deflate"i integer _NL
+shuffle: "shuffle"i  _NL
+chunk_time: "chunk_time"i integer _NL
+chunk_face: "chunk_face"i integer _NL
+chunk_z: "chunk_z"i integer _NL
+chunk_y: "chunk_y"i integer _NL
+chunk_x: "chunk_x"i integer _NL
+modflow6_attr_off: "modflow6_attr_off"i  _NL
+ncpl: "ncpl"i integer _NL
+latitude: "latitude"i [_NL] array
+longitude: "longitude"i [_NL] array

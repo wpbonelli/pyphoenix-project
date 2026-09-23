@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,12 +20,12 @@
 start: _NL* (block _NL*)*
 block: options_block | dimensions_block | griddata_block | connectiondata_block | vertices_block | cell2d_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-dimensions_block: "begin"i "dimensions"i [_remark] _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
-griddata_block: "begin"i "griddata"i [_remark] _NL _NL* griddata_fields _NL* "end"i "griddata"i
-connectiondata_block: "begin"i "connectiondata"i [_remark] _NL _NL* connectiondata_fields _NL* "end"i "connectiondata"i
-vertices_block: "begin"i "vertices"i [_remark] _NL _NL* vertices_fields _NL* "end"i "vertices"i
-cell2d_block: "begin"i "cell2d"i [_remark] _NL _NL* cell2d_fields _NL* "end"i "cell2d"i
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+dimensions_block: "begin"i "dimensions"i _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
+griddata_block: "begin"i "griddata"i _NL _NL* griddata_fields _NL* "end"i "griddata"i
+connectiondata_block: "begin"i "connectiondata"i _NL _NL* connectiondata_fields _NL* "end"i "connectiondata"i
+vertices_block: "begin"i "vertices"i _NL _NL* vertices_fields _NL* "end"i "vertices"i
+cell2d_block: "begin"i "cell2d"i _NL _NL* cell2d_fields _NL* "end"i "cell2d"i
 options_fields: ((length_units | nogrb | grb_filerecord | xorigin | yorigin | angrot | vertical_offset_tolerance | export_array_ascii | crs | open_close_redirect) _NL*)*
 dimensions_fields: ((nodes | nja | nvert | open_close_redirect) _NL*)*
 griddata_fields: ((top | bot | area | idomain | open_close_redirect) _NL*)*
@@ -34,26 +33,26 @@ connectiondata_fields: ((iac | ja | ihc | cl12 | hwva | angldegx | open_close_re
 vertices_fields: ((verticesdata | open_close_redirect) _NL*)*
 cell2d_fields: ((cell2ddata | open_close_redirect) _NL*)*
 length_units: "length_units"i string
-nogrb: "nogrb"i  [_remark] _NL
-grb_filerecord: "grb6"i "fileout"i word [_remark] _NL
-xorigin: "xorigin"i double [_remark] _NL
-yorigin: "yorigin"i double [_remark] _NL
-angrot: "angrot"i double [_remark] _NL
-vertical_offset_tolerance: "vertical_offset_tolerance"i double [_remark] _NL
-export_array_ascii: "export_array_ascii"i  [_remark] _NL
+nogrb: "nogrb"i  _NL
+grb_filerecord: "grb6"i "fileout"i word _NL
+xorigin: "xorigin"i double _NL
+yorigin: "yorigin"i double _NL
+angrot: "angrot"i double _NL
+vertical_offset_tolerance: "vertical_offset_tolerance"i double _NL
+export_array_ascii: "export_array_ascii"i  _NL
 crs: "crs"i string
-nodes: "nodes"i integer [_remark] _NL
-nja: "nja"i integer [_remark] _NL
-nvert: "nvert"i integer [_remark] _NL
-top: "top"i [_remark] [_NL] array
-bot: "bot"i [_remark] [_NL] array
-area: "area"i [_remark] [_NL] array
-idomain: "idomain"i [_remark] [_NL] array
-iac: "iac"i [_remark] [_NL] array
-ja: "ja"i [_remark] [_NL] array
-ihc: "ihc"i [_remark] [_NL] array
-cl12: "cl12"i [_remark] [_NL] array
-hwva: "hwva"i [_remark] [_NL] array
-angldegx: "angldegx"i [_remark] [_NL] array
+nodes: "nodes"i integer _NL
+nja: "nja"i integer _NL
+nvert: "nvert"i integer _NL
+top: "top"i [_NL] array
+bot: "bot"i [_NL] array
+area: "area"i [_NL] array
+idomain: "idomain"i [_NL] array
+iac: "iac"i [_NL] array
+ja: "ja"i [_NL] array
+ihc: "ihc"i [_NL] array
+cl12: "cl12"i [_NL] array
+hwva: "hwva"i [_NL] array
+angldegx: "angldegx"i [_NL] array
 verticesdata: record+
 cell2ddata: record+

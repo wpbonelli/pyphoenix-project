@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,16 +20,16 @@
 start: _NL* (block _NL*)*
 block: options_block | packages_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-packages_block: "begin"i "packages"i [_remark] _NL _NL* packages_fields _NL* "end"i "packages"i
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+packages_block: "begin"i "packages"i _NL _NL* packages_fields _NL* "end"i "packages"i
 options_fields: ((list | print_input | print_flows | save_flows | dependent_variable_scaling | nc_mesh2d_filerecord | nc_structured_filerecord | nc_filerecord | open_close_redirect) _NL*)*
 packages_fields: ((packagesdata | open_close_redirect) _NL*)*
 list: "list"i string
-print_input: "print_input"i  [_remark] _NL
-print_flows: "print_flows"i  [_remark] _NL
-save_flows: "save_flows"i  [_remark] _NL
-dependent_variable_scaling: "dependent_variable_scaling"i  [_remark] _NL
-nc_mesh2d_filerecord: "netcdf_mesh2d"i "fileout"i word [_remark] _NL
-nc_structured_filerecord: "netcdf_structured"i "fileout"i word [_remark] _NL
-nc_filerecord: "netcdf"i "filein"i word [_remark] _NL
+print_input: "print_input"i  _NL
+print_flows: "print_flows"i  _NL
+save_flows: "save_flows"i  _NL
+dependent_variable_scaling: "dependent_variable_scaling"i  _NL
+nc_mesh2d_filerecord: "netcdf_mesh2d"i "fileout"i word _NL
+nc_structured_filerecord: "netcdf_structured"i "fileout"i word _NL
+nc_filerecord: "netcdf"i "filein"i word _NL
 packagesdata: record+

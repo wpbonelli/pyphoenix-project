@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,26 +20,26 @@
 start: _NL* (block _NL*)*
 block: options_block | timing_block | models_block | exchanges_block | solutiongroup_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-timing_block: "begin"i "timing"i [_remark] _NL _NL* timing_fields _NL* "end"i "timing"i
-models_block: "begin"i "models"i [_remark] _NL _NL* models_fields _NL* "end"i "models"i
-exchanges_block: "begin"i "exchanges"i [_remark] _NL _NL* exchanges_fields _NL* "end"i "exchanges"i
-solutiongroup_block: "begin"i "solutiongroup"i block_index [_remark] _NL _NL* solutiongroup_fields _NL* "end"i "solutiongroup"i [block_index]
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+timing_block: "begin"i "timing"i _NL _NL* timing_fields _NL* "end"i "timing"i
+models_block: "begin"i "models"i _NL _NL* models_fields _NL* "end"i "models"i
+exchanges_block: "begin"i "exchanges"i _NL _NL* exchanges_fields _NL* "end"i "exchanges"i
+solutiongroup_block: "begin"i "solutiongroup"i block_index _NL _NL* solutiongroup_fields _NL* "end"i "solutiongroup"i [block_index]
 block_index: number
 options_fields: ((continue | nocheck | memory_print_option | profile_option | maxerrors | print_input | hpc_filerecord | open_close_redirect) _NL*)*
 timing_fields: ((tdis6 | open_close_redirect) _NL*)*
 models_fields: ((modelsdata | open_close_redirect) _NL*)*
 exchanges_fields: ((exchangesdata | open_close_redirect) _NL*)*
 solutiongroup_fields: ((mxiter | solutiongroupdata | open_close_redirect) _NL*)*
-continue: "continue"i  [_remark] _NL
-nocheck: "nocheck"i  [_remark] _NL
+continue: "continue"i  _NL
+nocheck: "nocheck"i  _NL
 memory_print_option: "memory_print_option"i string
 profile_option: "profile_option"i string
-maxerrors: "maxerrors"i integer [_remark] _NL
-print_input: "print_input"i  [_remark] _NL
-hpc_filerecord: "hpc6"i "filein"i word [_remark] _NL
+maxerrors: "maxerrors"i integer _NL
+print_input: "print_input"i  _NL
+hpc_filerecord: "hpc6"i "filein"i word _NL
 tdis6: "tdis6"i string
-mxiter: "mxiter"i integer [_remark] _NL
+mxiter: "mxiter"i integer _NL
 modelsdata: record+
 exchangesdata: record+
 solutiongroupdata: record+

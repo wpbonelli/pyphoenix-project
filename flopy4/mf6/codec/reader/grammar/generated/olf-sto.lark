@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,14 +20,14 @@
 start: _NL* (block _NL*)*
 block: options_block | period_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-period_block: "begin"i "period"i block_index [_remark] _NL _NL* period_fields _NL* "end"i "period"i [block_index]
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+period_block: "begin"i "period"i block_index _NL _NL* period_fields _NL* "end"i "period"i [block_index]
 block_index: number
 options_fields: ((save_flows | export_array_ascii | open_close_redirect) _NL*)*
 period_fields: ((storage | open_close_redirect) _NL*)*
-save_flows: "save_flows"i  [_remark] _NL
-export_array_ascii: "export_array_ascii"i  [_remark] _NL
-storage: storage_steady_state | storage_transient [_remark] _NL
+save_flows: "save_flows"i  _NL
+export_array_ascii: "export_array_ascii"i  _NL
+storage: storage_steady_state | storage_transient _NL
 
 storage_steady_state: "steady-state"i
 storage_transient: "transient"i

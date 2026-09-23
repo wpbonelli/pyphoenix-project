@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,18 +20,18 @@
 start: _NL* (block _NL*)*
 block: options_block | griddata_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-griddata_block: "begin"i "griddata"i [_remark] _NL _NL* griddata_fields _NL* "end"i "griddata"i
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+griddata_block: "begin"i "griddata"i _NL _NL* griddata_fields _NL* "end"i "griddata"i
 options_fields: ((save_flows | zero_order_decay_water | zero_order_decay_solid | density_water | heat_capacity_water | latent_heat_vaporization | open_close_redirect) _NL*)*
 griddata_fields: ((porosity | decay_water | decay_solid | heat_capacity_solid | density_solid | open_close_redirect) _NL*)*
-save_flows: "save_flows"i  [_remark] _NL
-zero_order_decay_water: "zero_order_decay_water"i  [_remark] _NL
-zero_order_decay_solid: "zero_order_decay_solid"i  [_remark] _NL
-density_water: "density_water"i double [_remark] _NL
-heat_capacity_water: "heat_capacity_water"i double [_remark] _NL
-latent_heat_vaporization: "latent_heat_vaporization"i double [_remark] _NL
-porosity: "porosity"i [_remark] [_NL] array
-decay_water: "decay_water"i [_remark] [_NL] array
-decay_solid: "decay_solid"i [_remark] [_NL] array
-heat_capacity_solid: "heat_capacity_solid"i [_remark] [_NL] array
-density_solid: "density_solid"i [_remark] [_NL] array
+save_flows: "save_flows"i  _NL
+zero_order_decay_water: "zero_order_decay_water"i  _NL
+zero_order_decay_solid: "zero_order_decay_solid"i  _NL
+density_water: "density_water"i double _NL
+heat_capacity_water: "heat_capacity_water"i double _NL
+latent_heat_vaporization: "latent_heat_vaporization"i double _NL
+porosity: "porosity"i [_NL] array
+decay_water: "decay_water"i [_NL] array
+decay_solid: "decay_solid"i [_NL] array
+heat_capacity_solid: "heat_capacity_solid"i [_NL] array
+density_solid: "density_solid"i [_NL] array

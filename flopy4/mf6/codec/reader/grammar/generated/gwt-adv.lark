@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,13 +20,13 @@
 start: _NL* (block _NL*)*
 block: options_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
 options_fields: ((scheme | ats_percel | open_close_redirect) _NL*)*
-scheme: "scheme"i (scheme_central | scheme_upstream | scheme_tvd | scheme_utvd) [_remark] _NL
+scheme: "scheme"i (scheme_central | scheme_upstream | scheme_tvd | scheme_utvd) _NL
 
 scheme_central: "central"i
 scheme_upstream: "upstream"i
 scheme_tvd: "tvd"i
 scheme_utvd: "utvd"i
 
-ats_percel: "ats_percel"i double [_remark] _NL
+ats_percel: "ats_percel"i double _NL

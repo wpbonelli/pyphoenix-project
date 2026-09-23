@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,10 +20,10 @@
 start: _NL* (block _NL*)*
 block: dimensions_block | table_block
 
-dimensions_block: "begin"i "dimensions"i [_remark] _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
-table_block: "begin"i "table"i [_remark] _NL _NL* table_fields _NL* "end"i "table"i
+dimensions_block: "begin"i "dimensions"i _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
+table_block: "begin"i "table"i _NL _NL* table_fields _NL* "end"i "table"i
 dimensions_fields: ((nrow | ncol | open_close_redirect) _NL*)*
 table_fields: ((tabledata | open_close_redirect) _NL*)*
-nrow: "nrow"i integer [_remark] _NL
-ncol: "ncol"i integer [_remark] _NL
+nrow: "nrow"i integer _NL
+ncol: "ncol"i integer _NL
 tabledata: record+

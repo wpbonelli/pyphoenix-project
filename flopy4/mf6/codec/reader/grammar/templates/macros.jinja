@@ -11,7 +11,7 @@
    `nested_union` are for, as opposed to `record_field`/`union_field`. #}
 
 {% macro record_field(field_name, field) -%}
-{{ nested_record(field_name, field) }} [_remark] _NL
+{{ nested_record(field_name, field) }} _NL
 {%- endmacro %}
 
 {% macro nested_record(field_name, field) -%}
@@ -53,7 +53,7 @@
 {% macro union_field(field_name, field) -%}
 {# The alternation must be parenthesized before appending `[_remark] _NL` --
    `|` binds looser than concatenation, so an unparenthesized "A | B | C
-   [_remark] _NL" only requires the line ending after the *last* arm. A
+   _NL" only requires the line ending after the *last* arm. A
    `tagged true` union (e.g. NPF's alternative_cell_averaging, confirmed via
    valid_as_union) additionally needs its own field-name keyword prefixed --
    real files write "ALTERNATIVE_CELL_AVERAGING LOGARITHMIC", not a bare
@@ -64,7 +64,7 @@
 {{ field_name|to_rule_name }}_{{ child_name|to_rule_name }}
 {%- if not loop.last %} | {% endif -%}
 {%- endfor -%}
-{%- if field.tagged %}){% endif %} [_remark] _NL
+{%- if field.tagged %}){% endif %} _NL
 
 {% for child_name, child in field.children.items() -%}
 {{ field_name|to_rule_name }}_{{ child_name|to_rule_name }}: {% if child.type == 'keyword' -%}
@@ -88,21 +88,21 @@
    only known at options-parse time, not grammar-generation time, so accept
    any word here rather than a fixed literal -- still bound to the "aux"
    rule name so the transformer's field lookup keeps working. #}
-{{ field_name|to_rule_name }}: word [_remark] [_NL] {{ field_type }}
+{{ field_name|to_rule_name }}: word [_NL] {{ field_type }}
 {%- elif field_type == 'array' -%}
 {# Real files write an array field's name alone on its own line about as
    often as on the same line as its CONSTANT/INTERNAL/OPEN-CLOSE value
    (e.g. STO's "ss" -- confirmed directly against a real fixture) -- the
    line break between name and value is optional either way. #}
-{{ field_name|to_rule_name }}: "{{ field.name }}"i [_remark] [_NL] {{ field_type }}
+{{ field_name|to_rule_name }}: "{{ field.name }}"i [_NL] {{ field_type }}
 {%- else -%}
 {{ field_name|to_rule_name }}: "{{ field.name }}"i {{ field_type }}
-{%- if field_type != 'string' %} [_remark] _NL{% endif -%}
+{%- if field_type != 'string' %} _NL{% endif -%}
 {%- endif -%}
 {%- endmacro %}
 
 {% macro file_field(field_name, field) -%}
-{{ field_name|to_rule_name }}: "{{ field.name }}"i "file{{ field.direction }}"i word [_remark] _NL
+{{ field_name|to_rule_name }}: "{{ field.name }}"i "file{{ field.direction }}"i word _NL
 {%- endmacro %}
 
 {% macro nested_union(child_name, child) -%}
@@ -133,9 +133,9 @@
    "END <name>", not repeating the index -- confirmed ~91% (1503/1651)
    across a random corpus sample. The trailing index is still accepted
    when present (the remaining ~9%). #}
-{{ block_name }}_block: "begin"i "{{ block_name }}"i block_index [_remark] _NL _NL* {{ block_name }}_fields _NL* "end"i "{{ block_name }}"i [block_index]
+{{ block_name }}_block: "begin"i "{{ block_name }}"i block_index _NL _NL* {{ block_name }}_fields _NL* "end"i "{{ block_name }}"i [block_index]
 {%- else -%}
-{{ block_name }}_block: "begin"i "{{ block_name }}"i [_remark] _NL _NL* {{ block_name }}_fields _NL* "end"i "{{ block_name }}"i
+{{ block_name }}_block: "begin"i "{{ block_name }}"i _NL _NL* {{ block_name }}_fields _NL* "end"i "{{ block_name }}"i
 {%- endif -%}
 {%- endmacro %}
 

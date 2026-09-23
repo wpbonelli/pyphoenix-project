@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,25 +20,25 @@
 start: _NL* (block _NL*)*
 block: options_block | griddata_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-griddata_block: "begin"i "griddata"i [_remark] _NL _NL* griddata_fields _NL* "end"i "griddata"i
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+griddata_block: "begin"i "griddata"i _NL _NL* griddata_fields _NL* "end"i "griddata"i
 options_fields: ((save_flows | first_order_decay | zero_order_decay | sorption | sorbate_filerecord | export_array_ascii | export_array_netcdf | open_close_redirect) _NL*)*
 griddata_fields: ((porosity | decay | decay_sorbed | bulk_density | distcoef | sp2 | open_close_redirect) _NL*)*
-save_flows: "save_flows"i  [_remark] _NL
-first_order_decay: "first_order_decay"i  [_remark] _NL
-zero_order_decay: "zero_order_decay"i  [_remark] _NL
-sorption: "sorption"i (sorption_linear | sorption_freundlich | sorption_langmuir) [_remark] _NL
+save_flows: "save_flows"i  _NL
+first_order_decay: "first_order_decay"i  _NL
+zero_order_decay: "zero_order_decay"i  _NL
+sorption: "sorption"i (sorption_linear | sorption_freundlich | sorption_langmuir) _NL
 
 sorption_linear: "linear"i
 sorption_freundlich: "freundlich"i
 sorption_langmuir: "langmuir"i
 
-sorbate_filerecord: "sorbate"i "fileout"i word [_remark] _NL
-export_array_ascii: "export_array_ascii"i  [_remark] _NL
-export_array_netcdf: "export_array_netcdf"i  [_remark] _NL
-porosity: "porosity"i [_remark] [_NL] array
-decay: "decay"i [_remark] [_NL] array
-decay_sorbed: "decay_sorbed"i [_remark] [_NL] array
-bulk_density: "bulk_density"i [_remark] [_NL] array
-distcoef: "distcoef"i [_remark] [_NL] array
-sp2: "sp2"i [_remark] [_NL] array
+sorbate_filerecord: "sorbate"i "fileout"i word _NL
+export_array_ascii: "export_array_ascii"i  _NL
+export_array_netcdf: "export_array_netcdf"i  _NL
+porosity: "porosity"i [_NL] array
+decay: "decay"i [_NL] array
+decay_sorbed: "decay_sorbed"i [_NL] array
+bulk_density: "bulk_density"i [_NL] array
+distcoef: "distcoef"i [_NL] array
+sp2: "sp2"i [_NL] array

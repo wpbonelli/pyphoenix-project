@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,18 +20,18 @@
 start: _NL* (block _NL*)*
 block: options_block | period_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-period_block: "begin"i "period"i block_index [_remark] _NL _NL* period_fields _NL* "end"i "period"i [block_index]
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+period_block: "begin"i "period"i block_index _NL _NL* period_fields _NL* "end"i "period"i [block_index]
 block_index: number
 options_fields: ((budget_filerecord | budgetcsv_filerecord | qoutflow_filerecord | stage_filerecord | qoutflowprintrecord | open_close_redirect) _NL*)*
 period_fields: ((saverecord | printrecord | open_close_redirect) _NL*)*
-budget_filerecord: "budget"i "fileout"i word [_remark] _NL
-budgetcsv_filerecord: "budgetcsv"i "fileout"i word [_remark] _NL
-qoutflow_filerecord: "qoutflow"i "fileout"i word [_remark] _NL
-stage_filerecord: "stage"i "fileout"i word [_remark] _NL
-qoutflowprintrecord: "qoutflow"i "print_format"i formatrecord [_remark] _NL
-saverecord: "save"i word ocsetting [_remark] _NL
-printrecord: "print"i word ocsetting [_remark] _NL
+budget_filerecord: "budget"i "fileout"i word _NL
+budgetcsv_filerecord: "budgetcsv"i "fileout"i word _NL
+qoutflow_filerecord: "qoutflow"i "fileout"i word _NL
+stage_filerecord: "stage"i "fileout"i word _NL
+qoutflowprintrecord: "qoutflow"i "print_format"i formatrecord _NL
+saverecord: "save"i word ocsetting _NL
+printrecord: "print"i word ocsetting _NL
 formatrecord: ["columns"i integer] ["width"i integer] ["digits"i integer] word
 ocsetting: ocsetting_all | ocsetting_first | ocsetting_last | ocsetting_frequency | ocsetting_steps
 ocsetting_all: "all"i

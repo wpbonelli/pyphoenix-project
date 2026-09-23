@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,15 +20,15 @@
 start: _NL* (block _NL*)*
 block: options_block | dimensions_block | exchangedata_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-dimensions_block: "begin"i "dimensions"i [_remark] _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
-exchangedata_block: "begin"i "exchangedata"i [_remark] _NL _NL* exchangedata_fields _NL* "end"i "exchangedata"i
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+dimensions_block: "begin"i "dimensions"i _NL _NL* dimensions_fields _NL* "end"i "dimensions"i
+exchangedata_block: "begin"i "exchangedata"i _NL _NL* exchangedata_fields _NL* "end"i "exchangedata"i
 options_fields: ((print_input | print_flows | fixed_conductance | obs_filerecord | open_close_redirect) _NL*)*
 dimensions_fields: ((nexg | open_close_redirect) _NL*)*
 exchangedata_fields: ((exchangedatadata | open_close_redirect) _NL*)*
-print_input: "print_input"i  [_remark] _NL
-print_flows: "print_flows"i  [_remark] _NL
-fixed_conductance: "fixed_conductance"i  [_remark] _NL
-obs_filerecord: "obs6"i "filein"i word [_remark] _NL
-nexg: "nexg"i integer [_remark] _NL
+print_input: "print_input"i  _NL
+print_flows: "print_flows"i  _NL
+fixed_conductance: "fixed_conductance"i  _NL
+obs_filerecord: "obs6"i "filein"i word _NL
+nexg: "nexg"i integer _NL
 exchangedatadata: record+

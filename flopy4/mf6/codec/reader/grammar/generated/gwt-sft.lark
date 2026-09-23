@@ -9,7 +9,6 @@
 %import typed.record -> record
 %import typed.open_close_redirect -> open_close_redirect
 %import typed._NL -> _NL
-%import typed._remark -> _remark
 %import typed.COMMA -> COMMA
 %import common.WS_INLINE
 %import common.SH_COMMENT
@@ -21,26 +20,26 @@
 start: _NL* (block _NL*)*
 block: options_block | packagedata_block | period_block
 
-options_block: "begin"i "options"i [_remark] _NL _NL* options_fields _NL* "end"i "options"i
-packagedata_block: "begin"i "packagedata"i [_remark] _NL _NL* packagedata_fields _NL* "end"i "packagedata"i
-period_block: "begin"i "period"i block_index [_remark] _NL _NL* period_fields _NL* "end"i "period"i [block_index]
+options_block: "begin"i "options"i _NL _NL* options_fields _NL* "end"i "options"i
+packagedata_block: "begin"i "packagedata"i _NL _NL* packagedata_fields _NL* "end"i "packagedata"i
+period_block: "begin"i "period"i block_index _NL _NL* period_fields _NL* "end"i "period"i [block_index]
 block_index: number
 options_fields: ((flow_package_name | auxiliary | flow_package_auxiliary_name | boundnames | print_input | print_concentration | print_flows | save_flows | concentration_filerecord | budget_filerecord | budgetcsv_filerecord | ts_filerecord | obs_filerecord | dev_nonexpanding_matrix | open_close_redirect) _NL*)*
 packagedata_fields: ((packagedatadata | open_close_redirect) _NL*)*
 period_fields: ((stress_period_data | open_close_redirect) _NL*)*
 flow_package_name: "flow_package_name"i string
-auxiliary: "auxiliary"i word+ [_remark] _NL
+auxiliary: "auxiliary"i word+ _NL
 flow_package_auxiliary_name: "flow_package_auxiliary_name"i string
-boundnames: "boundnames"i  [_remark] _NL
-print_input: "print_input"i  [_remark] _NL
-print_concentration: "print_concentration"i  [_remark] _NL
-print_flows: "print_flows"i  [_remark] _NL
-save_flows: "save_flows"i  [_remark] _NL
-concentration_filerecord: "concentration"i "fileout"i word [_remark] _NL
-budget_filerecord: "budget"i "fileout"i word [_remark] _NL
-budgetcsv_filerecord: "budgetcsv"i "fileout"i word [_remark] _NL
-ts_filerecord: "ts6"i "filein"i word [_remark] _NL
-obs_filerecord: "obs6"i "filein"i word [_remark] _NL
-dev_nonexpanding_matrix: "dev_nonexpanding_matrix"i  [_remark] _NL
+boundnames: "boundnames"i  _NL
+print_input: "print_input"i  _NL
+print_concentration: "print_concentration"i  _NL
+print_flows: "print_flows"i  _NL
+save_flows: "save_flows"i  _NL
+concentration_filerecord: "concentration"i "fileout"i word _NL
+budget_filerecord: "budget"i "fileout"i word _NL
+budgetcsv_filerecord: "budgetcsv"i "fileout"i word _NL
+ts_filerecord: "ts6"i "filein"i word _NL
+obs_filerecord: "obs6"i "filein"i word _NL
+dev_nonexpanding_matrix: "dev_nonexpanding_matrix"i  _NL
 packagedatadata: record+
 stress_period_data: record+
