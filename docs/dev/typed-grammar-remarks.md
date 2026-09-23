@@ -163,9 +163,15 @@ one compiled regex over the whole file plus `np.array(..., dtype=float)`:
 | `keating.npf` | 0.97 | 0.24 / 0.25 / 0.07 | 0.16 / 0.19 / 0.08 | 65,385 | 0.021 |
 | `keating.npf` (2nd model) | 0.97 | 0.13 / 0.20 / 0.07 | 0.15 / 0.41 / 0.07 | 65,384 | 0.023 |
 
-Times are in seconds. Parse excludes lex, i.e. `parse() - lex()`. Over the
-whole corpus (see the benchmark tables above), typed parse is ~1.1x basic
-and typed parse + transform ~1.3x.
+Times are in seconds. Parse excludes lex, i.e. `parse() - lex()`.
+
+**Whole-corpus baseline on `develop`.** `pixi run -e dev bench`, 2,149 files
+(21.6 MB) both grammars parse, min of 3 rounds:
+
+| stage | basic | typed | ratio |
+|---|---|---|---|
+| parse | 12.53 s | 13.45 s | 1.07x |
+| parse + transform | 14.64 s | 18.53 s | 1.27x |
 
 ### Diagnosis
 
