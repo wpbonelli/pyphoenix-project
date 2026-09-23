@@ -13,6 +13,11 @@ same collection the typed-grammar corpus test uses), narrowed to files
 comparing runs across a grammar change, check they match, since a file
 the changed grammar newly rejects silently drops out of the set.
 
+To compare grammar variants on identical input, pin the corpus with
+``--bench-manifest PATH``: the first run (on the stricter variant) writes
+the file list it used, and later runs use exactly that list, failing
+loudly if any listed file no longer parses.
+
 Two stages per loader: ``parse`` (Lark only -- where a lexer/grammar change
 shows up) and ``loads`` (parse + transform, the public entry point).
 Parser/transformer construction is excluded from both and measured
@@ -57,9 +62,12 @@ class Corpus(NamedTuple):
 
 
 @pytest.fixture(scope="module")
-def corpus(tmp_path_factory, dfn_path) -> Corpus:
+def corpus(request, tmp_path_factory, dfn_path) -> Corpus:
     dfn_path = str(dfn_path)
+    manifest: Path | None = request.config.getoption("bench_manifest")
+    pinned = set(manifest.read_text().split()) if manifest and manifest.exists() else None
     files: list[tuple[str, str]] = []
+    keys: list[str] = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         logging.disable(logging.CRITICAL)
@@ -70,18 +78,29 @@ def corpus(tmp_path_factory, dfn_path) -> Corpus:
                 if not sim_path.exists():
                     continue
                 for path, dfn_name in _collect_package_files(sim_path):
+                    key = f"{model_name}/{Path(path).relative_to(workspace).as_posix()}"
+                    if pinned is not None and key not in pinned:
+                        continue
                     text = Path(path).read_text()
                     try:
                         BASIC_PARSER.parse(text)
                         get_typed_parser(dfn_name).parse(text)
                         loads_basic(text)
                         loads_typed(text, dfn_name, dfn_path=dfn_path)
-                    except Exception:
+                    except Exception as exc:
+                        if pinned is not None:
+                            pytest.fail(f"pinned corpus file no longer parses: {key}: {exc!r}")
                         continue
                     files.append((dfn_name, text))
+                    keys.append(key)
         finally:
             logging.disable(logging.NOTSET)
     assert files, "empty benchmark corpus"
+    if pinned is not None:
+        missing = pinned - set(keys)
+        assert not missing, f"pinned corpus files not found: {sorted(missing)[:5]}"
+    elif manifest is not None:
+        manifest.write_text("\n".join(keys) + "\n")
     return Corpus(files, dfn_path)
 
 
