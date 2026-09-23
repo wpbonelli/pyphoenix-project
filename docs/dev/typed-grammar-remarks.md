@@ -1,9 +1,13 @@
-# Trailing remarks in the typed grammar
+# Typed grammar: trailing remarks and performance
 
-Findings from 2026-09-23. The question was whether the typed grammar
-(`flopy4/mf6/codec/reader/grammar/typed.lark` plus the generated per-component
-grammars) needs to keep supporting trailing remarks, and what supporting them
-costs.
+Findings from 2026-09-23. There were two questions:
+
+- Does the typed grammar (`flopy4/mf6/codec/reader/grammar/typed.lark` plus
+  the generated per-component grammars) need to keep supporting trailing
+  remarks, and what does supporting them cost?
+- Why isn't the typed loader faster than the basic one, and what would make
+  it faster? This is covered in
+  [Why the typed loader isn't faster (yet)](#why-the-typed-loader-isnt-faster-yet).
 
 ## Background
 
@@ -121,3 +125,178 @@ The corpus failure-set comparison used a scratch script that runs
 `loads_typed` over `_collect_package_files` for every `KNOWN_PASSING` model,
 with the `KNOWN_TYPED_GAPS` skip removed. That skip is the only difference
 from `test_mf6_typed_grammar_corpus.py`.
+
+## Why the typed loader isn't faster (yet)
+
+The typed grammar had two main motivations:
+
+- better error messages;
+- speed, on the tentative reasoning that knowing field types lets logic
+  move out of post-parse transformation (`structure.py`) and into the parser.
+
+The first holds up. The second hasn't so far. The measurements below say
+why, and point to a version of the idea that could work.
+
+### Measurements
+
+**End-to-end basic load (cProfile, whole corpus).** This is
+`Simulation.load` over all 239 `KNOWN_PASSING` models:
+
+| | cumulative time |
+|---|---|
+| total | 51.8 s |
+| `loads_basic` (Lark lex + parse + tree + generic transform) | 45.2 s (~87%) |
+| everything else in `structure.py` (`_parse_rows` 3.1 s, griddata 0.65 s, ...) | ~6 s at most |
+
+cProfile inflates Python-heavy code, but the split is unambiguous. Almost
+all load time goes to getting text through Lark. The structuring step the
+typed transformer was meant to absorb is at most ~13%.
+
+**Per-stage split on the five largest corpus files.** Best of 3; "floor" is
+one compiled regex over the whole file plus `np.array(..., dtype=float)`:
+
+| file | MB | basic lex / parse / transform | typed lex / parse / transform | tokens (both) | floor |
+|---|---|---|---|---|---|
+| `gwf_henry.ghb` | 2.29 | 0.61 / 0.82 / 0.22 | 0.47 / 1.57 / 0.79 | 239,751 | 0.061 |
+| `model.disv` | 2.09 | 0.37 / 1.15 / 0.22 | 0.38 / 1.23 / 0.47 | 195,255 | 0.048 |
+| `model.npf` | 1.63 | 0.34 / 0.42 / 0.22 | 0.52 / 0.57 / 0.17 | 99,450 | 0.056 |
+| `keating.npf` | 0.97 | 0.24 / 0.25 / 0.07 | 0.16 / 0.19 / 0.08 | 65,385 | 0.021 |
+| `keating.npf` (2nd model) | 0.97 | 0.13 / 0.20 / 0.07 | 0.15 / 0.41 / 0.07 | 65,384 | 0.023 |
+
+Times are in seconds. Parse excludes lex, i.e. `parse() - lex()`. Over the
+whole corpus (see the benchmark tables above), typed parse is ~1.1x basic
+and typed parse + transform ~1.3x.
+
+### Diagnosis
+
+1. **The optimization targeted the wrong ~13%.** Moving structuring into
+   the grammar could save at most the structuring time. Meanwhile ~87% goes
+   to lexing and parsing in pure Python, which the typed grammar doesn't
+   reduce.
+2. **The typed grammar doesn't reduce per-token work; it adds to it.**
+   - Both grammars produce identical token counts, and lexing costs about
+     the same, since Lark's lexer is Python either way.
+   - The typed grammar builds more tree per value: `double: SIGNED_NUMBER |
+     NUMBER` creates a `Tree` node and a transformer callback for every
+     number. That's why typed parse is ~2x basic on `gwf_henry.ghb`.
+   - The typed transform builds an `np.array` from a Python list of floats
+     and wraps each array in an `xr.DataArray`. It also routes most nodes
+     through `__default__`, which does a `str.rsplit` and dict lookups per
+     node.
+3. **Grammar rules aren't cheaper than Python code.** In a pure-Python
+   LALR parser, a rule is dispatched by the same interpreter that would run
+   the equivalent post-processing, plus tree-node overhead. Moving logic
+   into the grammar can clarify it, but only speeds it up if the move lets
+   work be skipped entirely.
+4. **The headroom is bulk numeric data, and neither loader uses it.**
+   Almost all bytes in large files are array and list data. Getting the
+   same numbers out in C (the "floor" column) is 10-30x faster than Lark's
+   lexer alone, and ~50x faster than the full typed path. Any Python work
+   per number, in the lexer, parser or transformer, is the ceiling.
+
+### Is the principle valid?
+
+- **Better errors: yes, and delivered.** A typed failure names the line and
+  the tokens that were expected there. The cost is strictness: 357 corpus
+  files fail once remarks are removed. MF6's own reader is lenient,
+  line-oriented and keyword-driven, so a grammar stricter than the program
+  it models will keep chasing fixtures. That's a design tension to manage,
+  not a bug.
+- **"Faster by moving logic into the parser": wrong as stated,** at least
+  for a pure-Python parser (see diagnosis 3).
+- **"Faster because type knowledge lets the parser avoid work": plausible,
+  and untested.** The typed grammar knows:
+  - where an array's data starts (after `INTERNAL`);
+  - how many values it holds (from dims);
+  - the dtype of each list column.
+
+  That's enough to hand a whole data section to numpy as one token instead
+  of lexing, parsing and transforming each number in Python.
+  - Caveat: grabbing runs of numeric-only lines is mostly lexical, so the
+    basic grammar could do much of it too.
+  - Where typing uniquely helps: mixed-dtype list rows (int cellids, float
+    values, a trailing boundname word), expected-size checks, and knowing
+    what a data run means without a second pass.
+
+Also not yet measured: a full typed load against a full basic load. Typed
+`loads` output isn't wired into `structure.py`, so the benchmark stops at
+`loads` for both.
+
+### Ideas, cheapest first
+
+**1. Lark's inline transformer, and grammar caching.**
+- Passing `transformer=` to an LALR `Lark(...)` runs callbacks as each rule
+  reduces, and never builds the tree. That targets exactly the tree cost
+  separating typed parse (1.57 s) from basic (0.82 s) on `gwf_henry.ghb`.
+- Things to check:
+  - Inline mode dispatches by rule-name callbacks. Verify whether
+    `__default__`, which the typed transformer relies on heavily, and
+    token callbacks (`BasicTransformer.NUMBER`) are honored there. If not,
+    the typed transformer needs explicit per-rule methods, or generated
+    ones: the grammar is generated per component, so the callbacks could
+    be too.
+  - The transformer becomes bound to the parser. `get_typed_parser(name)`
+    and `get_typed_transformer(name, dfn_path)` are cached separately
+    today, so the parser cache would also need keying on `dfn_path`.
+  - `__getattr__`'s `typed__` prefix delegation should still work, since
+    inline lookup goes through `getattr`, but verify.
+- `Lark(..., cache=True)` saves the analyzed grammar to disk, cutting the
+  ~1.3-1.8 s per-process construction of the 30 corpus grammars to loading
+  a cache file. It matters for CLI/short-lived use, not throughput. Also
+  check whether `debug=True`, set on both loaders, costs anything outside
+  development.
+- Measure with `pixi run -e dev bench --benchmark-compare`; no manifest
+  needed, since the grammar doesn't change.
+
+**2. One token per numeric data block.**
+- Add a terminal that matches a whole run of numeric lines, reachable only
+  where the grammar expects array data (after an `INTERNAL` control line),
+  and later list rows. For example, roughly:
+  `DATA_BLOCK: /(?:[ \t]*[-+.\d][-+.\deEdD, \t]*(?:\n|$))+/`
+- LALR's contextual lexer only offers terminals valid in the current
+  state, so it shouldn't collide with `NUMBER` elsewhere. Confirm, since
+  the grammar already hit a state-merging surprise (see `WORD_STR.-1`).
+- In the transformer, parse it with `np.fromstring(block, sep=" ")`, or
+  `np.array(block.split(), dtype=float)`, after normalizing commas and
+  Fortran `D` exponents (`1.0D+00`). `flopy4.utils.parse_number` handles
+  those per value today.
+- Check the value count against the expected size from dims. That gives a
+  better error ("expected 1000 values for STRT, got 999") than any
+  token-level parse failure, which serves the error motivation too.
+- Remarks: a trailing label on a data row ("`0 0 0 ... row 1`") ends the
+  numeric run. Either let the block regex allow and strip an alphabetic
+  tail per line, or end the block there and let the existing
+  `_data_line ... [_remark] _NL` rule handle that line. The block regex is
+  also a natural place to make remarks cheap, since it runs in C.
+- List (period) blocks: rows mix int cellids, floats, and optional
+  boundname/aux words. Options, roughly in order of effort:
+  - a per-row regex built from the DFN's column dtypes;
+  - `np.genfromtxt` or `pandas.read_csv(sep=r"\s+")` on the block text,
+    both C parsers;
+  - leave lists to Lark and do arrays only first, since arrays are most of
+    the bytes in the largest files.
+- The basic grammar could adopt the numeric-run terminal for arrays too.
+  If it does, the comparison between loaders shifts from speed back to
+  errors and structure.
+- Validate on the corpus: `test_mf6_typed_grammar_corpus.py` for parse
+  parity, the pinned benchmark for speed, and a value-level comparison
+  against the current transformer output on a sample of files.
+
+**3. Then decide what structuring belongs in the grammar.** With bulk data
+out of Lark, grammar vs. transformer vs. `structure.py` is a question of
+clarity and error quality, not speed. Wire typed `loads` output into
+structure (or replace it), and add an end-to-end `Simulation.load` stage
+to the benchmark, so both loaders are compared on the full path.
+
+### How these numbers were produced
+
+- The per-stage split used `parser.lex(text)` (materialized to a list) for
+  lex, `parser.parse(text)` minus lex for parse, and `transformer.transform
+  (tree)` for transform. The floor is `np.array(NUM.findall(text),
+  dtype=float)` with `NUM = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"`.
+  That's a lower bound, not a correct parser: it ignores structure and
+  would also pick up digits inside words.
+- The end-to-end profile was cProfile around `Simulation.load` for every
+  `KNOWN_PASSING` model, after one warm-up load.
+- Both were scratch scripts, not committed. They're easy to reconstruct
+  from the above.
