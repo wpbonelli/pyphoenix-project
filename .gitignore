@@ -14,3 +14,6 @@ temp/
 .coverage
 flopy4/mf6/codec/reader/grammar/generated/*.lark
 mf6examples.zip.lock
+
+# pytest-benchmark saved runs
+.benchmarks/
