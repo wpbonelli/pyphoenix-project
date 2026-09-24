@@ -68,3 +68,10 @@ def pytest_addoption(parser):
         help="Reader benchmarks: pin the corpus to this file list, writing "
         "it on first use -- for comparing grammar variants on identical input.",
     )
+    parser.addoption(
+        "--bench-load-manifest",
+        type=Path,
+        default=None,
+        help="Load benchmarks: pin the model set to this list, writing it "
+        "on first use -- so later runs time identical input.",
+    )
