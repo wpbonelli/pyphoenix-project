@@ -167,11 +167,13 @@ Each model shows a different regime:
 
 - **VilhelmsenGF.** Almost all of its bytes are `OPEN/CLOSE` array files.
   flopy4 reads these with `np.array(text.split())`, entirely in C. flopy3
-  reads them on access, through its own per-layer reader.
+  reads them on access, with a per-line Python loop and no caching (see
+  [below](#why-array-reading-differs-python-work-per-token-per-line-or-per-file)).
 - **mv_disv_xt3d and Keating.** Large *internal* arrays. flopy4's Lark path
   costs per token in pure Python (see
   [Why the typed loader isn't faster (yet)](typed-grammar-remarks.md#why-the-typed-loader-isnt-faster-yet)).
-  flopy3 reads the same data faster.
+  flopy3 reads the same data faster, because its per-line loop does less
+  Python work per value than Lark's per-token path.
 - **henrytidal.** It has ~970 stress periods of GHB and DRN list data (1,939
   period blocks), and flopy3 pays a fixed pandas cost per block. cProfile
   shows two main costs:
@@ -179,6 +181,105 @@ Each model shows a different regime:
   - `_update_size_defs` (`auto_set_sizes`), which converts each block's
     DataFrame to a recarray just to count rows. This was about 30% of
     flopy3's profiled load.
+
+### Why array reading differs: Python work per token, per line, or per file
+
+This comes from follow-up measurements after the baseline (2026-09-24,
+scratch scripts, flopy 3.11.0). It explains the first two regimes above.
+
+**flopy3 reads every text array, inline or external, with one per-line
+Python loop.** `MFFileAccessArray.read_text_data_from_file`
+(`flopy/mf6/data/mffileaccess.py`) serves both cases: `INTERNAL` arrays pass
+the open package file handle, and `OPEN/CLOSE` arrays open the external
+file. For each line it:
+
+1. calls `fd.readline()`;
+2. tokenizes with `PyListUtil.split_data_line`, a Python function that also
+   detects the delimiter. For the first 15 lines of each file it runs
+   `shlex.split` and retries the line with every candidate delimiter, then
+   falls back to `str.split`. A comment line restarts that detection;
+3. calls `MFComment.is_comment`;
+4. appends the tokens to one Python list of strings.
+
+Numpy is used once, at the end: `np.fromiter(data_raw, dtype=...)`. Binary
+external arrays are different, and are read with `np.fromfile`, but no
+corpus model has one.
+
+**flopy4 does different amounts of Python work per value, depending on
+where the array is:**
+
+| array location | flopy4 | flopy3 | Python work per… | result |
+|---|---|---|---|---|
+| inline (`INTERNAL`) | Lark: lex, parse, build a tree node for every number, then a transformer callback | the per-line loop | token (flopy4) vs. line (flopy3) | **flopy3 faster**: 1.75x on Keating, 4.9x on mv_disv_xt3d |
+| external (`OPEN/CLOSE`, text) | `read_text().split()` then `np.array(tokens, dtype)`, entirely in C (`structure.py`, `_read_open_close_values`) | the same per-line loop, and no caching (see below) | file (flopy4) vs. line (flopy3) | **flopy4 faster**: 2.8x on VilhelmsenGF |
+
+The ordering is the same in both rows: per-token Python costs more than
+per-line Python, which costs more than a whole-file pass in C. That
+matches the parse-stage finding in
+[Why the typed loader isn't faster (yet)](typed-grammar-remarks.md#why-the-typed-loader-isnt-faster-yet).
+It's also why reading inline data blocks as single tokens with numpy
+should pay off.
+
+**Measured on VilhelmsenGF's external files** (25 files, 9.5 MB, 96k
+lines with ~7-10 values each; same in-memory text, best of 5, no
+profiler):
+
+| reader | time |
+|---|---|
+| flopy4 (`split` + `np.array`) | 0.044 s |
+| flopy3's loop (`split_data_line` + `is_comment` + `np.fromiter`) | 0.133 s (3.1x) |
+| of which `split_data_line` alone | 0.089 s |
+
+- Under cProfile, the loop's cost is the per-line calls, not `shlex`.
+  `split_data_line` runs once per line (203k calls over the load +
+  materialize), and `shlex` is only ~7% of its time, because it runs only
+  on each file's first lines. Short lines are the worst case, since the
+  fixed per-line cost is shared by fewer values.
+- **flopy3 also re-reads files.** It doesn't cache external array data:
+  each `get_data()` reads the file again. During one load + materialize,
+  `read_text_data_from_file` ran 54 times for the 25 files, roughly
+  doubling flopy3's cost on top of the 3x.
+- flopy3 could close most of this gap cheaply. It could try a whole-file
+  split and a single numpy conversion, falling back to the line loop only
+  on failure, and cache what it reads.
+
+**Tolerance is cheap when done in bulk.** flopy4's current reader is
+faster partly because it tolerates less: a `#` comment or any stray text
+in an external array file makes it fail (no corpus file has one). A
+tolerant bulk reader keeps nearly all of the speed:
+
+```python
+COMMENT = re.compile(r"[#!][^\n]*")
+TABLE = str.maketrans({",": " ", ";": " ", "\t": " ", "'": None, '"': None, "d": "e", "D": "e"})
+values = np.array(COMMENT.sub("", text).translate(TABLE).split(), dtype=np.float64)
+```
+
+On the same 25 files:
+
+| reader | clean files | "messy" files |
+|---|---|---|
+| flopy4 current | 0.042 s | fails on `#` |
+| tolerant bulk (above) | 0.062 s | 0.067 s |
+| flopy3's loop | 0.134 s | fails (`IndexError`) |
+
+- The messy files are a synthetic stress test made from the real ones:
+  - a comment line every 50 lines;
+  - trailing `!` remarks;
+  - random `,` / `;` / tab delimiters;
+  - 5% quoted values;
+  - 30% `D` exponents.
+- The tolerant reader returns exactly the values the current reader gets
+  from the clean files.
+- These features were not checked against what MF6 itself accepts in an
+  external array file. Semicolons, `!` comments and quoted numbers may not
+  be valid MF6, so flopy3 failing on them is not a flopy3 bug.
+- Adding tolerance costs ~1.5x and stays ~2x faster than flopy3's loop,
+  because every extra step is another whole-file pass in C.
+- Still missing from the tolerant reader, relative to flopy3:
+  - stopping at the expected number of values, which needs a count check
+    against the grid dims (that also gives a better error message);
+  - per-line truncation for LAYERED arrays;
+  - handling text after the values that isn't marked as a comment.
 
 ### Cold start
 
