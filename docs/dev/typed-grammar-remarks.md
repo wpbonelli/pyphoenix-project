@@ -228,6 +228,10 @@ Also not yet measured: a full typed load against a full basic load. Typed
 `loads` output isn't wired into `structure.py`, so the benchmark stops at
 `loads` for both.
 
+The full *basic* load now has a baseline against flopy3's
+`MFSimulation.load`, in [load-benchmarks.md](load-benchmarks.md). The typed
+loader appears there at the parse stage only.
+
 ### Ideas, cheapest first
 
 **1. Lark's inline transformer, and grammar caching.**
