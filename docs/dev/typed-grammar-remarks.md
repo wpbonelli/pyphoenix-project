@@ -28,7 +28,7 @@ a reserved word (e.g. "constant") that lexes as a keyword.
 
 ## Branches
 
-- `typed-remarks` (off `develop`): opt-in reader benchmarks and this document.
+- `typed-remarks` (off `develop`): opt-in parse benchmarks and this document.
 - `typed-no-remarks` (on top of it): an experiment that removes remark support.
   It deletes every `[_remark]`, the `_REMARK`/`_remark` definitions and the
   template import, and makes the same textual edit to the committed generated
@@ -110,15 +110,15 @@ remark-specific.
 
 ```shell
 # benchmarks (opt-in; ~4 min)
-pixi run -e dev bench
-pixi run -e dev bench --benchmark-compare          # vs. the last saved run
+pixi run -e dev bench-parse
+pixi run -e dev bench-parse --benchmark-compare    # vs. the last saved run
 
 # A/B two grammar variants on identical input: write the manifest on the
 # stricter variant first, then reuse it on the other
 git switch typed-no-remarks
-pixi run -e dev bench --bench-manifest /path/to/manifest.txt
+pixi run -e dev bench-parse --bench-parse-manifest /path/to/manifest.txt
 git switch typed-remarks
-pixi run -e dev bench --bench-manifest /path/to/manifest.txt --benchmark-compare
+pixi run -e dev bench-parse --bench-parse-manifest /path/to/manifest.txt --benchmark-compare
 ```
 
 The corpus failure-set comparison used a scratch script that runs
@@ -165,7 +165,7 @@ one compiled regex over the whole file plus `np.array(..., dtype=float)`:
 
 Times are in seconds. Parse excludes lex, i.e. `parse() - lex()`.
 
-**Whole-corpus baseline on `develop`.** `pixi run -e dev bench`, 2,149 files
+**Whole-corpus baseline on `develop`.** `pixi run -e dev bench-parse`, 2,149 files
 (21.6 MB) both grammars parse, min of 3 rounds:
 
 | stage | basic | typed | ratio |
@@ -255,7 +255,7 @@ loader appears there at the parse stage only.
   a cache file. It matters for CLI/short-lived use, not throughput. Also
   check whether `debug=True`, set on both loaders, costs anything outside
   development.
-- Measure with `pixi run -e dev bench --benchmark-compare`; no manifest
+- Measure with `pixi run -e dev bench-parse --benchmark-compare`; no manifest
   needed, since the grammar doesn't change.
 
 **2. One token per numeric data block.**

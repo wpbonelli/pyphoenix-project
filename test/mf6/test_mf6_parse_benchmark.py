@@ -1,10 +1,13 @@
-"""Reader benchmarks: basic vs. typed loaders over the real MF6 corpus.
+"""Parse benchmarks: flopy4's basic vs. typed parsers over the real MF6 corpus.
+
+Measures only getting file *text* into Python, per file. For a full
+simulation load (and flopy3), see `test_mf6_load_benchmark.py`.
 
 Opt-in -- skipped unless benchmarking is enabled (``pytest.ini`` passes
 ``--benchmark-disable`` by default), e.g.::
 
-    pixi run -e dev bench                                  # run, autosave
-    pixi run -e dev bench --benchmark-compare              # vs. last save
+    pixi run -e dev bench-parse                            # run, autosave
+    pixi run -e dev bench-parse --benchmark-compare        # vs. last save
 
 The corpus is every package file a `KNOWN_PASSING` model resolves (the
 same collection the typed-grammar corpus test uses), narrowed to files
@@ -14,14 +17,17 @@ comparing runs across a grammar change, check they match, since a file
 the changed grammar newly rejects silently drops out of the set.
 
 To compare grammar variants on identical input, pin the corpus with
-``--bench-manifest PATH``: the first run (on the stricter variant) writes
-the file list it used, and later runs use exactly that list, failing
-loudly if any listed file no longer parses.
+``--bench-parse-manifest PATH``: the first run (on the stricter variant)
+writes the file list it used, and later runs use exactly that list,
+failing loudly if any listed file no longer parses.
 
-Two stages per loader: ``parse`` (Lark only -- where a lexer/grammar change
-shows up) and ``loads`` (parse + transform, the public entry point).
-Parser/transformer construction is excluded from both and measured
-separately by `test_bench_typed_grammar_build`.
+Benchmarks (each parametrized by parser, ``basic`` or ``typed``):
+
+- `test_parse` -- Lark lex + parse only; where a grammar change shows up.
+- `test_parse_transform` -- parse plus the Lark transformer, i.e.
+  ``loads_basic`` / ``loads_typed``.
+- `test_typed_grammar_build` -- cold construction of the typed parsers,
+  excluded from the two above.
 """
 
 import logging
@@ -64,7 +70,7 @@ class Corpus(NamedTuple):
 @pytest.fixture(scope="module")
 def corpus(request, tmp_path_factory, dfn_path) -> Corpus:
     dfn_path = str(dfn_path)
-    manifest: Path | None = request.config.getoption("bench_manifest")
+    manifest: Path | None = request.config.getoption("bench_parse_manifest")
     pinned = set(manifest.read_text().split()) if manifest and manifest.exists() else None
     files: list[tuple[str, str]] = []
     keys: list[str] = []
@@ -114,35 +120,36 @@ def _parse_typed(corpus: Corpus) -> None:
         get_typed_parser(name).parse(text)
 
 
-def _loads_basic(corpus: Corpus) -> None:
+def _parse_transform_basic(corpus: Corpus) -> None:
     for _, text in corpus.files:
         loads_basic(text)
 
 
-def _loads_typed(corpus: Corpus) -> None:
+def _parse_transform_typed(corpus: Corpus) -> None:
     for name, text in corpus.files:
         loads_typed(text, name, dfn_path=corpus.dfn_path)
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize(
-    "stage, loader, fn",
-    [
-        ("parse", "basic", _parse_basic),
-        ("parse", "typed", _parse_typed),
-        ("loads", "basic", _loads_basic),
-        ("loads", "typed", _loads_typed),
-    ],
-    ids=["parse-basic", "parse-typed", "loads-basic", "loads-typed"],
-)
-def test_bench_corpus(benchmark, corpus, stage, loader, fn):
-    benchmark.group = f"corpus-{stage}"
+@pytest.mark.parametrize("parser", ["basic", "typed"])
+def test_parse(benchmark, corpus, parser):
+    fn = _parse_basic if parser == "basic" else _parse_typed
+    benchmark.group = "parse"
     benchmark.extra_info.update(corpus.info)
     benchmark.pedantic(fn, args=(corpus,), rounds=ROUNDS, iterations=1)
 
 
 @pytest.mark.slow
-def test_bench_typed_grammar_build(benchmark, corpus):
+@pytest.mark.parametrize("parser", ["basic", "typed"])
+def test_parse_transform(benchmark, corpus, parser):
+    fn = _parse_transform_basic if parser == "basic" else _parse_transform_typed
+    benchmark.group = "parse-transform"
+    benchmark.extra_info.update(corpus.info)
+    benchmark.pedantic(fn, args=(corpus,), rounds=ROUNDS, iterations=1)
+
+
+@pytest.mark.slow
+def test_typed_grammar_build(benchmark, corpus):
     """Cold construction of every typed parser the corpus uses."""
     names = sorted({name for name, _ in corpus.files})
 

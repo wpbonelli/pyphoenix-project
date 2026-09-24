@@ -6,14 +6,31 @@ Ultra 7 155H (WSL2, CPython 3.11.16), with flopy 3.11.0.
 
 ## What's compared, and at which level
 
-| level | flopy3 | flopy4 basic | flopy4 typed |
-|---|---|---|---|
-| full simulation load | `MFSimulation.load` | `Simulation.load` | **not possible yet** |
-| parse stage (`loads`) | n/a | yes | yes |
+| level | flopy3 | flopy4 basic | flopy4 typed | suite |
+|---|---|---|---|---|
+| full simulation load | `MFSimulation.load` | `Simulation.load` | **not possible yet** | `bench-load` |
+| parse stage (parse + transform) | n/a | yes | yes | `bench-parse` |
 
-Typed `loads` output isn't wired into `structure.py`, so there's no full typed
+Typed parser output isn't wired into `structure.py`, so there's no full typed
 load to time. The typed loader appears here at the parse stage only. It gets a
 column in the first row once it's wired in.
+
+There are two benchmark suites, both opt-in pytest-benchmark modules under
+`test/mf6/` (`pixi run -e dev bench` runs both):
+
+| | `bench-parse` | `bench-load` |
+|---|---|---|
+| module | `test_mf6_parse_benchmark.py` | `test_mf6_load_benchmark.py` |
+| question | is one flopy4 parser faster than the other? | how fast is loading for a user, vs. flopy3? |
+| compares | flopy4 basic vs. typed parser | flopy3 vs. flopy4 (basic) |
+| unit of work | 2,149 package files' text, pre-read into memory | 165 whole simulations, from disk |
+| benchmarks | `test_parse`, `test_parse_transform`, `test_typed_grammar_build` | `test_load`, `test_load_materialize`, `test_load_materialize_largest`, `test_cold_start` |
+| pinning | optional `--bench-parse-manifest` (file list) | always, `load_benchmark_models.txt` via `--bench-load-manifest` |
+| equal-work check | both grammars parse the file | both loaders open exactly the same files |
+| runtime | ~4 min | ~6.5 min |
+
+Use `bench-parse` for grammar/transformer changes and `bench-load` for
+anything user-visible.
 
 ## The loaders don't do the same work by default
 
@@ -60,8 +77,8 @@ cross-checked against flopy3's source.
 - flopy3 gets `load_only`, set to the package types flopy4 actually loaded
   for that model (recorded by wrapping `Package.load`). flopy3 always loads
   the discretization, TDIS and namefiles regardless.
-- Two stages are timed. `sim-load` is load only. `sim-load-materialize` is
-  load, then touch everything. Only the second is like-for-like, because
+- Two stages are timed. `test_load` is load only. `test_load_materialize`
+  is load, then touch everything. Only the second is like-for-like, because
   flopy3 defers `OPEN/CLOSE` arrays.
 - "Materialize" means:
   - **flopy3:** for every package in `sim.sim_package_list` and every model's
@@ -96,7 +113,7 @@ This is the 239 `KNOWN_PASSING` models (`test_mf6_load_all_models.py`) minus
 the 74 where the file sets differ. That leaves **165 models, 31.8 MB** of input
 files. All 239 load without error under both loaders, so every exclusion is
 about unequal work, not failures. The list is pinned in
-`test/mf6/load_bench_models.txt`.
+`test/mf6/load_benchmark_models.txt`.
 
 | excluded | reason |
 |---|---|
@@ -118,8 +135,8 @@ manifest. An earlier run agreed within 2% on the corpus figures and within
 
 | stage | flopy3 | flopy4 basic | flopy3 / flopy4 |
 |---|---|---|---|
-| `sim-load` (not like-for-like) | 15.56 s | 13.72 s | 1.13 |
-| **`sim-load-materialize`** | **17.01 s** | **14.44 s** | **1.18** |
+| `test_load` (not like-for-like) | 15.56 s | 13.72 s | 1.13 |
+| **`test_load_materialize`** | **17.01 s** | **14.44 s** | **1.18** |
 
 The corpus total is misleading on its own. One model,
 `test205_gwtbuy-henrytidal`, accounts for ~10 s of flopy3's 17 s.
@@ -183,7 +200,7 @@ child process, in its last round.
 
 ### Parse stage, basic vs. typed
 
-These come from the existing reader benchmark (`pixi run -e dev bench`), run in
+These come from the parse benchmark (`pixi run -e dev bench-parse`), run in
 the same session. The corpus is 2,149 package files (21.6 MB) that both
 grammars parse, and figures are the minimum of 3 rounds.
 
@@ -194,7 +211,7 @@ directly.
 | stage | basic | typed | typed / basic |
 |---|---|---|---|
 | parse | 12.62 s | 13.28 s | 1.05 |
-| parse + transform (`loads`) | 14.37 s | 17.81 s | 1.24 |
+| parse + transform | 14.37 s | 17.81 s | 1.24 |
 | typed grammar build (30 components, once per process) | | 1.74 s | |
 
 ## Not measured yet
@@ -209,7 +226,7 @@ directly.
 ## Reproducing
 
 ```shell
-# load benchmarks (opt-in; ~6.5 min); pinned to test/mf6/load_bench_models.txt
+# load benchmarks (opt-in; ~6.5 min); pinned to test/mf6/load_benchmark_models.txt
 pixi run -e dev bench-load
 pixi run -e dev bench-load --benchmark-compare      # vs. the last saved run
 
@@ -218,14 +235,21 @@ pixi run -e dev bench-load --benchmark-compare      # vs. the last saved run
 pixi run -e dev bench-load --bench-load-manifest /path/to/new-models.txt
 
 # the file-set check or the cold start by hand, for one or more workspaces
-pixi run -e dev python test/mf6/load_bench.py check WS [WS ...]
-pixi run -e dev python test/mf6/load_bench.py cold flopy4 WS
+# (the benchmark module doubles as the script for these)
+pixi run -e dev python test/mf6/test_mf6_load_benchmark.py check WS [WS ...]
+pixi run -e dev python test/mf6/test_mf6_load_benchmark.py cold flopy4-basic WS
 
 # parse-stage basic vs. typed (~4 min)
+pixi run -e dev bench-parse
+
+# both suites
 pixi run -e dev bench
 ```
 
-Saved runs go to `.benchmarks/`, which is git-ignored. Each benchmark's
+Saved runs go to `.benchmarks/`, which is git-ignored. Benchmarks were
+renamed after this baseline was recorded (e.g. `sim-load-materialize` →
+`test_load_materialize`), so `--benchmark-compare` against a save from
+before the rename won't match names; rerun to get a fresh save. Each benchmark's
 `extra_info` records:
 
 - `n_models`, `n_bytes`, `n_excluded`, the flopy version and the flopy3
@@ -233,7 +257,8 @@ Saved runs go to `.benchmarks/`, which is git-ignored. Each benchmark's
 - the model name, for the per-model and cold-start groups.
 
 The per-model distribution and the griddata coverage check came from scratch
-scripts. Both are easy to reconstruct from `load_bench.py`:
+scripts. Both are easy to reconstruct from `test_mf6_load_benchmark.py`'s
+helpers:
 
 - the distribution loops over the manifest, timing
   `materialize_*(load_*(ws))` best-of-3 per loader;

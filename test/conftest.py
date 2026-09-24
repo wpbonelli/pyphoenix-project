@@ -62,10 +62,10 @@ def patch_macos_ci_matplotlib():
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--bench-manifest",
+        "--bench-parse-manifest",
         type=Path,
         default=None,
-        help="Reader benchmarks: pin the corpus to this file list, writing "
+        help="Parse benchmarks: pin the corpus to this file list, writing "
         "it on first use -- for comparing grammar variants on identical input.",
     )
     parser.addoption(
