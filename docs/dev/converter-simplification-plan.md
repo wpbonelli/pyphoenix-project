@@ -1,471 +1,407 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **in progress, Phase 0** (written 2026-09-22 against `fe5423c`;
-line refs updated 2026-09-23). Done on attrs, independent of the
-`pydantic-plan` migration, to see how simple the converters can get on the
-current object model.
+Status: **prerequisites in progress** (see "Before Phase 1"). Written
+2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
+onto `develop` (`916c2f8b`). Done
+on attrs, independent of the `pydantic-plan` migration, to see how simple
+the converters can get on the current object model.
+
+Since the first draft, `develop` has landed the Phase 0 harness and every
+round-trip finding it turned up (see "History" at the end). The
+simplification is now a pure refactor: no known bug depends on it, and
+the round-trip suite (`test/mf6/test_mf6_io_roundtrip.py`, with an empty
+`XFAIL` table) is the safety net.
 
 ## Goal
 
-Replace the multi-pass, exception-driven ingress (`converter/ingress/structure.py`)
-and the runtime-type-sniffing egress (`converter/egress/unstructure.py`) with
-one schema-driven model of an MF6 block, used symmetrically in both
-directions. Behavior should not change except where noted under
-"Representation decisions", which are separate and opt-in.
+Replace the multi-pass, exception-driven ingress
+(`converter/ingress/structure.py`) and the runtime-type-sniffing egress
+(`converter/egress/unstructure.py`) with one schema-driven model of an MF6
+block, used symmetrically in both directions. Behavior should not change
+except where noted under "Representation decisions", which are separate.
 
-## What's wrong today
+## What's wrong today (`develop` @ `916c2f8b`)
 
-**Ingress** runs six code paths: Pass 1 keyed rows, Pass 2 item lists,
-Pass 3 period item lists, Pass 3b G/A period arrays, Pass 3c repeating-block
-arrays (tas), Pass 4 griddata. The DFN has far fewer real distinctions
-(see below), so the same work is done repeatedly:
+**Ingress** (`structure_component`, `structure.py:841`) runs seven code
+paths: Pass 1 keyed rows, Pass 2 block item lists, Pass 2b record-header
+blocks (OBS `continuous`), Pass 3 period item lists, Pass 3b G/A period
+arrays, Pass 3c repeating-block arrays (`tas`), and Pass 4 array blocks.
+The DFN makes far fewer real distinctions (see "Model"), so the same work
+is repeated:
 
-- Pass 1 is a catch-all "every raw block no other pass claims". It uses a
-  four-condition exclusion test (`structure.py:696-701`) that has to stay in
-  sync with the other passes.
-- `_parse_griddata_block` and `_parse_readarray_period_block` are
-  near-duplicates of one grammar: `name [LAYERED]` + control record(s). They
-  differ in record length (field shape vs. hardcoded `ncpl`), in layer
-  assembly (flat concat vs. `(nlay, ncpl)` stack), and in the TAS /
-  unknown-name skips.
-- Repeating-block row grouping is done twice (Pass 3, Pass 3c). Effective
-  dims / `ncpl` are derived four times.
-- The kwarg-name rule (`alias` vs `name`) appears five times, and the copies
-  disagree: Pass 2 skips `_`-prefixed aliases, the others don't.
-- Pass 1 matches a row's keyword against every field in the class, not just
-  the fields of the block it's in.
-- Pass 3b gates on the raw `dims` argument, not `effective_dims`, so G/A
-  period arrays are silently dropped if dims weren't threaded in.
-- Ordering (options/dimensions before everything else) is implicit in pass
-  order, not stated as an invariant.
+- **Each pass classifies fields from their Python type annotations**
+  (`item_list_type`, `repeating_array_key_type`, `block_list_type`,
+  `_inner_class_type`, `is_array` + `to_field_type`) and not from the DFN
+  block. The tagged/untagged split for item lists is **inferred from the
+  block's size** (`structure.py:930-944`): an item list alone in its block
+  takes every row, and one that shares its block is assumed to be a tagged
+  list. That's the dict-block/list-block distinction again, and it's wrong
+  in general. An untagged list can share its block (`solutiongroup`
+  shares with `mxiter`; it gets through only because `_resolve_bindings`
+  handles it separately), and a tagged list can be alone in its block.
+  The DFN states taggedness directly.
+- Pass 1 is a catch-all for "every raw block no other pass claims". Its
+  exclusion test now has five conditions (`structure.py:1001-1007`), and
+  they have to stay in sync with the other passes.
+- Pass 1 matches a row's key against every field in the class
+  (`structure.py:1054-1058`), not just the fields of the block the row
+  is in.
+- **Five different repetition paths:** Pass 2b, Pass 3, Pass 3c and
+  `_resolve_bindings` (`solutiongroup`) each group a block's occurrences
+  in their own way, with Pass 3 and 3c sharing `_group_repeating_rows`. A
+  block with a header is a single concept in the DFN.
+- **Three array-reading paths** that implement one grammar
+  (`name [LAYERED]` + control record(s)): `_parse_array_block` (Pass 4),
+  `_parse_readarray_period_block` (Pass 3b), and a direct
+  `_read_control_record` call in Pass 3c with a hand-derived `ncpl`
+  length.
+- `effective_dims` is derived three times (`structure.py:1115`, `1285`,
+  `1314`), but Pass 3b still gates on the raw `dims` (`structure.py:1239`),
+  so G/A period arrays need dims to be threaded in from outside.
+- The kwarg-name rule (`alias` vs `name`) is written out at least six
+  times, and the copies disagree: Pass 2 skips `_`-prefixed aliases
+  (`structure.py:1149`), the others don't.
+- Load order (options/dimensions first) is implicit in the pass order. The
+  context those passes build up (`kwargs` lookups for aux names and sizes,
+  `_self_dims_from_kwargs`) isn't modeled.
 
-**Egress** dispatches on runtime value type (`ndarray` / `dict` /
-`list[Item]`), assembles period blocks on the side, and hardcodes several
-cases: `f.name == "aux"`, `f.name == "auxiliary"`, the `maxbound`
-property injection, and the `solutiongroup 1` hack. Packages and other
-components go through two separate functions (`_unstructure_package` and
-`_unstructure_component`; there's a TODO to unify them).
+**Egress** (`_unstructure_package`, `unstructure.py:250`) dispatches on
+the runtime value type through roughly a dozen `isinstance` branches
+(`unstructure.py:265-407`). It assembles period blocks on the side, and
+hardcodes several cases:
+- the `maxbound` property injection (`unstructure.py:414-418`, mirrored on
+  ingress at `structure.py:988-989`);
+- the `solutiongroup 1` hack (`unstructure.py:569-574`);
+- two separate paths for packages and other components
+  (`_unstructure_package` / `_unstructure_component`, with a TODO at
+  `unstructure.py:506`).
 
-**Asymmetries:**
-- Egress writes G/A per-aux-name period arrays, but ingress parses and then
-  discards them, so a load/write round trip loses them.
-- Child bindings are `_resolve_bindings` on ingress but a separate component
-  path on egress.
+**Asymmetry:** child bindings go through `_resolve_bindings` on ingress
+but a separate component path on egress (`_make_binding_blocks`).
 
-## Verified schema facts (DFN dev3 corpus, 2026-09-22)
+## Verified schema facts
 
-I scanned all 368 blocks via `LocalDfnRegistry(...).spec(schema_version="2.0.0.dev3")`:
+Re-scanned on 2026-10-19 by migrating the current modflow6 DFNs
+(`~/dev/modflow6` @ `524d1ac`) to `2.0.0.dev3` with devtools `9a1662ef`,
+which is the version `develop` pins: 368 blocks.
 
-- **242 blocks have no list field, 125 have exactly one list field and
-  nothing else, and 1 has a list plus another field:** `sim-nam`
-  `solutiongroup`, which holds `mxiter` (integer, tagged) and
-  `solutiongroup` (list). No block has more than one list field.
-- **Every block has at most one untagged field.** 237 blocks have none and
-  131 have exactly one. List fields are always untagged. The non-list
-  untagged fields are:
-  - `gwf/chf/olf-sto` `period.storage` (string, only field in its block)
-  - `utl-tas` `time.tas_array` (array, only field in its block)
-  - `utl-ts` `attributes.interpolation_method_single`, in an 8-field block.
-    **Confirmed as a DFN bug, not a real exception.** In modflow6's
-    `utl-ts.dfn`, `method`, `interpolation_method_single` and `sfac` are
-    missing `in_record true`, although they're members of
-    `interpolation_methodrecord_single` (`METHOD <x>`) and
-    `sfacrecord_single` (`SFAC <x>`). The dev3 conversion therefore leaves
-    them as top-level fields: `interpolation_methodrecord_single` ends up
-    with no fields and `sfacrecord_single` is missing `sfac`. With the flag
-    fixed, `attributes` has no untagged top-level field. flopy4 doesn't
-    generate a `utl-ts` class yet, so nothing is affected today. The fix
-    belongs upstream in the modflow6 DFN (not filed).
-- **Types of non-list fields:** keyword 469, record 250, array 207,
-  integer 128, string 115, double 102, file 3.
+- **Every block has at most one untagged field, and it's always the
+  block's last field.** 244 blocks have none and 124 have exactly one.
+  `sim-nam` `solutiongroup` is the only block where the untagged field
+  isn't alone: tagged `mxiter`, then the untagged list.
+  - The untagged fields are lists, except for `*-sto` `period.storage`
+    (string) and `utl-tas` `time.tas_array` (array). Each of those is
+    the only field in its block.
+  - The first draft found a third non-list case in `utl-ts`
+    `attributes`, caused by missing `in_record` flags. That's **fixed
+    upstream** (modflow6 #3003, 2026-09-23), and flopy4 now generates
+    `utl-ts` correctly. devtools' checked-in dev3 test snapshot
+    (`autotest/dfns/__snapshots__/v2.0.0.dev3`) still has the old
+    fields, so it needs regenerating.
+- **Lists can be tagged** (devtools #368): a list is tagged when its
+  item begins with a keyword. There are 54 tagged lists: `ts_filerecord`
+  and `tas_filerecord` in options, OC `period.output`, and the G/A
+  packages' `period.aux`. `aux`'s keys are the auxiliary names, which are
+  dynamic keywords tied to the `auxiliary` option by `fk` (devtools #371).
+  Repeated `TS6 FILEIN` is just a tagged list. No separate `repeats` flag
+  is needed.
+- **The schema enforces where untagged lists go** (devtools
+  `Block._check_field_order`): at most one per block, and it must be
+  last, because it consumes the rest of the block. Tagged fields,
+  including tagged lists, can sit anywhere before it. Untagged non-list
+  fields aren't checked yet; see "devtools follow-ups".
 - **Repeating blocks (have a `header`):**
 
   | block | fill_forward | fields | components |
   |---|---|---|---|
-  | period | yes | one list | 48 |
-  | period | yes | arrays | 8 (the G/A packages + `utl-spca`) |
-  | period | yes | one untagged string | 3 (`*-sto`) |
+  | period | yes | one untagged list | list-based stress packages |
+  | period | yes | tagged list | OC (`output`) |
+  | period | yes | tagged arrays + tagged `aux` list | G/A packages, `utl-spca` |
+  | period | yes | one untagged string | `*-sto` |
   | time | no | one untagged array | `utl-tas` |
-  | solutiongroup | no | integer + list | `sim-nam` |
-  | continuous | no | one list | `utl-obs` |
+  | solutiongroup | no | tagged integer + untagged list | `sim-nam` |
+  | continuous | no | one untagged list | `utl-obs` |
 
   Headers aren't always scalars. `utl-obs` `continuous` has a **Record**
-  header (`FILEOUT <name> [BINARY]`), so the repetition key has to be parsed
-  by the header field's type, not cast as a number.
-- Codegen already departs from the DFN in one spot. `*-sto` `period` is a
-  single-untagged-string block in the DFN, but codegen synthesizes a
-  `stress_period_data: dict[int, list[StressPeriodData]]` item list for it
-  (`make.py` `period_schema` branch). MF6 holds exactly one value per
-  period: `sto_rp` (`gwf-sto.f90`) reads a single `this%storage` string and
-  sets `iss` from `STEADY-STATE` / `TRANSIENT`. The v1 DFN has two separate
-  keywords; dev3 merges them into one `storage` string with `valid`
-  values. A list is therefore the wrong shape.
-- **Tagged dict entries can repeat.** A dict block is normally
-  one-row-per-key, but MF6 accepts some keys several times and accumulates
-  them. `TS6 FILEIN <f>` is the known case: IDM's `load_io_tag`
-  (`LoadMf6File.f90:737-749`) appends each `FILEIN` path to a growing
-  array, and the list/keystring loaders register every file
-  (`Mf6FileList.f90:85-91`). TDIS explicitly limits `ATS6` to 0 or 1
-  (`tdis.f90:423`), which shows the general mechanism allows more. The DFN
-  doesn't say which keys repeat: `ts_filerecord` is a plain record. The
-  corpus has 2 such files: `test051_uzfp2TS/uzfp2.uzf` (2 × `TS6`) and
-  `test106_tsnodata/alt_model/model.wel` (5 × `TS6`).
-- **Bug found while checking this, now FIXED (ahead of the refactor):**
-  ingress dropped *every* block-level file record, not just the repeats.
-  The row key is the record's trigger keyword (`ts6`, `head`, ...), but
-  codegen names the field `ts_file` / `head_file`, so Pass 1 never
-  matched. Egress guessed the keyword from the py name, which was wrong
-  for 138 of the 223 file records in the DFN corpus (`TS FILEIN` instead
-  of `TS6 FILEIN`, and likewise `OBS6`, `GRB6`, ...).
-
-  The fix: path fields now carry the trigger keyword as `_keyword`
-  metadata, lowercase. That's the same name and form as a Record class's
-  own `_keyword` ClassVar. It replaces the separate `prefix=(...)` tuple
-  that LAK/SSM row-level path columns used, so there's one spelling
-  everywhere. Codegen sets it from the record's single Keyword child, or
-  for a tagged bare File (prt-fmi `GWFHEAD FILEIN <f>`) from the field's
-  own name. It raises if a record has anything other than exactly one
-  keyword. Both converters read it, and hand-written path fields
-  (model-level `netcdf_*`, dis/disv `ncf6`) set it explicitly.
-
-  Alternatives considered and rejected (2026-09-22):
-  - **Naming the path field after the keyword** (`ts6`, `head`), so the
-    name is the row key like any other tagged field. Rejected for two
-    reasons. First, gwt-ist would collide: the `CIM FILEOUT` record and the
-    `cim` griddata array would share one name. Second, many keywords are
-    also quantity names (`oc.head`, `oc.budget`, `sfr.stage`), so the
-    attribute would no longer say it holds a path.
-  - **Not flattening file records**, i.e. generating them as Record classes
-    with their own `_keyword`. Rejected for API ergonomics:
-    `wel.ts_file = Path(...)` is simpler to use than a record object.
-
-  The metadata is the flattened record's structure (`_keyword` +
-  `direction`) carried on the field.
+  header (`FILEOUT <name> [BINARY]`), so the repetition key is parsed
+  according to the header field's type, not cast as a number.
+- Codegen departs from the DFN in one place. `*-sto` `period` is a
+  single-untagged-string block, but codegen wraps it in an item list
+  (`Sto._stress_period_data: dict[int, list[StressPeriodData]]`). MF6
+  holds one value per period: `sto_rp` (`gwf-sto.f90`) reads a single
+  `this%storage` string. See representation decision 1.
+- **File records carry their trigger keyword** as `_keyword` metadata
+  (fixed before the refactor, `fe5423c`). The row key is the record's
+  keyword (`ts6`, `obs6`, `gwfhead`), not the field's py name (`ts_file`).
+  That's the same name and form as a Record class's `_keyword`. Rejected
+  alternatives: naming the field after the keyword (gwt-ist's
+  `CIM FILEOUT` would collide with the `cim` array, and `oc.head` would
+  stop saying it holds a path), and generating file records as Record
+  classes (`wel.ts_file = Path(...)` is simpler to use).
 
 ## Model
 
-### One block kind, with at most one untagged field
+### One block kind
 
-The review started from four block kinds: keyed rows, item list, tagged
-arrays, bare array. Those collapse to two:
+There is no dict/list block distinction. The schema's field-order rule is
+enough to parse any block:
 
-- **Dict block**: entries keyed by field name. Each entry's value is parsed
-  according to its field's type, so griddata arrays are just dict entries
-  whose values span several rows (control records, optionally `LAYERED`).
-- **List block**: a single list field; the body is rows of items.
-- A dict block with only one field can leave it untagged (`sto` storage,
-  `tas_array`), in which case the whole body is the value.
+> A block is an ordered set of fields. A body row whose first token is a
+> tagged field's key belongs to that field. Every other row belongs to the
+> block's untagged field, and there is at most one of those.
 
-The facts above allow a further step that also covers `solutiongroup`
-without a special case:
-
-> A block is a set of fields, **at most one of which is untagged**. A body
-> row whose first token names a tagged field (or its alias, or a record's
-> keyword) belongs to that field. All other rows form the untagged field's
-> body.
-
-Under this rule:
-- options, dimensions and griddata have tagged fields only;
-- a list block is the untagged-only case, with the body parsed as item rows;
-- `sto` period and `tas` time have one untagged scalar or array, with the
-  body parsed as that value;
-- `solutiongroup` is tagged `mxiter` plus an untagged list, and needs no
-  exception.
-
-These rules describe the same thing; they differ only in whether
-`solutiongroup` needs its own exception. **DECIDED (2026-09-23): adopt the
-single rule.**
+Every block in the corpus fits this rule without exceptions:
+- options, dimensions, griddata: tagged fields only;
+- list-based period blocks, `continuous`: only the untagged list;
+- OC `period`, G/A `period`: tagged fields only (the arrays, the `aux`
+  tagged list, OC's `output` tagged list);
+- `solutiongroup`: tagged `mxiter`, then the untagged list. This is
+  exactly the case the "last" rule is there to allow;
+- `sto` period, `tas` time: one untagged scalar or array, as the block's
+  only field.
 
 A tagged key can come from:
-- the field name or alias;
+- the field's name or alias;
 - an inner record's `_keyword` (e.g. `Npf.Cvoptions`, `sfacrecord`);
-- a path field's `_keyword` (`ts6`, `obs6`, `gwfhead`, ...), the same
-  concept as a Record class's `_keyword` (see the bug fixed above);
-- **auxiliary names**: in G/A period blocks, `<auxname> [LAYERED]` rows are
-  entries of the `aux` array field. The key set comes from the parsed
-  `auxiliary` option, which is one reason the load context below exists.
+- a path field's `_keyword` (`ts6`, `obs6`, `gwfhead`, ...);
+- a tagged list's item keyword(s) (OC `output`'s `SAVE` / `PRINT`);
+- a **dynamic key**: values of the field its `fk` names. The G/A `aux`
+  list's keys are the parsed `auxiliary` names, which is one reason for
+  the load context below.
 
-**Repetition is a field-level property too, independent of taggedness.** A
-repeating block repeats as a whole, with a header. A repeating *field* can
-occur on several rows of one block occurrence:
+### Repetition: within a block and of a block
 
-|  | once | repeats |
+These are two independent axes.
+
+**Within a block**, a field either occurs once or repeats. In the schema,
+"repeats" means "is a `List`", whether tagged or untagged:
+
+|  | once | repeats (a `List`) |
 |---|---|---|
-| **tagged** | options scalars, records, griddata arrays | `TS6 FILEIN` |
-| **untagged** | `sto` storage, `tas_array` | a list field's item rows |
+| **tagged** | options scalars, records, griddata arrays | `ts_filerecord`, OC `output`, G/A `aux` |
+| **untagged** | `sto` storage, `tas_array` | a list block's item rows |
 
-A list field is therefore just an untagged, repeating record-shaped field.
-It doesn't need its own block kind.
+A tagged list collects the rows its key claims, and they can be
+interleaved with other fields' rows. The untagged list takes every row
+that no key claims.
 
-A repeating field does **not** have to be alone in its block. `TS6` sits in
-`options` with a dozen other fields, and that's fine because each of its
-rows names itself. The constraint that matters is on *untagged* fields,
-repeating or not: an untagged row can't say which field it belongs to, so
-there can be at most one untagged field per block, and it takes every row no
-tagged key claims. `solutiongroup` (tagged `mxiter` plus an untagged list)
-shows the untagged field doesn't have to be alone either. **Validation rule
-for codegen:** ≤ 1 untagged field per block. It holds across the corpus
-once the `utl-ts` DFN bug is fixed.
+**Of a block**: a block with a `header` repeats.
+- No header: the block value is the parsed body.
+- Header: the block value is `{header_value: body_value}`, with
+  `header_value` parsed according to the header field's type:
+  - `iper` → 0-based kper (today's convention);
+  - `time_from_model_start` → float;
+  - `group_num` → int;
+  - `continuous` → the header record (`list[Block]` today, see
+    `block_list_type`).
+- `fill_forward` is a **semantic** flag: an absent repetition means "keep
+  the previous one". It affects how a field's value is assembled
+  (`flopy4.mf6.period_arrays`), not how it's parsed.
 
-A tagged field that repeats collects its rows into a list. That needs a
-per-field `repeats` flag, which the DFN doesn't carry yet. It's being added
-to devtools at the field level (not the block level); flopy4 picks it up
-with a devtools bump (see open questions).
-
-Unknown keys are consumed and skipped as today. The value parser has to
-know how many rows to take (a control record spans rows), so a skip still
-has to parse.
+This replaces Pass 2b, Pass 3, Pass 3c and the `solutiongroup` part of
+`_resolve_bindings` with one grouping step.
 
 ### Value parsers, one per field type (shared by every block)
 
 | field type | ingress (rows) | egress |
 |---|---|---|
 | keyword | presence → `True` | name if truthy |
-| integer / double / string / file | `row[1]` | name + value |
+| integer / double / string / file | `row[1]` (anything after it is ignored, as MF6 does) | name + value |
 | record | `Record.from_tokens(row)` | `to_tokens()` |
 | inline array (shape is not grid dims, e.g. `auxiliary`) | rest of row | name + values |
-| grid array | control record(s) and `LAYERED`; length from DFN `shape` resolved against dims | array writer |
-| list | rows → `Item`s (union dispatch per row); OPEN/CLOSE body redirect | `to_tokens()` per item |
+| grid array | control record(s) and `LAYERED`; length from the DFN `shape` resolved against dims | array writer |
+| list | each claimed row → an element (an `Item` with per-row union dispatch, a `Path`, or a named array for `aux`); OPEN/CLOSE body redirect | per element |
 
-Inline vs. grid array is already decided from shape (`35a8209`). The
-griddata and G/A period array parsers merge into the grid-array value
-parser once record length comes from the field's DFN shape. G/A period
-fields have that shape since step 1 of the netcdf work.
+Inline vs. grid array is already decided from shape. The three
+array-reading paths merge into the grid-array parser once record length
+comes from the field's DFN shape for every caller.
 
-**Bindings** (packages, models, exchanges, solutions) are list blocks whose
-items are resolved into child components after parsing. That makes them a
-post-parse step on the value, not a separate block kind. `_resolve_bindings`
-becomes that step, and egress's `_make_binding_blocks` is its inverse.
+**Bindings** (packages, models, exchanges, solutions) are lists whose
+elements are resolved into child components after parsing. That makes
+them a post-parse step on the value, not a separate block kind.
+`_resolve_bindings` becomes that step, and egress's
+`_make_binding_blocks` is its inverse.
 
-### Repetition: an independent axis
-
-- No header: the block value is the parsed body.
-- Header: the block value is `dict[header_value, body_value]`, with
-  `header_value` parsed by the header field's type:
-  - `iper` → 0-based kper (today's convention);
-  - `time_from_model_start` → float;
-  - `group_num` → int;
-  - `continuous` → the header record's value.
-- `fill_forward` is a **semantic** flag: an absent repetition means "keep
-  the previous one". It affects only how a field's value is assembled
-  (densifying G/A arrays today, see below), not parsing.
+Unknown keys are consumed, skipped, and warned about, as today. The value
+parser has to know how many rows to take (a control record spans rows),
+so skipping still means parsing.
 
 ### Load context and order
 
-Blocks are processed in DFN block order. Options and dimensions always come
-before data blocks; this is to be asserted, not assumed. A small context
-accumulates as blocks are parsed:
-- `naux` and auxiliary names;
-- `boundnames`;
-- dims: threaded from a sibling, or derived from the component's own
-  dimensions block (the `_self_dims_from_kwargs` case for dims providers);
-- `workspace`.
+`LoadContext` (workspace, dims, parent) already exists for what comes from
+outside the file. What's missing is the state that builds up *within* one
+load. Blocks are processed in DFN block order. Options and dimensions
+always come first; this is to be asserted, not assumed. As blocks are
+parsed, they accumulate:
+- `naux` and auxiliary names (the `aux` dynamic keys and item column
+  sizes);
+- conditional-column switches (`boundnames`, ...);
+- dims derived from the component's own dimensions block, for dims
+  providers (`_self_dims_from_kwargs`), computed once.
 
-This replaces the implicit dependency that the pass ordering encodes today.
+This replaces the implicit dependency that pass ordering encodes today.
 
 ### Where block structure comes from
 
-Codegen already has the DFN `Block`. It should emit a per-class block spec
-alongside the fields, for example by extending `spec.blocks_dict` or adding a
-class-level `__blocks__`. Each entry records:
+Codegen already has the DFN `Block` and reads `tagged`, `header` and
+`fill_forward` from it (`utils/codegen/make.py`, `filters.py`). It should
+emit a per-class block spec alongside the fields, for example by extending
+`spec.blocks_dict` or adding a class-level `__blocks__`. Each entry
+records:
 - block name;
 - header field name, type and `fill_forward`;
-- the tagged field names and keys (including aliases and record keywords);
+- the tagged fields and their keys (static, or an `fk` for dynamic ones);
 - the untagged field, if any.
 
-At runtime both directions read that spec. This deletes all the structural
-sniffing:
-- `item_list_type` / `repeating_array_key_type` / `_inner_class_type`
-  classification on ingress;
-- `isinstance` dispatch on egress;
-- the `fill_forward_blocks` recomputation in `structure.py`.
+At runtime both directions read that spec. This removes all the structural
+sniffing: the annotation-based classifiers on ingress, the block-size
+tagged-list inference, the `isinstance` dispatch on egress, and the
+`fill_forward_blocks` recomputation.
 
 ## Sketch
 
 ```python
-def structure_component(raw, cls, *, dims=None, workspace=None, name=None):
-    ctx = LoadContext(dims=dims, workspace=workspace)
+def structure_component(raw, cls, *, context=None, name=None):
+    context = context or LoadContext()
+    state = LoadState(context)                      # aux names, switches, self-dims
     kwargs = {}
     for block in block_specs(cls):                  # DFN order
         groups = group_rows(raw, block)             # {None: rows} | {header: rows}
-        values = {h: parse_body(rows, block, ctx) for h, rows in groups.items()}
-        kwargs |= assemble(block, values)           # unwrap / per-field dict / densify
-        ctx.update(block, kwargs)                   # naux, aux names, boundnames, self-dims
-    kwargs |= resolve_bindings(cls, kwargs, ctx)
+        values = {h: parse_body(rows, block, state) for h, rows in groups.items()}
+        kwargs |= assemble(block, values)           # unwrap / per-field dict / period_arrays
+        state.update(block, kwargs)
+    kwargs |= resolve_bindings(cls, kwargs, context)
     ...
+
+def parse_body(rows, block, state):
+    out = {}
+    for rows_for_field, field in claim_rows(rows, block, state):  # key → field, rest → untagged
+        out[field.name] = parse_value(field, rows_for_field, state)
+    return out
 ```
 
-Egress mirrors this. For each block spec, `serialize_body` is applied per
+Egress mirrors this. For each block spec, `serialize_value` is applied per
 field, and a header block expands to `"{block} {header}"` names. The
 package and component paths become one function.
 
 ## Representation decisions (separate, API-visible)
 
-The following aren't needed for the refactor, but the refactor makes them
-cheap and exposes them:
-
-1. **Dense G/A period arrays: DECIDED, keep dense.** Every other repeating
-   field is `dict[header, value]`, but G/A period arrays stay dense
-   `(nper, ...)` arrays padded with `FILL_DNODATA`, with fill-forward
-   encoded as "all-sentinel period ⇒ omit the block". `assemble`
-   densifies them on ingress, and egress splits them back into per-period
-   blocks. This is the only field whose runtime shape differs from its
-   parsed shape, and it's confined to the assemble/split step. netcdf
-   export keeps working unchanged.
-2. **STO period: DECIDED, follow the DFN, and rename the field upstream to
-   `stress_period_data`.** It's one value per period (see verified facts),
-   so codegen stops synthesizing an item list around it. The field becomes
+1. **STO period: DECIDED, follow the DFN; rename the field upstream to
+   `stress_period_data`.** It's one value per period, so codegen stops
+   wrapping it in an item list. The field becomes
    `stress_period_data: Optional[dict[int, Literal["steady-state",
-   "transient"]]]` with `block="period"` and `fill_forward=True`. It's a
-   dict block with one untagged field, the same shape as `tas` time.
+   "transient"]]]` with `block="period"` and `fill_forward=True`: a block
+   with one untagged field, the same shape as `tas` time. The name comes
+   from the DFN; devtools' dev2 migration currently calls the merged field
+   `storage` (`_collapse_sto_keywords`, `migrate_to_v2_0_0_dev2.py`). The
+   user-visible change is dropping the one-row list:
+   `stress_period_data={0: [("STEADY-STATE",)]}` becomes
+   `stress_period_data={0: "steady-state"}`.
 
-   Naming: MF6's STO period block names no field. It has two optional
-   keywords, stored by IDM as the separate flags `steady_state` /
-   `transient` (`gwf-stoidm.f90:311-339`). The name `storage` came from
-   devtools' dev2 migration (`_collapse_sto_keywords` in
-   `migrate_to_v2_0_0_dev2.py`), which merged the two keywords into one
-   string field. Today's `Sto.stress_period_data` comes from flopy4's
-   codegen item-list synthesis. Decision: **rename the merged field to
-   `stress_period_data` in the devtools migration**. flopy4 codegen keeps
-   taking names from the DFN, with no STO special case, and the user-facing
-   name stays the same as today and matches every list-based period
-   package. The only user-visible change is dropping the one-row list
-   around each value: `stress_period_data={0: [("STEADY-STATE",)]}`
-   becomes `stress_period_data={0: "steady-state"}`.
+   Sequencing: a devtools PR renaming the field, then a dependency bump,
+   then the codegen change and regenerated `*-sto` classes. **Not started**
+   (devtools still says `storage`).
+2. **`stress_period_data` consolidation in codegen.** Period list blocks
+   already have exactly one untagged list field in the DFN, so the
+   consolidation may be vestigial apart from the rename/alias. **To
+   verify.**
 
-   Sequencing: first a devtools PR renaming the field (check
-   `migrate_to_v2_0_0_dev3.py:1428`'s memory-source fixup, which mentions
-   the dev2 rename), then a dependency bump, then the codegen change and
-   regenerated `*-sto` classes. Examples and tests that build STO period
-   data need the small value-shape update.
-3. **`stress_period_data` consolidation in codegen.** Period list blocks
-   already have exactly one list field in the DFN, so the consolidation may
-   be vestigial apart from the rename/alias. **To verify.**
+Superseded since the first draft: "keep G/A period arrays dense". On
+`develop` they're sparse per-period dicts (`{kper: array | None |
+TimeArraySeriesRef}`, with `aux` as `{kper: {name: array}}`; see
+`flopy4.mf6.period_arrays`). That's already the `{header: value}` shape
+the model above produces, so `assemble` only applies the fill-forward and
+clearing rules there.
+
+## devtools follow-ups
+
+None of these block Phases 1-4.
+
+- **Extend `Block._check_field_order` to untagged fields of any type**
+  (≤ 1 per block, and it must be last), and regenerate the dev3 test
+  snapshot, whose `utl-ts` predates modflow6 #3003. This holds for the
+  current DFNs now. The converter can then rely on the rule without a
+  flopy4-side check.
+- **Optional:** make `_leading_tags` / `_is_dynamic_key` public (e.g. a
+  `Field.tags` property), so codegen takes each field's row keys from the
+  spec instead of re-deriving them for the block spec.
+- **For decision 1 only:** rename the merged STO field from `storage` to
+  `stress_period_data` in the migration. Check the memory-source fixup in
+  `migrate_to_v2_0_0_dev3.py` that refers to the dev2 rename.
+
+## Before Phase 1
+
+1. **Land the in-flight converter PRs, then rebase.** #495
+   (`package-naming`) is merged. #496 (`solution-models`) and #497
+   (`exchange-models`) both change `binding.py`, `structure.py` and
+   `spec.py`. Rebase this branch after they land. #367 (`pydantic-plan`)
+   and #433 (`mypy-converters`) are deferred and will rebase onto the
+   result.
+2. **Snapshot the written files.** Load snapshots
+   (`test/mf6/__snapshots__/test_mf6_load_all_models/`) pin what ingress
+   produces, and the round-trip test checks that values survive
+   load → write → load. Nothing pins the text egress writes, apart from
+   the examples in `test/__compare__`. Phase 4 rewrites egress, so a
+   formatting, row-order or block-order change would pass every test. Add
+   per-model snapshots of the written files over the round-trip corpus,
+   built like the load snapshots: one JSON file per model, keyed by
+   written file, with large arrays collapsed to a hash so a diff shows
+   which block or field changed. This lands on `develop`, separately.
+3. **Benchmark baseline.** Recorded in
+   [discussion #55](https://github.com/modflowpy/pyphoenix-project/discussions/55#discussioncomment-18978194),
+   rerun on `develop` after #483: 13 models from 5 KB to 84 MB. Against
+   flopy3, flopy4 loads 1.5–13.5× faster, writes 1.1–9.8× faster, and has
+   lower peak memory on 11 of 13 models. The two exceptions are
+   `test1000_751x751` (307 vs. 279 MB) and `test1005_secp` (360 vs.
+   345 MB). The harness is `benchmarks/` (`test_load.py`, `test_write.py`,
+   `test_memory.py`). Rerun it after Phases 3 and 4. Neither phase should
+   regress load or write time beyond noise, and the converter rewrite
+   shouldn't widen the memory gap on those two models.
 
 ## Phases
 
-Each phase keeps the full suite green (`pixi run -e dev pytest -n auto test`).
+Each phase keeps the round-trip suite, the load snapshots, the
+written-file snapshots, and the touched tests green.
 
-**Sequencing (proposed 2026-09-23).** Phase 0 and some of the fixes it
-exposes land on `develop` first, each on its own branch from a worktree
-under `~/dev/`, before the simplification starts on this branch. Finding
-numbers refer to `ROUNDTRIP-FINDINGS.md`.
-
-- **On develop, first:**
-  1. Phase 0 harness: a full-corpus round trip with strict xfails grouped
-     by cause, plus targeted source-vs-loaded tests for #6, #7 and #8.
-  2. #1 tokenizer ISO datetimes. It hides 21 models, including the
-     aux-array cases, from the round trip.
-  3. #3 writer model subdirectories.
-  4. #2 writer float precision: make the default lossless (DECIDED).
-  5. #4 trailing tokens and #5 single-name `AUXILIARY` (DECIDED: fix on
-     develop). They're small Pass 1 patches for silent data loss, and the
-     logic carries over into the Phase 2 value parsers.
-- **Left to the simplification:** #6 aux-named period arrays (Phase 3),
-  #7 repeated `TS6` (Phase 3, after the devtools `repeats` bump), and #8
-  TAS-sourced period arrays (after its representation decision).
-- **Separate:** #9 skipped ungenerated packages (codegen coverage).
-
-Once the develop work lands, rebase this branch onto it. Phase 0 below is
-then done, and Phases 1-5 proceed as written.
-
-0. **Characterization tests.** Add load → write → load round trips over a
-   corpus subset covering every row of the repeating-blocks table, plus
-   griddata, `LAYERED`, OPEN/CLOSE, the aux-named G/A arrays, and the two
-   repeated-`TS6` files. Mark as known xfails:
-   - the aux-named G/A period arrays, which ingress skips as unknown names
-     (`structure.py:347`), so they're lost on round trip;
-   - repeated tagged keys: each `TS6 FILEIN` row overwrites the last
-     (`structure.py:714`), so only the last file survives.
-
-   Single file records (`TS6`, `OBS6`, ...) are no longer dropped; that was
-   fixed in `fe5423c`, so they're ordinary passing cases.
 1. **Block spec from codegen**, with a runtime accessor and tests that it
-   matches the DFN. No converter changes yet.
-2. **Value parsers.** Build one grid-array parser driven by shape, replacing
-   `_parse_griddata_block` and `_parse_readarray_period_block`. Pull out the
-   keyed-row, record and list value parsers from Pass 1 and Pass 2.
-3. **Ingress loop.** Replace Passes 1–4 with the loop above. Along the way,
-   fix block-scoped key matching, the alias inconsistency, the `dims` gate,
-   aux-named arrays, and file-record keys and repeats. That flips the
-   Phase 0 xfails.
+   matches the DFN (including the field-order rule). No converter changes
+   yet.
+2. **Value parsers.** Build one grid-array parser driven by shape,
+   replacing `_parse_array_block`, `_parse_readarray_period_block` and the
+   Pass 3c control-record call. Pull the keyed-row, record and list value
+   parsers out of Pass 1 and Pass 2.
+
+   Along the way, keep an external array's `FACTOR` in its `ArrayIO`.
+   Today the loader multiplies the factor into the values, so periods that
+   read one file with different factors (`test017_Crinkle`'s
+   `Array.MF-RechDIST.txt`, ten periods) load as ten different arrays,
+   and the writer falls back to writing them inline. The values are right,
+   but the shared file is lost. With the factor recorded, egress can write
+   `OPEN/CLOSE <file> FACTOR <f>` back per period.
+3. **Ingress loop.** Replace Passes 1-4 (2b, 3b and 3c included) with the
+   loop above, and `solutiongroup` grouping with the header step. Along the
+   way, scope key matching to the block, unify the alias rule, and gate on
+   effective dims everywhere.
 4. **Egress mirror.** Unify the package and component paths. Remove the
-   `aux` / `auxiliary` name checks, the `maxbound` injection (move it to
-   codegen or keep it as a field) and the `solutiongroup 1` hack.
-5. **STO period representation** (decision 2) and, if it checks out, the
-   `stress_period_data` consolidation (item 3), each as its own change.
+   `maxbound` injection (move it to codegen or keep it as a field), the
+   `solutiongroup 1` hack, and the `isinstance` dispatch.
+5. **STO period representation** (decision 1) once devtools has the
+   rename, and, if it checks out, the `stress_period_data` consolidation
+   (decision 2), each as its own change.
 
-## Phase 0 survey (2026-09-23)
+## Related, outside the converter
 
-Load → write → reload over the 239 non-`large` `KNOWN_PASSING` corpus
-models, comparing every block field of every component (loaded vs.
-reloaded): **183 identical, 31 differ, 25 fail to write.** Every cause is
-pre-existing. Details, affected models and fix directions are in
-`ROUNDTRIP-FINDINGS.md` and the `finding-*.md` files at the repo root. That
-includes one finding not listed here: packages without a generated class
-(SFR, UZF, MAW, ...) are silently skipped on load, so the survey can't see
-them.
-
-In refactor scope, fixed by the value parsers (Phase 2) or ingress loop
-(Phase 3):
-- **Scalar/keyword rows with trailing tokens** (~20 models). Inline
-  comments (`PRINT_INPUT (echo input to listing file)`) and extra values
-  (IMS `under_relaxation none dbd`, `outer_maximum 100 500`) become lists,
-  because Pass 1 keeps `row[1:]` when `len(row) > 2`. Egress then drops
-  them, or fails to write them (3 IMS files). A keyword should be
-  presence → `True` and a scalar should be `row[1]`, as in the
-  value-parser table.
-- **Single-name `AUXILIARY`** (7 models). `AUXILIARY CONCENTRATION` loads
-  as a string, not a list, so egress's `auxiliary` list branch skips it
-  and it's lost. This is the inline-array value parser.
-- **Aux-named G/A period arrays** (`structure.py:347`) and **repeated
-  `TS6`** (`structure.py:714`), as already listed.
-- **TAS-sourced G/A period arrays** (`RECHARGE TIMEARRAYSERIES <name>`,
-  test027). Ingress consumes and discards the reference
-  (`structure.py:343`), so the period reads as all-`FILL_DNODATA` and
-  egress omits it. Not listed before. It needs a **representation
-  decision**: the dense `(nper, ...)` array has no way to say "period k
-  comes from TAS `<name>`".
-
-Out of converter scope, but they hide converter coverage:
-- **Tokenizer splits ISO datetimes** (21 models fail to write TDIS).
-  `START_DATE_TIME 1997-07-16T19:20:30.45+01:00` tokenizes as
-  `[1997, '-07-16T…']`. This blocks round-trip checking of the whole
-  model, including `test001h_rch_array1` (the aux-array case).
-- **Writer float precision.** Arrays are written to ~8 significant
-  digits (`11.09305553` → `11.0930555`), so values change on round trip
-  (`delr`, `delc`, `strt`; 3+ models).
-- **Writer doesn't create model subdirectories** (`test031_many_gwf`).
-
-Not a bug: a constant array loaded 0-d (`sto.sy = 0.15`) reloads
-broadcast to full shape. The comparison should treat these as equal.
-
-Loaded-vs-reloaded comparison can't see an ingress drop that loses the
-value on both sides (aux arrays, TAS refs, `TS6` repeats). Those need
-targeted source-vs-loaded assertions.
-
-## Open questions
-
-- Which tagged keys can repeat? `TS6 FILEIN` is confirmed. Other `FILEIN`
-  records (e.g. `OBS6`) go through the same IDM `load_io_tag` path, so they
-  probably accumulate too, but the package code may use only the first
-  one. The DFN has no flag for this. Options:
-  - ask devtools/mf6 for one (e.g. a record-level `repeats` or `shape`);
-  - treat every `FILEIN` record as repeatable in flopy4, a narrower rule
-    grounded in `load_io_tag`.
-
-  Either way the field type becomes `list[Path]` for repeatable ones, which
-  is a user API change.
-
-  **In progress (2026-09-23):** a field-level `repeats` attribute is being
-  added upstream in devtools. Which fields get it is decided there.
-- Codegen should enforce ≤ 1 untagged field per block, as it already
-  enforces ≤ 1 fill-forward block. That's the plan; the only question is
-  timing. The `utl-ts` DFN bug has to be fixed upstream first, or `utl-ts`
-  exempted until then.
-- `codec/writer/filters.py` still reads a `prefix` attr off xarray
-  DataArrays (lines ~284, ~334), from a legacy Dataset row path. Nothing
-  sets it anymore, so it's probably dead. Remove it during Phase 4.
+- **Developer-mode fields need a release/develop switch on sync.** The
+  corpus uses `DEV_*` options (NPF `DEV_OMEGA`, IMS `DEV_PTC_*`, LAK
+  `DEV_*`, MAW `DEV_PEACEMAN_EFFECTIVE_RADIUS`). Classes are generated
+  without them, so ingress warns "no field takes ..." and drops them.
+  Codegen already has a `developmode` flag (`make_modules`,
+  `dfn2py.py --developmode`, default off), but `flopy4 sync`
+  (`_sync.py`) never passes it, so it can't be turned on through the
+  supported path. Expose it on `sync`, like flopy3's codegen option, and
+  decide which mode the checked-in classes use. With dev fields
+  generated, the converter handles them like any other field; nothing in
+  this plan changes.
 
 ## Out of scope
 
@@ -477,3 +413,19 @@ targeted source-vs-loaded assertions.
   it smaller, but it's not a prerequisite.
 - The index-domain / time-dimension sentinel discussion (deliberately
   dropped).
+
+## History
+
+The first draft's Phase 0 survey (load → write → reload over 239 corpus
+models) found ten pre-existing issues, recorded in `ROUNDTRIP-FINDINGS.md`
+and the `finding-*.md` files. All are fixed on `develop`:
+- #1 ISO datetimes, #2 float precision, #3 model subdirectories, #4
+  trailing tokens, #5 single-name `AUXILIARY`: fixed directly;
+- #6 aux-named G/A period arrays (`fk`-keyed `aux`, devtools #371), #7
+  repeated `TS6` (tagged lists, devtools #368), #8 TAS-sourced period
+  arrays (`TimeArraySeriesRef`, #413): each has a targeted test in
+  `test_mf6_io_roundtrip.py`;
+- #9 ungenerated packages: SFR, UZF, MAW, etc. are now generated;
+- #10 quoted strings (#462).
+
+The Phase 0 harness itself is `test/mf6/test_mf6_io_roundtrip.py`.
