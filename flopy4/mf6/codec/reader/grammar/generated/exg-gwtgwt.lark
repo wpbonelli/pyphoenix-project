@@ -29,9 +29,9 @@ block: options__block | dimensions__block | exchangedata__block
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 exchangedata__block: _BEGIN "exchangedata"i [_remark] _NL exchangedata__fields _END "exchangedata"i
-options__fields: (gwfmodelname1__val | gwfmodelname2__val | auxiliary__val | boundnames__kw | print_input__kw | print_flows__kw | save_flows__kw | adv_scheme__union | dsp_xt3d_off__kw | dsp_xt3d_rhs__kw | mvt_filerecord__rec | obs_filerecord__rec | dev_interfacemodel_on__kw | open_close_redirect _NL)*
+options__fields: (gwfmodelname1__val | gwfmodelname2__val | auxiliary__val | boundnames__kw | print_input__kw | print_flows__kw | save_flows__kw | adv_scheme__union | dsp_xt3d_off__kw | dsp_xt3d_rhs__kw | mvt__rec | obs__rec | dev_interfacemodel_on__kw | open_close_redirect _NL)*
 dimensions__fields: (nexg__val | open_close_redirect _NL)*
-exchangedata__fields: (exchangedatadata | open_close_redirect _NL)*
+exchangedata__fields: (exchangedata__rows | open_close_redirect _NL)*
 gwfmodelname1__val: "gwfmodelname1"i string
 gwfmodelname2__val: "gwfmodelname2"i string
 auxiliary__val: "auxiliary"i word+ [_remark] _NL
@@ -47,10 +47,10 @@ adv_scheme__union: "adv_scheme"i (adv_scheme__upstream__kw | adv_scheme__central
 
 dsp_xt3d_off__kw: "dsp_xt3d_off"i  [_remark] _NL
 dsp_xt3d_rhs__kw: "dsp_xt3d_rhs"i  [_remark] _NL
-mvt_filerecord__rec: "mvt6"i mvt_filerecord__mvt6_filename__val [_remark] _NL
+mvt__rec: "mvt6"i mvt_filerecord__mvt6_filename__val [_remark] _NL
 mvt_filerecord__mvt6_filename__val: "filein"i word
-obs_filerecord__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
+obs__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
 obs_filerecord__obs6_filename__val: "filein"i word
 dev_interfacemodel_on__kw: "dev_interfacemodel_on"i  [_remark] _NL
 nexg__val: "nexg"i integer [_remark] _NL
-exchangedatadata: record+
+exchangedata__rows: record+

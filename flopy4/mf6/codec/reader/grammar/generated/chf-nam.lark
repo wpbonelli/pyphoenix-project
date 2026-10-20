@@ -28,12 +28,12 @@ block: options__block | packages__block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 packages__block: _BEGIN "packages"i [_remark] _NL packages__fields _END "packages"i
-options__fields: (list__val | print_input__kw | print_flows__kw | save_flows__kw | newtonoptions__rec | open_close_redirect _NL)*
-packages__fields: (packagesdata | open_close_redirect _NL)*
-list__val: "list"i string
+options__fields: (list___val | print_input__kw | print_flows__kw | save_flows__kw | newtonoptions__rec | open_close_redirect _NL)*
+packages__fields: (packages__rows | open_close_redirect _NL)*
+list___val: "list"i string
 print_input__kw: "print_input"i  [_remark] _NL
 print_flows__kw: "print_flows"i  [_remark] _NL
 save_flows__kw: "save_flows"i  [_remark] _NL
 newtonoptions__rec: "newton"i [newtonoptions__under_relaxation__kw] [_remark] _NL
 newtonoptions__under_relaxation__kw: "under_relaxation"i
-packagesdata: record+
+packages__rows: record+

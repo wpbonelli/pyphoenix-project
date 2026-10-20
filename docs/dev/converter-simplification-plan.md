@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1 and A1 done; A2 and B1 next** (see "Phases"). Written
+Status: **S1, A1, A2 and B1 done; A3 and B2 next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -468,10 +468,28 @@ A1. **Stored DFNs and a runtime accessor.** Done: `flopy4/mf6/dfns`,
    `binding`, header type names) and needed a ranking to settle key
    clashes that the DFN either doesn't have or settles with the second
    token.
-A2. **Value parsers.** Build one grid-array parser driven by shape,
+A2. **Value parsers.** Done. `_read_array` reads every grid array
+   (griddata, G/A period, TAS time), its length the field's DFN shape
+   resolved against the dims (`_Grid`); `_tagged_value` reads a tagged
+   field's row and `parse_list` a list's rows, for every pass. Loaded
+   values and written files are unchanged across the corpus (241 models).
+
+   `FACTOR` is still applied on load and not kept, as decided in
+   `write-options-plan.md` ("FACTOR isn't kept", in the archive):
+   keeping it means writing `values / f`, which MF6 reads exactly but
+   which isn't the user's text (`3.0000000000000004` for `3` at `FACTOR
+   0.1`), and dropping it only when that's inexact makes the hint depend
+   on the values. A2 kept it for a while; reverted. Periods scaling one
+   file by different factors (Crinkle's recharge) hold different values,
+   so are written inline, as before; with an `array_format` of
+   "open/close" each is now written to a file of its own instead (see
+   `write_external_arrays`).
+
+   As planned: build one grid-array parser driven by shape,
    replacing `_parse_array_block`, `_parse_readarray_period_block` and the
    Pass 3c control-record call. Pull the keyed-row, record and list value
    parsers out of Pass 1 and Pass 2.
+
 A3. **Ingress loop.** Replace Passes 1-4 (2b, 3b and 3c included) with the
    loop above, and `solutiongroup` grouping with the header step. Along the
    way, scope key matching to the block, unify the alias rule, and gate on
@@ -479,7 +497,20 @@ A3. **Ingress loop.** Replace Passes 1-4 (2b, 3b and 3c included) with the
 
 ### Track B: typed loader
 
-B1. **Grammar rules named after class attributes.** Generate the grammars
+B1. **Grammar rules named after class attributes.** Done. `make_grammars`
+   names each block field's rule by its attribute from `make.attr_names`,
+   as `__init__` takes it (`_stress_period_data` → `stress_period_data`),
+   and an untagged list's rows by theirs too (`models`, `solutiongroup`,
+   `vertices`, `continuous`), so OC parses to `{"options": {"head_file":
+   ...}, "period 1": {"stress_period_data": [{"saverecord": ...}, ...]}}`.
+   A union list's elements keep their arm and file order. Over the corpus
+   (2582 files) every block key is an `__init__` argument except computed
+   `maxbound`, ungenerated `DEV_` options, a model name file's package
+   list, and TAS's time-keyed blocks. The values are still shaped as the
+   DFN has them (a file record's `{"headfile": ...}`, not a path): that's
+   B2.
+
+   As planned: generate the grammars
    with the Phase S1 name mapping, so a typed parse's output is keyed by
    class attribute (`head_file`, not `head_filerecord`) and maps straight
    onto the classes. Today it's keyed by DFN name (`loads_typed` on an OC

@@ -28,7 +28,7 @@ block: options__block | griddata__block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 griddata__block: _BEGIN "griddata"i [_remark] _NL griddata__fields _END "griddata"i
-options__fields: (central_in_space__kw | length_conversion__val | time_conversion__val | save_flows__kw | print_flows__kw | save_velocity__kw | obs_filerecord__rec | export_array_ascii__kw | dev_swr_conductance__kw | open_close_redirect _NL)*
+options__fields: (central_in_space__kw | length_conversion__val | time_conversion__val | save_flows__kw | print_flows__kw | save_velocity__kw | obs__rec | export_array_ascii__kw | dev_swr_conductance__kw | open_close_redirect _NL)*
 griddata__fields: (manningsn__val | idcxs__val | open_close_redirect _NL)*
 central_in_space__kw: "central_in_space"i  [_remark] _NL
 length_conversion__val: "length_conversion"i double [_remark] _NL
@@ -36,7 +36,7 @@ time_conversion__val: "time_conversion"i double [_remark] _NL
 save_flows__kw: "save_flows"i  [_remark] _NL
 print_flows__kw: "print_flows"i  [_remark] _NL
 save_velocity__kw: "save_velocity"i  [_remark] _NL
-obs_filerecord__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
+obs__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
 obs_filerecord__obs6_filename__val: "filein"i word
 export_array_ascii__kw: "export_array_ascii"i  [_remark] _NL
 dev_swr_conductance__kw: "dev_swr_conductance"i  [_remark] _NL

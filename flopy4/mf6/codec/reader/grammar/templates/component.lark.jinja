@@ -62,12 +62,13 @@ double_index: block_index
 {% endif -%}
 {% endfor -%}
 {% set generated_rules = [] -%}
+{% set generated_names = [] -%}
 {% for block in blocks -%}
 {% for field_name in block.standalone_fields -%}
-{% if field_name not in generated_rules -%}
+{% set name = block.rules[field_name] -%}
+{% if name not in generated_names -%}
 {% set field = fields[field_name] -%}
 {% set field_type = field|field_type -%}
-{% set name = block.rules[field_name] -%}
 {% if field is dynamically_named_array -%}
 {{ m.dynamically_named_array_field(name) }}
 {% elif field.type == 'record' and field.children is not none -%}
@@ -79,7 +80,10 @@ double_index: block_index
 {% else -%}
 {{ m.simple_field(name, field, field_type) }}
 {% endif -%}
+{% set _ = generated_names.append(name) -%}
+{% if field_name not in generated_rules -%}
 {% set _ = generated_rules.append(field_name) -%}
+{% endif -%}
 {% endif -%}
 {% endfor -%}
 {% endfor -%}

@@ -32,10 +32,10 @@ packagedata__block: _BEGIN "packagedata"i [_remark] _NL packagedata__fields _END
 crosssectiondata__block: _BEGIN "crosssectiondata"i [_remark] _NL crosssectiondata__fields _END "crosssectiondata"i
 options__fields: (print_input__kw | open_close_redirect _NL)*
 dimensions__fields: (nsections__val | npoints__val | open_close_redirect _NL)*
-packagedata__fields: (packagedatadata | open_close_redirect _NL)*
-crosssectiondata__fields: (crosssectiondatadata | open_close_redirect _NL)*
+packagedata__fields: (packagedata__rows | open_close_redirect _NL)*
+crosssectiondata__fields: (crosssectiondata__rows | open_close_redirect _NL)*
 print_input__kw: "print_input"i  [_remark] _NL
 nsections__val: "nsections"i integer [_remark] _NL
 npoints__val: "npoints"i integer [_remark] _NL
-packagedatadata: record+
-crosssectiondatadata: record+
+packagedata__rows: record+
+crosssectiondata__rows: record+

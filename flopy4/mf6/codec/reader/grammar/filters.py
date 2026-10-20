@@ -82,11 +82,3 @@ def part_tag(field: InputField) -> str:
     if isinstance(field, Array):
         return "arr"
     return "val"
-
-
-def get_recarray_name(block_name: str) -> str:
-    """Get the name for a recarray representing period data in a block."""
-    # Use similar naming to V1: stress_period_data, perioddata, etc.
-    if block_name == "period":
-        return "stress_period_data"
-    return f"{block_name}data"

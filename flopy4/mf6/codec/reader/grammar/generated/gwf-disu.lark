@@ -32,15 +32,15 @@ griddata__block: _BEGIN "griddata"i [_remark] _NL griddata__fields _END "griddat
 connectiondata__block: _BEGIN "connectiondata"i [_remark] _NL connectiondata__fields _END "connectiondata"i
 vertices__block: _BEGIN "vertices"i [_remark] _NL vertices__fields _END "vertices"i
 cell2d__block: _BEGIN "cell2d"i [_remark] _NL cell2d__fields _END "cell2d"i
-options__fields: (length_units__val | nogrb__kw | grb_filerecord__rec | xorigin__val | yorigin__val | angrot__val | vertical_offset_tolerance__val | export_array_ascii__kw | crs__val | open_close_redirect _NL)*
+options__fields: (length_units__val | nogrb__kw | grb_file__rec | xorigin__val | yorigin__val | angrot__val | vertical_offset_tolerance__val | export_array_ascii__kw | crs__val | open_close_redirect _NL)*
 dimensions__fields: (nodes__val | nja__val | nvert__val | open_close_redirect _NL)*
 griddata__fields: (top__val | bot__val | area__val | idomain__val | open_close_redirect _NL)*
 connectiondata__fields: (iac__val | ja__val | ihc__val | cl12__val | hwva__val | angldegx__val | open_close_redirect _NL)*
-vertices__fields: (verticesdata | open_close_redirect _NL)*
-cell2d__fields: (cell2ddata | open_close_redirect _NL)*
+vertices__fields: (vertices__rows | open_close_redirect _NL)*
+cell2d__fields: (cell2d__rows | open_close_redirect _NL)*
 length_units__val: "length_units"i string
 nogrb__kw: "nogrb"i  [_remark] _NL
-grb_filerecord__rec: "grb6"i grb_filerecord__grb6_filename__val [_remark] _NL
+grb_file__rec: "grb6"i grb_filerecord__grb6_filename__val [_remark] _NL
 grb_filerecord__grb6_filename__val: "fileout"i word
 xorigin__val: "xorigin"i double [_remark] _NL
 yorigin__val: "yorigin"i double [_remark] _NL
@@ -61,5 +61,5 @@ ihc__val: "ihc"i [_remark] [_NL] array
 cl12__val: "cl12"i [_remark] [_NL] array
 hwva__val: "hwva"i [_remark] [_NL] array
 angldegx__val: "angldegx"i [_remark] [_NL] array
-verticesdata: record+
-cell2ddata: record+
+vertices__rows: record+
+cell2d__rows: record+

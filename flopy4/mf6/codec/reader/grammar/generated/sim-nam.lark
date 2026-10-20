@@ -32,21 +32,21 @@ models__block: _BEGIN "models"i [_remark] _NL models__fields _END "models"i
 exchanges__block: _BEGIN "exchanges"i [_remark] _NL exchanges__fields _END "exchanges"i
 solutiongroup__block: _BEGIN "solutiongroup"i block_index [_remark] _NL solutiongroup__fields _END "solutiongroup"i [block_index]
 %import typed.block_index -> block_index
-options__fields: (continue__kw | nocheck__kw | memory_print_option__val | profile_option__val | maxerrors__val | print_input__kw | hpc_filerecord__rec | open_close_redirect _NL)*
-timing__fields: (tdis6__val | open_close_redirect _NL)*
-models__fields: (modelsdata | open_close_redirect _NL)*
-exchanges__fields: (exchangesdata | open_close_redirect _NL)*
-solutiongroup__fields: (mxiter__val | solutiongroupdata | open_close_redirect _NL)*
-continue__kw: "continue"i  [_remark] _NL
+options__fields: (continue___kw | nocheck__kw | memory_print_option__val | profile_option__val | maxerrors__val | print_input__kw | hpc__rec | open_close_redirect _NL)*
+timing__fields: (tdis__val | open_close_redirect _NL)*
+models__fields: (models__rows | open_close_redirect _NL)*
+exchanges__fields: (exchanges__rows | open_close_redirect _NL)*
+solutiongroup__fields: (mxiter__val | solutiongroup__rows | open_close_redirect _NL)*
+continue___kw: "continue"i  [_remark] _NL
 nocheck__kw: "nocheck"i  [_remark] _NL
 memory_print_option__val: "memory_print_option"i string
 profile_option__val: "profile_option"i string
 maxerrors__val: "maxerrors"i integer [_remark] _NL
 print_input__kw: "print_input"i  [_remark] _NL
-hpc_filerecord__rec: "hpc6"i hpc_filerecord__hpc6_filename__val [_remark] _NL
+hpc__rec: "hpc6"i hpc_filerecord__hpc6_filename__val [_remark] _NL
 hpc_filerecord__hpc6_filename__val: "filein"i word
-tdis6__val: "tdis6"i word [_remark] _NL
+tdis__val: "tdis6"i word [_remark] _NL
 mxiter__val: "mxiter"i integer [_remark] _NL
-modelsdata: record+
-exchangesdata: record+
-solutiongroupdata: token_record+
+models__rows: record+
+exchanges__rows: record+
+solutiongroup__rows: token_record+

@@ -28,7 +28,7 @@ block: options__block | griddata__block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 griddata__block: _BEGIN "griddata"i [_remark] _NL griddata__fields _END "griddata"i
-options__fields: (save_flows__kw | first_order_decay__kw | zero_order_decay__kw | sorption__union | sorbate_filerecord__rec | export_array_ascii__kw | export_array_netcdf__kw | open_close_redirect _NL)*
+options__fields: (save_flows__kw | first_order_decay__kw | zero_order_decay__kw | sorption__union | sorbate_file__rec | export_array_ascii__kw | export_array_netcdf__kw | open_close_redirect _NL)*
 griddata__fields: (porosity__val | decay__val | decay_sorbed__val | bulk_density__val | distcoef__val | sp2__val | open_close_redirect _NL)*
 save_flows__kw: "save_flows"i  [_remark] _NL
 first_order_decay__kw: "first_order_decay"i  [_remark] _NL
@@ -39,7 +39,7 @@ sorption__union: "sorption"i (sorption__linear__kw | sorption__freundlich__kw | 
 !sorption__freundlich__kw: "freundlich"i
 !sorption__langmuir__kw: "langmuir"i
 
-sorbate_filerecord__rec: "sorbate"i sorbate_filerecord__sorbatefile__val [_remark] _NL
+sorbate_file__rec: "sorbate"i sorbate_filerecord__sorbatefile__val [_remark] _NL
 sorbate_filerecord__sorbatefile__val: "fileout"i word
 export_array_ascii__kw: "export_array_ascii"i  [_remark] _NL
 export_array_netcdf__kw: "export_array_netcdf"i  [_remark] _NL

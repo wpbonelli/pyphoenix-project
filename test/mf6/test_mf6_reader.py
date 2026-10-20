@@ -563,20 +563,20 @@ def test_transform_gwf_oc_file(model_workspace):
     assert "options" in result
     options = result["options"]
 
-    # Should have budget and head fileout records
-    assert "budget_filerecord" in options
-    assert options["budget_filerecord"]["budgetfile"] == "ex-gwf-bcf2ss.cbc"
+    # Should have budget and head fileout records, by class attribute
+    assert "budget_file" in options
+    assert options["budget_file"]["budgetfile"] == "ex-gwf-bcf2ss.cbc"
 
-    assert "head_filerecord" in options
-    assert options["head_filerecord"]["headfile"] == "ex-gwf-bcf2ss.hds"
+    assert "head_file" in options
+    assert options["head_file"]["headfile"] == "ex-gwf-bcf2ss.hds"
 
     # Check period 1 block
     assert "period 1" in result
     period_data = result["period 1"]
 
-    # Should have saverecord list with HEAD and BUDGET saves
-    assert "saverecord" in period_data
-    save_records = period_data["saverecord"]
+    # Should have HEAD and BUDGET saves in the period's list, by arm
+    assert list(period_data) == ["stress_period_data"]
+    save_records = [e["saverecord"] for e in period_data["stress_period_data"]]
     assert len(save_records) == 2
 
     # Check that HEAD and BUDGET are both saved with ALL frequency
@@ -757,7 +757,7 @@ def test_typed_loads_filename_with_leading_digit():
     from flopy4.mf6.codec.reader import loads_typed
 
     result = loads_typed("BEGIN options\n  ts6 filein 1model.ts\nEND options\n", "gwf-chd")
-    assert result["options"]["ts_filerecord"] == [{"ts6_filename": "1model.ts"}]
+    assert result["options"]["ts"] == [{"ts6_filename": "1model.ts"}]
 
 
 def test_typed_loads_tagged_list():
@@ -769,11 +769,11 @@ def test_typed_loads_tagged_list():
         "BEGIN options\n  ts6 filein a.ts\n  obs6 filein w.obs\n  ts6 filein b.ts\nEND options\n",
         "gwf-chd",
     )
-    assert result["options"]["ts_filerecord"] == [
+    assert result["options"]["ts"] == [
         {"ts6_filename": "a.ts"},
         {"ts6_filename": "b.ts"},
     ]
-    assert result["options"]["obs_filerecord"] == {"obs6_filename": "w.obs"}
+    assert result["options"]["obs"] == {"obs6_filename": "w.obs"}
 
 
 def test_typed_loads_inline_record_arrays():
@@ -786,11 +786,9 @@ def test_typed_loads_inline_record_arrays():
         "utl-ts",
     )
     attributes = result["attributes"]
-    assert attributes["time_series_namerecord"] == {"time_series_names": ["rate", "stage"]}
-    assert attributes["interpolation_methodrecord"] == {
-        "interpolation_method": ["linear", "stepwise"]
-    }
-    assert attributes["sfacrecord"] == {"sfacval": [1.5, 2.0]}
+    assert attributes["time_series_name"] == {"time_series_names": ["rate", "stage"]}
+    assert attributes["interpolation_method"] == {"interpolation_method": ["linear", "stepwise"]}
+    assert attributes["sfac"] == {"sfacval": [1.5, 2.0]}
 
 
 @pytest.mark.parametrize(
@@ -846,7 +844,7 @@ def test_typed_loads_words_starting_with_begin_or_end():
 
     obs = "BEGIN CONTINUOUS FILEOUT x.csv\n  endwell HEAD 1 1 1\nEND CONTINUOUS\n"
     typed = loads_typed(obs, "utl-obs")["continuous FILEOUT x.csv"]
-    assert typed["stress_period_data"] == loads(obs)["CONTINUOUS FILEOUT x.csv"]
+    assert typed["continuous"] == loads(obs)["CONTINUOUS FILEOUT x.csv"]
 
 
 def test_typed_loads_bare_begin_or_end_word():
@@ -855,7 +853,7 @@ def test_typed_loads_bare_begin_or_end_word():
     from flopy4.mf6.codec.reader import loads_typed
 
     result = loads_typed("BEGIN options\n  ts6 filein end\nEND options\n", "gwf-chd")
-    assert result["options"]["ts_filerecord"] == [{"ts6_filename": "end"}]
+    assert result["options"]["ts"] == [{"ts6_filename": "end"}]
 
 
 def test_typed_loads_begin_or_end_after_row_start():
@@ -869,7 +867,7 @@ def test_typed_loads_begin_or_end_after_row_start():
     assert rows == loads(ghb)["PERIOD 1"]
 
     ts = "BEGIN TIMESERIES\n  0.0 1.0 begin SP 1\n  1.0 2.0 end\nEND TIMESERIES\n"
-    typed = loads_typed(ts, "utl-ts")["timeseries"]["stress_period_data"]
+    typed = loads_typed(ts, "utl-ts")["timeseries"]["timeseries"]
     assert typed == [[0.0, 1.0, "begin", "SP", 1], [1.0, 2.0, "end"]]
 
 
@@ -906,7 +904,7 @@ def test_typed_loads_number_lines_as_text():
 
     # a block's list other than a period's
     disv = "BEGIN VERTICES\n  1 0.0 0.0\n  2 1.0 0.0\nEND VERTICES\n"
-    assert loads_typed(disv, "gwf-disv")["vertices"]["stress_period_data"] == [
+    assert loads_typed(disv, "gwf-disv")["vertices"]["vertices"] == [
         [1, 0.0, 0.0],
         [2, 1.0, 0.0],
     ]
@@ -937,7 +935,7 @@ def test_typed_loads_records():
     nam = "BEGIN SOLUTIONGROUP 1\n  MXITER 2\n  IMS6 sim.ims gwf\nEND SOLUTIONGROUP\n"
     assert loads_typed(nam, "sim-nam")["solutiongroup 1"] == {
         "mxiter": 2,
-        "stress_period_data": [["IMS6", "sim.ims", "gwf"]],
+        "solutiongroup": [["IMS6", "sim.ims", "gwf"]],
     }
     # ...its rows kept on either side of the field
     nam = (
@@ -945,7 +943,7 @@ def test_typed_loads_records():
     )
     assert loads_typed(nam, "sim-nam")["solutiongroup 1"] == {
         "mxiter": 3,
-        "stress_period_data": [["IMS6", "a.ims", "gwf"], ["EMS6", "b.ems", "gwe"]],
+        "solutiongroup": [["IMS6", "a.ims", "gwf"], ["EMS6", "b.ems", "gwe"]],
     }
 
 

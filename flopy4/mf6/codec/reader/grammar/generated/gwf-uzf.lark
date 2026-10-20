@@ -31,27 +31,27 @@ dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "d
 packagedata__block: _BEGIN "packagedata"i [_remark] _NL packagedata__fields _END "packagedata"i
 period__block: _BEGIN "period"i block_index [_remark] _NL period__fields _END "period"i [block_index]
 %import typed.block_index -> block_index
-options__fields: (auxiliary__val | auxmultname__val | boundnames__kw | print_input__kw | print_flows__kw | save_flows__kw | wc_filerecord__rec | budget_filerecord__rec | budgetcsv_filerecord__rec | package_convergence_filerecord__rec | ts_filerecord__rec__elem | obs_filerecord__rec | mover__kw | dev_no_final_check__kw | simulate_et__kw | linear_gwet__kw | square_gwet__kw | simulate_gwseep__kw | unsat_etwc__kw | unsat_etae__kw | open_close_redirect _NL)*
+options__fields: (auxiliary__val | auxmultname__val | boundnames__kw | print_input__kw | print_flows__kw | save_flows__kw | wc_file__rec | budget_file__rec | budgetcsv_file__rec | package_convergence_file__rec | ts__rec__elem | obs__rec | mover__kw | dev_no_final_check__kw | simulate_et__kw | linear_gwet__kw | square_gwet__kw | simulate_gwseep__kw | unsat_etwc__kw | unsat_etae__kw | open_close_redirect _NL)*
 dimensions__fields: (nuzfcells__val | ntrailwaves__val | nwavesets__val | open_close_redirect _NL)*
-packagedata__fields: (packagedatadata | open_close_redirect _NL)*
-period__fields: (stress_period_data | open_close_redirect _NL)*
+packagedata__fields: (packagedata__rows | open_close_redirect _NL)*
+period__fields: (stress_period_data__rows | open_close_redirect _NL)*
 auxiliary__val: "auxiliary"i word+ [_remark] _NL
 auxmultname__val: "auxmultname"i string
 boundnames__kw: "boundnames"i  [_remark] _NL
 print_input__kw: "print_input"i  [_remark] _NL
 print_flows__kw: "print_flows"i  [_remark] _NL
 save_flows__kw: "save_flows"i  [_remark] _NL
-wc_filerecord__rec: "water_content"i wc_filerecord__wcfile__val [_remark] _NL
+wc_file__rec: "water_content"i wc_filerecord__wcfile__val [_remark] _NL
 wc_filerecord__wcfile__val: "fileout"i word
-budget_filerecord__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
+budget_file__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
 budget_filerecord__budgetfile__val: "fileout"i word
-budgetcsv_filerecord__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
+budgetcsv_file__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
 budgetcsv_filerecord__budgetcsvfile__val: "fileout"i word
-package_convergence_filerecord__rec: "package_convergence"i package_convergence_filerecord__package_convergence_filename__val [_remark] _NL
+package_convergence_file__rec: "package_convergence"i package_convergence_filerecord__package_convergence_filename__val [_remark] _NL
 package_convergence_filerecord__package_convergence_filename__val: "fileout"i word
-ts_filerecord__rec__elem: "ts6"i ts_filerecord__ts6_filename__val [_remark] _NL
+ts__rec__elem: "ts6"i ts_filerecord__ts6_filename__val [_remark] _NL
 ts_filerecord__ts6_filename__val: "filein"i word
-obs_filerecord__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
+obs__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
 obs_filerecord__obs6_filename__val: "filein"i word
 mover__kw: "mover"i  [_remark] _NL
 dev_no_final_check__kw: "dev_no_final_check"i  [_remark] _NL
@@ -64,5 +64,5 @@ unsat_etae__kw: "unsat_etae"i  [_remark] _NL
 nuzfcells__val: "nuzfcells"i integer [_remark] _NL
 ntrailwaves__val: "ntrailwaves"i integer [_remark] _NL
 nwavesets__val: "nwavesets"i integer [_remark] _NL
-packagedatadata: record+
-stress_period_data: record+
+packagedata__rows: record+
+stress_period_data__rows: record+

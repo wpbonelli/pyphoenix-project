@@ -34,30 +34,30 @@ tables__block: _BEGIN "tables"i [_remark] _NL tables__fields _END "tables"i
 outlets__block: _BEGIN "outlets"i [_remark] _NL outlets__fields _END "outlets"i
 period__block: _BEGIN "period"i block_index [_remark] _NL period__fields _END "period"i [block_index]
 %import typed.block_index -> block_index
-options__fields: (auxiliary__val | boundnames__kw | print_input__kw | print_stage__kw | print_flows__kw | save_flows__kw | stage_filerecord__rec | budget_filerecord__rec | budgetcsv_filerecord__rec | package_convergence_filerecord__rec | ts_filerecord__rec__elem | obs_filerecord__rec | mover__kw | dev_force_legacy__kw | dev_force_legacy_lake__val | dev_groundwater_head_conductance__kw | dev_maximum_outlet_depth__val | surfdep__val | implicit__kw | maximum_iterations__val | maximum_stage_change__val | time_conversion__val | length_conversion__val | dev_no_final_check__kw | open_close_redirect _NL)*
+options__fields: (auxiliary__val | boundnames__kw | print_input__kw | print_stage__kw | print_flows__kw | save_flows__kw | stage_file__rec | budget_file__rec | budgetcsv_file__rec | package_convergence_file__rec | ts__rec__elem | obs__rec | mover__kw | dev_force_legacy__kw | dev_force_legacy_lake__val | dev_groundwater_head_conductance__kw | dev_maximum_outlet_depth__val | surfdep__val | implicit__kw | maximum_iterations__val | maximum_stage_change__val | time_conversion__val | length_conversion__val | dev_no_final_check__kw | open_close_redirect _NL)*
 dimensions__fields: (nlakes__val | noutlets__val | ntables__val | open_close_redirect _NL)*
-packagedata__fields: (packagedatadata | open_close_redirect _NL)*
-connectiondata__fields: (connectiondatadata | open_close_redirect _NL)*
-tables__fields: (tablesdata | open_close_redirect _NL)*
-outlets__fields: (outletsdata | open_close_redirect _NL)*
-period__fields: (status__rec__elem | stage__rec__elem | rainfall__rec__elem | evaporation__rec__elem | runoff__rec__elem | inflow__rec__elem | withdrawal__rec__elem | rate__rec__elem | invert__rec__elem | width__rec__elem | slope__rec__elem | rough__rec__elem | auxiliaryrecord__rec__elem | open_close_redirect _NL)*
+packagedata__fields: (packagedata__rows | open_close_redirect _NL)*
+connectiondata__fields: (connectiondata__rows | open_close_redirect _NL)*
+tables__fields: (tables__rows | open_close_redirect _NL)*
+outlets__fields: (outlets__rows | open_close_redirect _NL)*
+period__fields: (stress_period_data__status__rec__elem | stress_period_data__stage__rec__elem | stress_period_data__rainfall__rec__elem | stress_period_data__evaporation__rec__elem | stress_period_data__runoff__rec__elem | stress_period_data__inflow__rec__elem | stress_period_data__withdrawal__rec__elem | stress_period_data__rate__rec__elem | stress_period_data__invert__rec__elem | stress_period_data__width__rec__elem | stress_period_data__slope__rec__elem | stress_period_data__rough__rec__elem | stress_period_data__auxiliaryrecord__rec__elem | open_close_redirect _NL)*
 auxiliary__val: "auxiliary"i word+ [_remark] _NL
 boundnames__kw: "boundnames"i  [_remark] _NL
 print_input__kw: "print_input"i  [_remark] _NL
 print_stage__kw: "print_stage"i  [_remark] _NL
 print_flows__kw: "print_flows"i  [_remark] _NL
 save_flows__kw: "save_flows"i  [_remark] _NL
-stage_filerecord__rec: "stage"i stage_filerecord__stagefile__val [_remark] _NL
+stage_file__rec: "stage"i stage_filerecord__stagefile__val [_remark] _NL
 stage_filerecord__stagefile__val: "fileout"i word
-budget_filerecord__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
+budget_file__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
 budget_filerecord__budgetfile__val: "fileout"i word
-budgetcsv_filerecord__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
+budgetcsv_file__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
 budgetcsv_filerecord__budgetcsvfile__val: "fileout"i word
-package_convergence_filerecord__rec: "package_convergence"i package_convergence_filerecord__package_convergence_filename__val [_remark] _NL
+package_convergence_file__rec: "package_convergence"i package_convergence_filerecord__package_convergence_filename__val [_remark] _NL
 package_convergence_filerecord__package_convergence_filename__val: "fileout"i word
-ts_filerecord__rec__elem: "ts6"i ts_filerecord__ts6_filename__val [_remark] _NL
+ts__rec__elem: "ts6"i ts_filerecord__ts6_filename__val [_remark] _NL
 ts_filerecord__ts6_filename__val: "filein"i word
-obs_filerecord__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
+obs__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
 obs_filerecord__obs6_filename__val: "filein"i word
 mover__kw: "mover"i  [_remark] _NL
 dev_force_legacy__kw: "dev_force_legacy"i  [_remark] _NL
@@ -74,47 +74,47 @@ dev_no_final_check__kw: "dev_no_final_check"i  [_remark] _NL
 nlakes__val: "nlakes"i integer [_remark] _NL
 noutlets__val: "noutlets"i integer [_remark] _NL
 ntables__val: "ntables"i integer [_remark] _NL
-status__rec__elem: status__lakeno__val status__status__val [_remark] _NL
+stress_period_data__status__rec__elem: status__lakeno__val status__status__val [_remark] _NL
 status__lakeno__val: integer
 status__status__val: "status"i word
-stage__rec__elem: stage__lakeno__val stage__stage__val [_remark] _NL
+stress_period_data__stage__rec__elem: stage__lakeno__val stage__stage__val [_remark] _NL
 stage__lakeno__val: integer
 stage__stage__val: "stage"i double
-rainfall__rec__elem: rainfall__lakeno__val rainfall__rainfall__val [_remark] _NL
+stress_period_data__rainfall__rec__elem: rainfall__lakeno__val rainfall__rainfall__val [_remark] _NL
 rainfall__lakeno__val: integer
 rainfall__rainfall__val: "rainfall"i double
-evaporation__rec__elem: evaporation__lakeno__val evaporation__evaporation__val [_remark] _NL
+stress_period_data__evaporation__rec__elem: evaporation__lakeno__val evaporation__evaporation__val [_remark] _NL
 evaporation__lakeno__val: integer
 evaporation__evaporation__val: "evaporation"i double
-runoff__rec__elem: runoff__lakeno__val runoff__runoff__val [_remark] _NL
+stress_period_data__runoff__rec__elem: runoff__lakeno__val runoff__runoff__val [_remark] _NL
 runoff__lakeno__val: integer
 runoff__runoff__val: "runoff"i double
-inflow__rec__elem: inflow__lakeno__val inflow__inflow__val [_remark] _NL
+stress_period_data__inflow__rec__elem: inflow__lakeno__val inflow__inflow__val [_remark] _NL
 inflow__lakeno__val: integer
 inflow__inflow__val: "inflow"i double
-withdrawal__rec__elem: withdrawal__lakeno__val withdrawal__withdrawal__val [_remark] _NL
+stress_period_data__withdrawal__rec__elem: withdrawal__lakeno__val withdrawal__withdrawal__val [_remark] _NL
 withdrawal__lakeno__val: integer
 withdrawal__withdrawal__val: "withdrawal"i double
-rate__rec__elem: rate__outletno__val rate__rate__val [_remark] _NL
+stress_period_data__rate__rec__elem: rate__outletno__val rate__rate__val [_remark] _NL
 rate__outletno__val: integer
 rate__rate__val: "rate"i double
-invert__rec__elem: invert__outletno__val invert__invert__val [_remark] _NL
+stress_period_data__invert__rec__elem: invert__outletno__val invert__invert__val [_remark] _NL
 invert__outletno__val: integer
 invert__invert__val: "invert"i double
-width__rec__elem: width__outletno__val width__width__val [_remark] _NL
+stress_period_data__width__rec__elem: width__outletno__val width__width__val [_remark] _NL
 width__outletno__val: integer
 width__width__val: "width"i double
-slope__rec__elem: slope__outletno__val slope__slope__val [_remark] _NL
+stress_period_data__slope__rec__elem: slope__outletno__val slope__slope__val [_remark] _NL
 slope__outletno__val: integer
 slope__slope__val: "slope"i double
-rough__rec__elem: rough__outletno__val rough__rough__val [_remark] _NL
+stress_period_data__rough__rec__elem: rough__outletno__val rough__rough__val [_remark] _NL
 rough__outletno__val: integer
 rough__rough__val: "rough"i double
-auxiliaryrecord__rec__elem: auxiliaryrecord__lakeno__val "auxiliary"i auxiliaryrecord__auxname__val auxiliaryrecord__auxval__val [_remark] _NL
+stress_period_data__auxiliaryrecord__rec__elem: auxiliaryrecord__lakeno__val "auxiliary"i auxiliaryrecord__auxname__val auxiliaryrecord__auxval__val [_remark] _NL
 auxiliaryrecord__lakeno__val: integer
 auxiliaryrecord__auxname__val: word
 auxiliaryrecord__auxval__val: double
-packagedatadata: record+
-connectiondatadata: record+
-tablesdata: record+
-outletsdata: record+
+packagedata__rows: record+
+connectiondata__rows: record+
+tables__rows: record+
+outlets__rows: record+

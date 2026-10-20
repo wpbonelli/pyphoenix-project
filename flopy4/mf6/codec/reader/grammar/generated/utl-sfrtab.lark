@@ -29,7 +29,7 @@ block: dimensions__block | table__block
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 table__block: _BEGIN "table"i [_remark] _NL table__fields _END "table"i
 dimensions__fields: (nrow__val | ncol__val | open_close_redirect _NL)*
-table__fields: (tabledata | open_close_redirect _NL)*
+table__fields: (table__rows | open_close_redirect _NL)*
 nrow__val: "nrow"i integer [_remark] _NL
 ncol__val: "ncol"i integer [_remark] _NL
-tabledata: record+
+table__rows: record+

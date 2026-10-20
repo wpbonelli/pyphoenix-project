@@ -29,7 +29,7 @@ block: options__block | partitions__block
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 partitions__block: _BEGIN "partitions"i [_remark] _NL partitions__fields _END "partitions"i
 options__fields: (print_table__kw | dev_log_mpi__kw | open_close_redirect _NL)*
-partitions__fields: (partitionsdata | open_close_redirect _NL)*
+partitions__fields: (partitions__rows | open_close_redirect _NL)*
 print_table__kw: "print_table"i  [_remark] _NL
 dev_log_mpi__kw: "dev_log_mpi"i  [_remark] _NL
-partitionsdata: record+
+partitions__rows: record+

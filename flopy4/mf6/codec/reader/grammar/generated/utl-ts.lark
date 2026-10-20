@@ -28,16 +28,16 @@ block: attributes__block | timeseries__block
 
 attributes__block: _BEGIN "attributes"i [_remark] _NL attributes__fields _END "attributes"i
 timeseries__block: _BEGIN "timeseries"i [_remark] _NL timeseries__fields _END "timeseries"i
-attributes__fields: (time_series_namerecord__rec | interpolation_methodrecord__rec | interpolation_methodrecord_single__rec | sfacrecord__rec | sfacrecord_single__rec | open_close_redirect _NL)*
-timeseries__fields: (timeseriesdata | open_close_redirect _NL)*
-time_series_namerecord__rec: ("names"i | "name"i) time_series_namerecord__time_series_names__arr [_remark] _NL
+attributes__fields: (time_series_name__rec | interpolation_method__rec | interpolation_methodrecord_single__rec | sfac__rec | sfacrecord_single__rec | open_close_redirect _NL)*
+timeseries__fields: (timeseries__rows | open_close_redirect _NL)*
+time_series_name__rec: ("names"i | "name"i) time_series_namerecord__time_series_names__arr [_remark] _NL
 time_series_namerecord__time_series_names__arr: word+
-interpolation_methodrecord__rec: "methods"i interpolation_methodrecord__interpolation_method__arr [_remark] _NL
+interpolation_method__rec: "methods"i interpolation_methodrecord__interpolation_method__arr [_remark] _NL
 interpolation_methodrecord__interpolation_method__arr: word+
 interpolation_methodrecord_single__rec: "method"i interpolation_methodrecord_single__interpolation_method_single__val [_remark] _NL
 interpolation_methodrecord_single__interpolation_method_single__val: word
-sfacrecord__rec: "sfacs"i sfacrecord__sfacval__arr [_remark] _NL
+sfac__rec: "sfacs"i sfacrecord__sfacval__arr [_remark] _NL
 sfacrecord__sfacval__arr: double+
 sfacrecord_single__rec: "sfac"i sfacrecord_single__sfacval__val [_remark] _NL
 sfacrecord_single__sfacval__val: double
-timeseriesdata: record+
+timeseries__rows: record+

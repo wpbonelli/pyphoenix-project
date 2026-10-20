@@ -29,18 +29,18 @@ block: options__block | period__block
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 period__block: _BEGIN "period"i block_index [_remark] _NL period__fields _END "period"i [block_index]
 %import typed.block_index -> block_index
-options__fields: (budget_filerecord__rec | budgetcsv_filerecord__rec | concentration_filerecord__rec | concentrationprintrecord__rec | open_close_redirect _NL)*
-period__fields: (saverecord__rec__elem | printrecord__rec__elem | open_close_redirect _NL)*
-budget_filerecord__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
+options__fields: (budget_file__rec | budgetcsv_file__rec | concentration_file__rec | concentrationprint__rec | open_close_redirect _NL)*
+period__fields: (stress_period_data__saverecord__rec__elem | stress_period_data__printrecord__rec__elem | open_close_redirect _NL)*
+budget_file__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
 budget_filerecord__budgetfile__val: "fileout"i word
-budgetcsv_filerecord__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
+budgetcsv_file__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
 budgetcsv_filerecord__budgetcsvfile__val: "fileout"i word
-concentration_filerecord__rec: "concentration"i concentration_filerecord__concentrationfile__val [_remark] _NL
+concentration_file__rec: "concentration"i concentration_filerecord__concentrationfile__val [_remark] _NL
 concentration_filerecord__concentrationfile__val: "fileout"i word
-concentrationprintrecord__rec: "concentration"i "print_format"i formatrecord__rec [_remark] _NL
-saverecord__rec__elem: "save"i saverecord__rtype__val ocsetting__union [_remark] _NL
+concentrationprint__rec: "concentration"i "print_format"i formatrecord__rec [_remark] _NL
+stress_period_data__saverecord__rec__elem: "save"i saverecord__rtype__val ocsetting__union [_remark] _NL
 saverecord__rtype__val: word
-printrecord__rec__elem: "print"i printrecord__rtype__val ocsetting__union [_remark] _NL
+stress_period_data__printrecord__rec__elem: "print"i printrecord__rtype__val ocsetting__union [_remark] _NL
 printrecord__rtype__val: word
 formatrecord__rec: [formatrecord__columns__val] [formatrecord__width__val] [formatrecord__digits__val] formatrecord__format__val
 formatrecord__columns__val: "columns"i integer

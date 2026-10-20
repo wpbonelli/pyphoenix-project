@@ -30,9 +30,9 @@ options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 sources__block: _BEGIN "sources"i [_remark] _NL sources__fields _END "sources"i
 fileinput__block: _BEGIN "fileinput"i [_remark] _NL fileinput__fields _END "fileinput"i
 options__fields: (print_flows__kw | save_flows__kw | open_close_redirect _NL)*
-sources__fields: (sourcesdata | open_close_redirect _NL)*
-fileinput__fields: (fileinputdata | open_close_redirect _NL)*
+sources__fields: (sources__rows | open_close_redirect _NL)*
+fileinput__fields: (fileinput__rows | open_close_redirect _NL)*
 print_flows__kw: "print_flows"i  [_remark] _NL
 save_flows__kw: "save_flows"i  [_remark] _NL
-sourcesdata: record+
-fileinputdata: record+
+sources__rows: record+
+fileinput__rows: record+

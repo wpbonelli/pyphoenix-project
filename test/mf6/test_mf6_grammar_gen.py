@@ -234,10 +234,10 @@ def test_make_grammar_with_period_block(tmp_path):
     period_fields_line = [l for l in lines if "period__fields:" in l][0]
     assert "stress_period_data" in period_fields_line
 
-    # stress_period_data should accept numbers and strings, one row per line
-    assert "stress_period_data:" in content
-    stress_period_data_line = [l for l in lines if l.strip().startswith("stress_period_data:")][0]
-    assert "record" in stress_period_data_line
+    # stress_period_data's rows should accept numbers and strings, one per line
+    assert "stress_period_data__rows:" in content
+    rows_line = [l for l in lines if l.strip().startswith("stress_period_data__rows:")][0]
+    assert "record" in rows_line
 
 
 def test_make_grammar_with_named_subfields(tmp_path):
@@ -266,12 +266,11 @@ def test_make_grammar_with_named_subfields(tmp_path):
     grammar_file = tmp_path / "gwf-rch.lark"
     content = grammar_file.read_text()
 
-    # stress_period_data should be a generic recarray accepting numbers/strings per line
-    assert "stress_period_data" in content
+    # stress_period_data's rows should accept numbers/strings per line
     lines = content.split("\n")
-    stress_period_data_line = [l for l in lines if l.strip().startswith("stress_period_data:")][0]
+    rows_line = [l for l in lines if l.strip().startswith("stress_period_data__rows:")][0]
     # Should accept both numbers and simple strings
-    assert "record" in stress_period_data_line
+    assert "record" in rows_line
 
 
 def test_make_grammar_with_oc_style_records(tmp_path):
@@ -317,8 +316,10 @@ def test_make_grammar_with_oc_style_records(tmp_path):
     content = grammar_file.read_text()
 
     # Should generate a record rule with keyword, word (not string), and
-    # union, each part a rule of its own
-    assert 'saverecord__rec__elem: "save"i saverecord__rtype__val ocsetting__union' in content
+    # union, each part a rule of its own; an element of the output list
+    assert (
+        'output__saverecord__rec__elem: "save"i saverecord__rtype__val ocsetting__union' in content
+    )
     assert "saverecord__rtype__val: word" in content
 
     # Should generate the union rule for ocsetting
@@ -467,3 +468,71 @@ def test_make_grammar_names_tagged_valid_strings(tmp_path):
     assert '"averaging"i (' in content
     assert '"storage"i' not in content
     assert '"steady-state"i' in content
+
+
+def test_make_grammar_names_rules_by_attribute(tmp_path):
+    """A block field's rule is named by the class attribute holding it, as
+    __init__ takes it (no leading underscore); a record's parts and a
+    union list's arms keep their DFN names."""
+    dfn = Package(
+        name="gwf-test",
+        blocks={
+            "options": Block(
+                name="options",
+                fields={
+                    "continue": Keyword(name="continue"),
+                    "head_filerecord": Record(
+                        name="head_filerecord",
+                        fields={
+                            "head": Keyword(name="head"),
+                            "headfile": File(name="headfile", mode_keyword=True, direction="out"),
+                        },
+                    ),
+                },
+            ),
+            "period": Block(
+                name="period",
+                header=BlockHeader(field=Integer(name="iper"), fill_forward=True),
+                fields={
+                    "output": List(
+                        name="output",
+                        item=Union(
+                            name="output",
+                            arms={
+                                "saverecord": Record(
+                                    name="saverecord",
+                                    fields={
+                                        "save": Keyword(name="save"),
+                                        "rtype": String(name="rtype", tagged=False),
+                                    },
+                                ),
+                            },
+                        ),
+                    )
+                },
+            ),
+        },
+    )
+    names = {
+        ("options", "continue"): "continue_",
+        ("options", "head_filerecord"): "head_file",
+        ("period", "output"): "_stress_period_data",
+    }
+    make_grammar(dfn, tmp_path, names)
+    content = (tmp_path / "gwf-test.lark").read_text()
+    assert "options__fields: (continue___kw | head_file__rec | open_close_redirect _NL)*" in content
+    assert 'head_file__rec: "head"i head_filerecord__headfile__val' in content
+    assert "stress_period_data__saverecord__rec__elem:" in content
+
+
+def test_parse_rule_path():
+    from flopy4.mf6.codec.reader.grammar.names import parse_rule_path, rule_name
+
+    assert parse_rule_path("continue___kw") == (("continue_",), frozenset({"kw"}))
+    assert parse_rule_path("stress_period_data__saverecord__rec__elem") == (
+        ("stress_period_data", "saverecord"),
+        frozenset({"rec", "elem"}),
+    )
+    assert parse_rule_path(rule_name("a_", "b", tags=("val",))) == (("a_", "b"), frozenset({"val"}))
+    with pytest.raises(ValueError):
+        rule_name("_stress_period_data", tags=("rows",))

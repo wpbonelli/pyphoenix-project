@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from os import PathLike
 from pathlib import Path
 
@@ -49,18 +50,29 @@ def _field_tag(field: InputField) -> str:
     return "val"
 
 
-def _to_context(blocks: dict[str, Block]) -> tuple[list[dict], dict[str, object]]:
-    """Build block and field context"""
+def _to_context(
+    blocks: dict[str, Block], names: Mapping[tuple[str, str], str] | None = None
+) -> tuple[list[dict], dict[str, object]]:
+    """Build block and field context. A block's field's rule is named by
+    its class attribute in `names` (see `make.attr_names`), as ``__init__``
+    takes it (without a leading underscore), else by its DFN name."""
+    names = names or {}
     all_blocks = []
     all_fields = {}
 
     for block_name, block in blocks.items():
+
+        def attr(field_name: str) -> str:
+            return names.get((block_name, field_name), field_name).lstrip("_")
+
         header = block.header.field if block.header is not None else None
         has_index = header is not None and not isinstance(header, Record)
         if isinstance(header, Record):
             all_fields[header.name] = header
         recarrays = []
         standalone_fields = []
+        # each field's rule's name path (see names.py)
+        paths: dict[str, tuple[str, ...]] = {}
         # a list's element lines, each read into the list (see names.py)
         elements = set()
         # tagged `valid` scalars, whose name precedes their value. The union
@@ -81,25 +93,27 @@ def _to_context(blocks: dict[str, Block]) -> tuple[list[dict], dict[str, object]
                             continue
                         all_fields[arm_name] = arm
                         standalone_fields.append(arm_name)
+                        paths[arm_name] = (attr(field_name), arm_name)
                         elements.add(arm_name)
                 elif field.tagged:
                     all_fields[field_name] = field.item
                     standalone_fields.append(field_name)
+                    paths[field_name] = (attr(field_name),)
                     elements.add(field_name)
                 else:
-                    recarray_name = filters.get_recarray_name(block_name)
-                    recarrays.append({"name": recarray_name})
+                    recarrays.append({"name": rule_name(attr(field_name), tags=("rows",))})
                     all_fields[field_name] = field
                 continue
             all_fields[field_name] = field
             standalone_fields.append(field_name)
+            paths[field_name] = (attr(field_name),)
 
         bare_array = any(
             isinstance(all_fields[n], Array) and not all_fields[n].tagged for n in standalone_fields
         )
         rules = {
             name: rule_name(
-                name,
+                *paths[name],
                 tags=(_field_tag(all_fields[name]), *(("elem",) if name in elements else ())),
             )
             for name in standalone_fields
@@ -122,21 +136,30 @@ def _to_context(blocks: dict[str, Block]) -> tuple[list[dict], dict[str, object]
     return all_blocks, all_fields
 
 
-def make_grammar(component: Component, outdir: PathLike):
-    """Generate a Lark grammar file for a single component."""
+def make_grammar(
+    component: Component,
+    outdir: PathLike,
+    names: Mapping[tuple[str, str], str] | None = None,
+):
+    """Generate a Lark grammar file for a single component, its block
+    fields' rules named by their class attributes in `names`, by (block,
+    field name), else by their DFN names."""
     outdir = Path(outdir).expanduser().resolve().absolute()
     env = _get_env()
     template = env.get_template("component.lark.jinja")
     target_path = outdir / f"{component.name}.lark"
-    blocks, fields = _to_context(component.blocks or {})
+    blocks, fields = _to_context(component.blocks or {}, names)
     text = template.render(name=component.name, blocks=blocks, fields=fields)
     # one trailing newline, however the template's last rule ends
     target_path.write_text(text.rstrip("\n") + "\n")
 
 
 def make_grammars(dfns: dict[str, Component], outdir: PathLike):
-    """Generate grammars for all components."""
+    """Generate grammars for all components, their block fields' rules
+    named by the class attributes codegen makes of them."""
+    from flopy4.mf6.utils.codegen.make import attr_names
+
     outdir = Path(outdir).expanduser().resolve().absolute()
     outdir.mkdir(parents=True, exist_ok=True)
     for component in dfns.values():
-        make_grammar(component, outdir)
+        make_grammar(component, outdir, attr_names(component, dfns))

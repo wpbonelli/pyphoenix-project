@@ -6,13 +6,17 @@ import numpy as np
 import xarray as xr
 from lark import Token, Transformer
 
-from flopy4.mf6.codec.reader.grammar.names import parse_rule_name
+from flopy4.mf6.codec.reader.grammar.names import parse_rule_path
 from flopy4.mf6.codec.reader.transformer.rows import NumberRows, number_values
 from flopy4.utils import parse_number
 
 
 class _Element(tuple):
     """A (name, value) for one element of a list, which collects them."""
+
+
+class _Rows(tuple):
+    """A (name, rows) for some of a list's rows, which collects them."""
 
 
 def _is_numbers(item: Any) -> bool:
@@ -35,13 +39,6 @@ def record_rows(text: str) -> list[list[Any]]:
         if (tokens := line.split()) and tokens[0][0] not in "#!":
             rows.append([parse_number(t) if _NUMBER.fullmatch(t) else t for t in tokens])
     return rows
-
-
-def _is_rows(item: Any) -> bool:
-    """Whether a rule's result is a list's rows (`record`s)."""
-    return isinstance(item, NumberRows) or (
-        isinstance(item, list) and all(isinstance(r, (list, NumberRows)) for r in item)
-    )
 
 
 def _rows(parts: list[Any]) -> list | NumberRows:
@@ -270,10 +267,6 @@ class TypedTransformer(Transformer):
         """Extract block index (e.g., period number, or utl-tas's time)."""
         return parse_number(str(items[0]))
 
-    def stress_period_data(self, items: list[Any]) -> list | NumberRows:
-        """A period block's list rows."""
-        return _rows(items)
-
     def record(self, items: list[Any]) -> list[Any] | NumberRows:
         """A list row, or a NUMBERS token's rows (a NumberRows) or a RECORDS token's.
 
@@ -350,31 +343,28 @@ class TypedTransformer(Transformer):
     @staticmethod
     def _fields(children: list[Any]) -> dict:
         """A block's contents, by field name. A list's elements are always a
-        list, anything else one value."""
-        if children and not any(isinstance(c, tuple) for c in children):
-            # list data (e.g. stress_period_data records), not named fields
-            if all(_is_rows(c) for c in children):
-                return {"stress_period_data": _rows(children)}
-            if len(children) == 1 and isinstance(children[0], list):
-                return {"stress_period_data": children[0]}
-            return {"stress_period_data": children}
+        list, its rows a list of rows (or a NumberRows), anything else one
+        value."""
         fields: dict = {}
-        rows: list = []
+        rows: dict[str, list] = {}
         for item in children:
-            if isinstance(item, _Element):
+            if isinstance(item, _Rows):
+                # the rows of a list, maybe in several runs (sim-nam's
+                # SOLUTIONGROUP: MXITER, then its solutions' rows)
+                rows.setdefault(item[0], []).append(item[1])
+            elif isinstance(item, _Element):
                 fields.setdefault(item[0].lower(), []).append(item[1])
             elif isinstance(item, tuple):
                 fields[item[0].lower()] = item[1]
-            elif _is_rows(item):
-                # a list sharing its block with other fields (sim-nam's
-                # SOLUTIONGROUP: MXITER, then its solutions' rows)
-                rows.append(item)
-        if rows:
-            fields["stress_period_data"] = _rows(rows)
+        for name, parts in rows.items():
+            fields[name] = _rows(parts)
         return fields
 
     def __default__(self, data, children, meta):
-        name, tags = parse_rule_name(str(data))
+        path, tags = parse_rule_path(str(data))
+        name = path[-1]
+        if "rows" in tags:
+            return _Rows((name, _rows(children)))
         if "block" in tags:
             if (block := self._block(name, children)) is not None:
                 return block
@@ -402,12 +392,13 @@ class TypedTransformer(Transformer):
                 value = arm
         elif "val" in tags:
             value = children[0] if len(children) == 1 else children
-        elif not tags and children and all(isinstance(c, (list, NumberRows)) for c in children):
-            # a list's rows, e.g. `packagedatadata: record+`
-            return _rows(children)
         else:
             return super().__default__(data, children, meta)
-        return _Element((name, value)) if "elem" in tags else (name, value)
+        if "elem" in tags:
+            # an element of the list the path begins with, a union's keyed
+            # by its arm (see grammar/names.py)
+            return _Element((path[0], value if len(path) == 1 else {path[1]: value}))
+        return name, value
 
 
 _TYPED_TRANSFORMER = TypedTransformer()

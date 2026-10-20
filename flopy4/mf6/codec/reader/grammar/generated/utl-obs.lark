@@ -31,7 +31,7 @@ continuous__block: _BEGIN "continuous"i output__hdr [_remark] _NL continuous__fi
 !output__hdr: "fileout"i word [output__binary__kw]
 output__binary__kw: "binary"i
 options__fields: (digits__val | print_input__kw | open_close_redirect _NL)*
-continuous__fields: (continuousdata | open_close_redirect _NL)*
+continuous__fields: (continuous__rows | open_close_redirect _NL)*
 digits__val: "digits"i integer [_remark] _NL
 print_input__kw: "print_input"i  [_remark] _NL
-continuousdata: record+
+continuous__rows: record+

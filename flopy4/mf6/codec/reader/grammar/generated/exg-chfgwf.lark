@@ -29,13 +29,13 @@ block: options__block | dimensions__block | exchangedata__block
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 exchangedata__block: _BEGIN "exchangedata"i [_remark] _NL exchangedata__fields _END "exchangedata"i
-options__fields: (print_input__kw | print_flows__kw | fixed_conductance__kw | obs_filerecord__rec | open_close_redirect _NL)*
+options__fields: (print_input__kw | print_flows__kw | fixed_conductance__kw | obs__rec | open_close_redirect _NL)*
 dimensions__fields: (nexg__val | open_close_redirect _NL)*
-exchangedata__fields: (exchangedatadata | open_close_redirect _NL)*
+exchangedata__fields: (exchangedata__rows | open_close_redirect _NL)*
 print_input__kw: "print_input"i  [_remark] _NL
 print_flows__kw: "print_flows"i  [_remark] _NL
 fixed_conductance__kw: "fixed_conductance"i  [_remark] _NL
-obs_filerecord__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
+obs__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
 obs_filerecord__obs6_filename__val: "filein"i word
 nexg__val: "nexg"i integer [_remark] _NL
-exchangedatadata: record+
+exchangedata__rows: record+

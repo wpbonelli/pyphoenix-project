@@ -31,18 +31,18 @@ dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "d
 packages__block: _BEGIN "packages"i [_remark] _NL packages__fields _END "packages"i
 period__block: _BEGIN "period"i block_index [_remark] _NL period__fields _END "period"i [block_index]
 %import typed.block_index -> block_index
-options__fields: (print_input__kw | print_flows__kw | modelnames__kw | budget_filerecord__rec | budgetcsv_filerecord__rec | open_close_redirect _NL)*
+options__fields: (print_input__kw | print_flows__kw | modelnames__kw | budget_file__rec | budgetcsv_file__rec | open_close_redirect _NL)*
 dimensions__fields: (maxmvr__val | maxpackages__val | open_close_redirect _NL)*
-packages__fields: (packagesdata | open_close_redirect _NL)*
-period__fields: (stress_period_data | open_close_redirect _NL)*
+packages__fields: (packages__rows | open_close_redirect _NL)*
+period__fields: (stress_period_data__rows | open_close_redirect _NL)*
 print_input__kw: "print_input"i  [_remark] _NL
 print_flows__kw: "print_flows"i  [_remark] _NL
 modelnames__kw: "modelnames"i  [_remark] _NL
-budget_filerecord__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
+budget_file__rec: "budget"i budget_filerecord__budgetfile__val [_remark] _NL
 budget_filerecord__budgetfile__val: "fileout"i word
-budgetcsv_filerecord__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
+budgetcsv_file__rec: "budgetcsv"i budgetcsv_filerecord__budgetcsvfile__val [_remark] _NL
 budgetcsv_filerecord__budgetcsvfile__val: "fileout"i word
 maxmvr__val: "maxmvr"i integer [_remark] _NL
 maxpackages__val: "maxpackages"i integer [_remark] _NL
-packagesdata: record+
-stress_period_data: record+
+packages__rows: record+
+stress_period_data__rows: record+

@@ -29,12 +29,12 @@ block: options__block | dimensions__block | griddata__block
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 griddata__block: _BEGIN "griddata"i [_remark] _NL griddata__fields _END "griddata"i
-options__fields: (length_units__val | nogrb__kw | grb_filerecord__rec | xorigin__val | yorigin__val | angrot__val | export_array_ascii__kw | crs__val | open_close_redirect _NL)*
+options__fields: (length_units__val | nogrb__kw | grb_file__rec | xorigin__val | yorigin__val | angrot__val | export_array_ascii__kw | crs__val | open_close_redirect _NL)*
 dimensions__fields: (nrow__val | ncol__val | open_close_redirect _NL)*
 griddata__fields: (delr__val | delc__val | bottom__val | idomain__val | open_close_redirect _NL)*
 length_units__val: "length_units"i string
 nogrb__kw: "nogrb"i  [_remark] _NL
-grb_filerecord__rec: "grb6"i grb_filerecord__grb6_filename__val [_remark] _NL
+grb_file__rec: "grb6"i grb_filerecord__grb6_filename__val [_remark] _NL
 grb_filerecord__grb6_filename__val: "fileout"i word
 xorigin__val: "xorigin"i double [_remark] _NL
 yorigin__val: "yorigin"i double [_remark] _NL
