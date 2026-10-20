@@ -13,9 +13,10 @@ Benchmarks, each parametrized by library:
   materialize one mid-size model (`COLD_MODEL`). The child's own
   import/load/materialize split goes in `extra_info`.
 
-There's no ``flopy4-typed`` library yet: typed parser output isn't wired
-into structuring, so a full typed load doesn't exist. Add it to `_ops.py`
-and `LIBRARIES` when it does.
+`load` takes ``flopy4-typed`` (`_ops.TYPED`), flopy4 with the typed
+loader, but it isn't in `LIBRARIES` while the typed loader covers no
+component (see `flopy4.mf6.converter.ingress.typed`). Add it there, and to
+`report.py`'s columns, once it does.
 """
 
 import json

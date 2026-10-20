@@ -599,18 +599,19 @@ def _param(model_name: str):
 
 @pytest.mark.skipif(not ALL_MODELS, reason="modflow-devtools model registry unavailable")
 @pytest.mark.parametrize("model_name", [_param(m) for m in ALL_MODELS])
-def test_load_simulation(tmp_path, model_name, snapshot):
+def test_load_simulation(tmp_path, model_name, snapshot, loader):
     """`Simulation.load()` should parse, structure, and resolve bindings for
     every package/model/exchange/solution referenced from `mfsim.nam`,
     without raising. For a known-passing model, its package files should
     also parse under their typed grammars (see `_check_typed_grammar`),
-    and its loaded values should match its snapshot (see `_load_digest`)."""
+    and its loaded values should match its snapshot (see `_load_digest`),
+    whichever loader reads them (``--loader``)."""
     workspace = copy_to(tmp_path, model_name, verbose=False)
     sim_path = workspace / "mfsim.nam"
     if not sim_path.exists():
         pytest.skip(f"no mfsim.nam in {model_name}")
 
-    sim = Simulation.load(sim_path)
+    sim = Simulation.load(sim_path, loader=loader)
 
     assert isinstance(sim, Simulation)
     assert sim.tdis is not None

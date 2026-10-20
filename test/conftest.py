@@ -45,6 +45,32 @@ def _get_dfn_path(tmp_path_factory):
     return dfn_path
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--loader",
+        choices=["basic", "typed"],
+        default="basic",
+        help="How the round-trip and load-all tests read MF6 files (see "
+        "LoadContext.loader). The typed loader reads the components it "
+        "covers and leaves the rest to the basic one. Default: basic.",
+    )
+
+
+def pytest_report_header(config):
+    loader = config.getoption("--loader")
+    if loader == "typed":
+        from flopy4.mf6.converter.ingress.typed import COVERED
+
+        return f"loader: typed, for {', '.join(sorted(COVERED)) or 'no components yet'}"
+    return f"loader: {loader}"
+
+
+@pytest.fixture(scope="session")
+def loader(request):
+    """The loader given with ``--loader``."""
+    return request.config.getoption("--loader")
+
+
 @pytest.fixture(scope="session")
 def dfn_path(tmp_path_factory):
     """Get the path to MF6 DFN files."""

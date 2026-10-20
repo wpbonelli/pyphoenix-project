@@ -21,7 +21,6 @@ from flopy4.mf6 import solution, utils
 from flopy4.mf6._sync import SyncError, SyncResult, sync
 from flopy4.mf6._types import TimeArraySeriesRef, TimeSeriesRef
 from flopy4.mf6.codec import dump as dump_mf6
-from flopy4.mf6.codec import load as load_mf6
 from flopy4.mf6.component import Component
 from flopy4.mf6.context import Context
 from flopy4.mf6.converter import structure, unstructure
@@ -133,14 +132,12 @@ class WriteError(Exception):
 def _load_mf6(
     cls, path: Path, name: "str | None" = None, context: LoadContext | None = None
 ) -> Component:
-    from flopy4.mf6.converter.ingress.structure import structure_component
+    from flopy4.mf6.converter.ingress.structure import read_component
 
     path = Path(path)
     context = context or LoadContext(workspace=path.parent)
     assert context.workspace is not None
-    with open(path, "r") as fp:
-        raw = load_mf6(fp)
-    instance = structure_component(raw, cls, context=context, name=name)
+    instance = read_component(path, cls, context=context, name=name)
     if isinstance(instance, Context):
         instance.workspace = context.workspace
     # The file's path as an input file would name it, relative to the

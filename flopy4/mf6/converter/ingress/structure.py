@@ -846,6 +846,20 @@ def _group_repeating_rows(
     return grouped
 
 
+def read_component(path: Path, cls: type, *, context: LoadContext, name: str | None = None) -> Any:
+    """Read the MF6 input file ``path`` into a ``cls``, with the context's
+    loader (see ``LoadContext.loader``)."""
+    from flopy4.mf6.codec.reader import load, loads_typed
+    from flopy4.mf6.converter.ingress import typed
+
+    with open(path) as fp:
+        if context.loader == "typed" and typed.covers(cls):
+            parsed = loads_typed(fp.read(), cls.dfn_name)
+            return typed.structure_typed(parsed, cls, context=context, name=name)
+        raw = load(fp)
+    return structure_component(raw, cls, context=context, name=name)
+
+
 def structure_component(
     raw: dict,
     cls: type,

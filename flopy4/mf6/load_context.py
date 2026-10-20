@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import attrs
 
@@ -9,6 +9,8 @@ from flopy4.mf6.item import Item, is_cellid, ncelldim_from_dims
 
 if TYPE_CHECKING:
     from flopy4.mf6.model import Model
+
+Loader = Literal["basic", "typed"]
 
 
 @attrs.frozen
@@ -31,6 +33,13 @@ class LoadContext:
     exchange: "tuple[Model, Model] | None" = None
     """The models an exchange connects, whose grids give its cellids'
     widths. Inherited by the exchange's children (GNC, MVR, OBS)."""
+
+    loader: Loader = "basic"
+    """How files are read: with the basic grammar and the converter
+    (``"basic"``), or with each component's own grammar (``"typed"``),
+    which falls back to the basic loader for components it doesn't
+    cover yet (see ``flopy4.mf6.converter.ingress.typed``). The two are
+    kept side by side to compare them."""
 
     def resolve(self, path: str | PathLike) -> Path:
         """A path as written in an input file, resolved against the

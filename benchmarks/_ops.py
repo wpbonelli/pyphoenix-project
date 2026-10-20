@@ -34,6 +34,10 @@ from pathlib import Path
 FLOPY3_OPTIONS = {"verbosity_level": 0, "lazy_io": False, "verify_data": False, "use_pandas": True}
 
 LIBRARIES = ("flopy3", "flopy4")
+# flopy4 with the typed loader (see LoadContext.loader), which `load` takes
+# as a library. Not in LIBRARIES while it covers no component: until then
+# it's the basic loader, measured twice.
+TYPED = "flopy4-typed"
 
 
 def silence() -> None:
@@ -69,10 +73,10 @@ def load_flopy3(ws: Path, load_only: list[str] | None = None):
     return flopy.mf6.MFSimulation.load(sim_ws=str(ws), load_only=load_only, **FLOPY3_OPTIONS)
 
 
-def load_flopy4(ws: Path):
+def load_flopy4(ws: Path, loader: str = "basic"):
     from flopy4.mf6.simulation import Simulation
 
-    return Simulation.load(Path(ws) / "mfsim.nam")
+    return Simulation.load(Path(ws) / "mfsim.nam", loader=loader)
 
 
 def package_files(sim, ws: Path) -> list[tuple[Path, str]]:
@@ -247,6 +251,8 @@ def write_flopy4(sim, out: Path) -> None:
 def load(library: str, ws: Path, load_only: list[str] | None = None):
     if library == "flopy3":
         return load_flopy3(ws, load_only)
+    if library == TYPED:
+        return load_flopy4(ws, loader="typed")
     return load_flopy4(ws)
 
 

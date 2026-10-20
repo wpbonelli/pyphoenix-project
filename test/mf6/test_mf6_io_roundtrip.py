@@ -140,15 +140,15 @@ def _diff_components(a, b, path, out):
             _diff_components(ca[k], cb[k], f"{path}/{k}", out)
 
 
-def _roundtrip(tmp_path, model_name):
+def _roundtrip(tmp_path, model_name, loader="basic"):
     """Load a corpus model, write it to a fresh workspace, and reload it."""
     workspace = copy_to(tmp_path / "source", model_name, verbose=False)
-    sim = Simulation.load(workspace / "mfsim.nam")
+    sim = Simulation.load(workspace / "mfsim.nam", loader=loader)
     out = tmp_path / "written"
     out.mkdir()
     sim.workspace = out
     sim.write()
-    return sim, Simulation.load(out / "mfsim.nam"), out
+    return sim, Simulation.load(out / "mfsim.nam", loader=loader), out
 
 
 # a run of more numeric lines than this, or a line longer than this many
@@ -210,10 +210,11 @@ def _written_digest(workspace: Path) -> dict[str, list[str]]:
 
 
 @pytest.mark.parametrize("model_name", [_param(m) for m in MODELS])
-def test_roundtrip(tmp_path, model_name, snapshot):
+def test_roundtrip(tmp_path, model_name, snapshot, loader):
     """A model's written files reload to the same values it loaded with,
-    and match its snapshot (see `_written_digest`)."""
-    loaded, reloaded, out = _roundtrip(tmp_path, model_name)
+    and match its snapshot (see `_written_digest`), whichever loader reads
+    them (``--loader``)."""
+    loaded, reloaded, out = _roundtrip(tmp_path, model_name, loader)
     diffs = []
     _diff_components(loaded, reloaded, "sim", diffs)
     assert not diffs, "\n".join(diffs)

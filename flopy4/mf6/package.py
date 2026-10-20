@@ -32,7 +32,7 @@ from flopy4.mf6.item import (
     union_value,
 )
 from flopy4.mf6.item_table import ItemTable
-from flopy4.mf6.load_context import LoadContext
+from flopy4.mf6.load_context import LoadContext, Loader
 from flopy4.mf6.period_arrays import (
     dense,
     is_cleared,
@@ -724,6 +724,7 @@ class Package(Component, ABC):
         name: "str | None" = None,
         *,
         context: LoadContext | None = None,
+        loader: "Loader | None" = None,
     ) -> "Package":
         """Load from an MF6 text input file.
 
@@ -744,17 +745,19 @@ class Package(Component, ABC):
             By default, relative paths in the file resolve against its
             own directory. To load a file from a simulation on its own,
             give the simulation directory as the context's workspace.
+        loader :
+            How to read the file (see ``LoadContext.loader``). Overrides
+            the context's.
         """
-        from flopy4.mf6.codec.reader import load as _codec_load
-        from flopy4.mf6.converter.ingress.structure import structure_component
+        from flopy4.mf6.converter.ingress.structure import read_component
 
         path = Path(path)
         context = context or LoadContext(workspace=path.parent)
         if dims:
             context = attrs.evolve(context, dims=dims)
-        with open(path) as _f:
-            _raw = _codec_load(_f)
-        _pkg = structure_component(_raw, cls, context=context, name=name)
+        if loader:
+            context = attrs.evolve(context, loader=loader)
+        _pkg = read_component(path, cls, context=context, name=name)
 
         # Standalone packages (not attached to a parent model) resolve
         # dimensions from the ones given, so to_xarray()/to_dataarray() work.

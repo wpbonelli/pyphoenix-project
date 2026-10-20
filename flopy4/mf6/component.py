@@ -20,7 +20,7 @@ from flopy4.uio import IO, Loader, Writer
 from flopy4.utils import empty_if_none
 
 if TYPE_CHECKING:
-    from flopy4.mf6.load_context import LoadContext
+    from flopy4.mf6.load_context import LoadContext, Loader
 
 FNAMES: "dict[str, type[Component]]" = {}
 """MF6 component name (e.g. 'gwf-dis') -> component class."""
@@ -791,6 +791,7 @@ class Component(DimensionResolverMixin, ABC, MutableMapping, metaclass=LegacyKwa
         name: "str | None" = None,
         *,
         context: "LoadContext | None" = None,
+        loader: "Loader | None" = None,
     ) -> "Component":
         """Load a component from a file.
 
@@ -800,8 +801,16 @@ class Component(DimensionResolverMixin, ABC, MutableMapping, metaclass=LegacyKwa
         `context` says where the file sits in the simulation (see
         `LoadContext`). By default, relative paths in it resolve against
         its own directory; to load a model on its own, give the
-        simulation directory as the context's workspace.
+        simulation directory as the context's workspace. `loader` says
+        how to read MF6 files, it and its children's (see
+        `LoadContext.loader`), overriding the context's.
         """
+        if loader:
+            from flopy4.mf6.load_context import LoadContext
+
+            context = attrs.evolve(
+                context or LoadContext(workspace=Path(path).parent), loader=loader
+            )
         return cls._load(path, format=format, name=name, context=context)
 
     def write(self, format: str = MF6, context: Optional[WriteContext] = None) -> None:

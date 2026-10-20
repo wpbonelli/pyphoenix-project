@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **prerequisites done; Phase A1 to redo** (see "Phases"). Written
+Status: **S1 and A1 done; A2 and B1 next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -410,7 +410,24 @@ them green for the typed loader too, for the components it covers.
 
 ### Shared
 
-S1. **Loader switch and name mapping.**
+S1. **Loader switch and name mapping.** Done:
+   - `LoadContext.loader` (`"basic"` or `"typed"`), which children's
+     contexts inherit, and `load(..., loader=...)` on `Component` and
+     `Package`. `read_component` (in `structure.py`) sends a file to
+     `converter/ingress/typed.py` when the typed loader covers its
+     component (`typed.COVERED`, empty so far), else to the basic one.
+   - The tests take the loader from a `--loader` option rather than a
+     parameter, so a typed run keeps the test ids, and with them the
+     snapshots. The report header lists the components the typed loader
+     covered. The benchmarks' `load` takes `flopy4-typed`; it joins
+     `LIBRARIES` (and `report.py`'s columns) once it covers a component.
+   - Codegen records the attribute it names for each DFN field
+     (`make.attr_names`, `ComponentSpec.attr_names`), and the runtime asks
+     it for the stored DFNs (`spec.attr_names(cls)`), so there's one rule.
+     Every class attribute is some DFN field's, except a model's package
+     slots, which all come from the name file's package list.
+
+   As planned:
    - A way to choose the loader per load (e.g. `load(..., loader="basic" |
      "typed")`), with basic the default. The round-trip suite, the load
      snapshots and the benchmarks take it as a parameter, so each loader
@@ -424,7 +441,18 @@ S1. **Loader switch and name mapping.**
 
 ### Track A: basic loader, DFN-driven converter
 
-A1. **Stored DFNs and a runtime accessor.** Sync stores the DFNs again
+A1. **Stored DFNs and a runtime accessor.** Done: `flopy4/mf6/dfns`,
+   `spec.dfn(cls)`, `spec.block_keys(cls, block)` (fields by leading
+   keyword, by dynamic key path, and the untagged field) and
+   `spec.following_tags(f)` for keywords two fields share; the devtools
+   private helpers are wrapped there. Loading the 129 stored DFNs takes
+   0.16 s, once per process. The stored DFNs are the 2026-10-12 nightly's,
+   which regenerate every checked-in class and grammar unchanged (the
+   contract's commit `203d72f0` isn't in a local checkout);
+   `test_installed_dfns_match_classes` keeps it so. The first attempt was
+   dropped.
+
+   As planned: sync stores the DFNs again
    (restoring `_store_dfns`, dropped in #455), and `spec.dfn(cls)` returns
    a class's DFN `Component`. On top of it, a cached per-class lookup of
    each block's header, untagged attribute, row keys and dynamic keys,
@@ -434,17 +462,12 @@ A1. **Stored DFNs and a runtime accessor.** Sync stores the DFNs again
    not the ones CI downloads, so DFN drift on modflow6 `develop` doesn't
    affect them. No converter changes yet.
 
-   This replaces a first attempt (local commit `c4a1d7a8`) that had
-   codegen emit a `BlockSpec` per block onto each class and rebuilt the
-   row keys at runtime from the classes' Python types. That restated the
-   DFN in a vocabulary of its own (`untagged`, `binding`, header type
-   names) and needed a ranking to settle key clashes that the DFN either
-   doesn't have or settles with the second token. Drop it.
-
-   The checked-in classes' `_contract.py` records DFN commit `203d72f0`.
-   Store the DFNs from that commit, and check that regenerating from them
-   reproduces the checked-in classes; if it doesn't, re-sync first, as its
-   own change.
+   The first attempt had codegen emit a `BlockSpec` per block onto each
+   class and rebuilt the row keys at runtime from the classes' Python
+   types. That restated the DFN in a vocabulary of its own (`untagged`,
+   `binding`, header type names) and needed a ranking to settle key
+   clashes that the DFN either doesn't have or settles with the second
+   token.
 A2. **Value parsers.** Build one grid-array parser driven by shape,
    replacing `_parse_array_block`, `_parse_readarray_period_block` and the
    Pass 3c control-record call. Pull the keyed-row, record and list value
