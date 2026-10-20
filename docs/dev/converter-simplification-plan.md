@@ -1,10 +1,11 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **prerequisites in progress** (see "Before Phase 1"). Written
+Status: **prerequisites done; Phase A1 to redo** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
-onto `develop` (`916c2f8b`). Done
-on attrs, independent of the `pydantic-plan` migration, to see how simple
-the converters can get on the current object model.
+onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
+built in parallel and compared (see "Two loaders"). Done on attrs,
+independent of the `pydantic-plan` migration, to see how simple the
+converters can get on the current object model.
 
 Since the first draft, `develop` has landed the Phase 0 harness and every
 round-trip finding it turned up (see "History" at the end). The
@@ -19,6 +20,35 @@ Replace the multi-pass, exception-driven ingress
 (`converter/egress/unstructure.py`) with one schema-driven model of an MF6
 block, used symmetrically in both directions. Behavior should not change
 except where noted under "Representation decisions", which are separate.
+
+## Two loaders
+
+flopy4 has two parsers. The basic grammar (`grammar/basic.lark`) splits a
+file into blocks of token rows and leaves their meaning to
+`structure.py`; it's what every load uses. The typed grammars
+(`grammar/generated/*.lark`, one per component, made by sync from the
+DFNs) parse each field by its DFN rule. They're tested, but nothing loads
+through them yet. A typed parse should give better errors for malformed
+files, and it already does much of what `structure.py` does by hand:
+- it sends each row to its field, telling `HEAD FILEOUT` from
+  `HEAD PRINT_FORMAT` by the second token;
+- it parses block headers, and words like OC's `ALL`/`FIRST`/`LAST`;
+- it gives untagged rows to the block's untagged field.
+
+Parsing alone is about as fast as basic (1.05×; parse plus transform is
+1.24×; building 30 grammars takes 1.74 s once per process, see
+`load-benchmarks.md`), but there's no full typed load to measure.
+
+So this plan builds both loaders to the same standard, side by side:
+- **Track A**, the basic loader with the simplified converter below,
+  reading block structure from the DFN;
+- **Track B**, a full typed load: the typed parse, then the post-parse
+  steps (shaping, fill-forward, bindings);
+
+and then compares the best version of each (Phase C). Whichever loses is
+deleted. The two tracks share egress, the value representations, and the
+name mapping (Phase S1). Neither waits on the other, so each phase below
+says which track it's on.
 
 ## What's wrong today (`develop` @ `916c2f8b`)
 
@@ -241,22 +271,35 @@ parsed, they accumulate:
 
 This replaces the implicit dependency that pass ordering encodes today.
 
-### Where block structure comes from
+### Where block structure comes from (Track A)
 
-Codegen already has the DFN `Block` and reads `tagged`, `header` and
-`fill_forward` from it (`utils/codegen/make.py`, `filters.py`). It should
-emit a per-class block spec alongside the fields, for example by extending
-`spec.blocks_dict` or adding a class-level `__blocks__`. Each entry
-records:
-- block name;
-- header field name, type and `fill_forward`;
-- the tagged fields and their keys (static, or an `fk` for dynamic ones);
-- the untagged field, if any.
+From the DFN itself, stored with the generated classes. Sync stores the
+DFNs it generated the classes from (as it did before #455, which dropped
+them once the typed reader stopped needing them), and `spec.dfn(cls)`
+returns a class's DFN `Component` by its `dfn_name`, cached. The class
+carries only that name, so the generated code doesn't grow (flopy3 inlines
+each DFN in its classes, which bloats them). The stored DFNs always match
+the classes, because one sync writes both, which DFNs downloaded at
+runtime wouldn't.
 
-At runtime both directions read that spec. This removes all the structural
-sniffing: the annotation-based classifiers on ingress, the block-size
-tagged-list inference, the `isinstance` dispatch on egress, and the
-`fill_forward_blocks` recomputation.
+At runtime both directions read each block straight from the DFN
+`Block`: its fields in order, `header` (field, type, `fill_forward`), and
+which field is untagged. Row keys are the DFN's leading tags
+(`_leading_tags`), with the second token where a first token leads two
+fields (OC's `HEAD`); dynamic keys come from a field's `fk`. That's one
+copy of the DFN, read in its own terms, with no flopy4-specific summary of
+it. This removes all the structural sniffing: the annotation-based
+classifiers on ingress, the block-size tagged-list inference, the
+`isinstance` dispatch on egress, and the `fill_forward_blocks`
+recomputation.
+
+What the DFN doesn't say is which class attribute holds a DFN field
+(`head_filerecord` → `head_file`, `stress_period_data` for a period
+block's list). That's codegen's naming rule, and both tracks need it
+(Phase S1).
+
+The stored DFNs are a stopgap for the comparison. If Track B wins, they
+go again.
 
 ## Sketch
 
@@ -265,7 +308,7 @@ def structure_component(raw, cls, *, context=None, name=None):
     context = context or LoadContext()
     state = LoadState(context)                      # aux names, switches, self-dims
     kwargs = {}
-    for block in block_specs(cls):                  # DFN order
+    for block in dfn(cls).blocks.values():          # DFN order
         groups = group_rows(raw, block)             # {None: rows} | {header: rows}
         values = {h: parse_body(rows, block, state) for h, rows in groups.items()}
         kwargs |= assemble(block, values)           # unwrap / per-field dict / period_arrays
@@ -315,33 +358,34 @@ clearing rules there.
 
 ## devtools follow-ups
 
-None of these block Phases 1-4.
+None of these block Tracks A or B.
 
 - **Extend `Block._check_field_order` to untagged fields of any type**
   (≤ 1 per block, and it must be last), and regenerate the dev3 test
   snapshot, whose `utl-ts` predates modflow6 #3003. This holds for the
   current DFNs now. The converter can then rely on the rule without a
   flopy4-side check.
-- **Optional:** make `_leading_tags` / `_is_dynamic_key` public (e.g. a
-  `Field.tags` property), so codegen takes each field's row keys from the
-  spec instead of re-deriving them for the block spec.
+- **Make `_leading_tags` / `_is_dynamic_key` public** (e.g. a
+  `Field.tags` property). Track A reads row keys with them at runtime, so
+  it shouldn't depend on private functions. Until then, wrap them in one
+  place in flopy4.
 - **For decision 1 only:** rename the merged STO field from `storage` to
   `stress_period_data` in the migration. Check the memory-source fixup in
   `migrate_to_v2_0_0_dev3.py` that refers to the dev2 rename.
 
-## Before Phase 1
+## Before the phases
 
-1. **Land the in-flight converter PRs, then rebase.** #495
+1. **Done. Land the in-flight converter PRs, then rebase.** #495
    (`package-naming`) is merged. #496 (`solution-models`) and #497
    (`exchange-models`) both change `binding.py`, `structure.py` and
    `spec.py`. Rebase this branch after they land. #367 (`pydantic-plan`)
    and #433 (`mypy-converters`) are deferred and will rebase onto the
    result.
-2. **Snapshot the written files.** Load snapshots
+2. **Done (`written-file-snapshots`). Snapshot the written files.** Load snapshots
    (`test/mf6/__snapshots__/test_mf6_load_all_models/`) pin what ingress
    produces, and the round-trip test checks that values survive
    load → write → load. Nothing pins the text egress writes, apart from
-   the examples in `test/__compare__`. Phase 4 rewrites egress, so a
+   the examples in `test/__compare__`. Phase S2 rewrites egress, so a
    formatting, row-order or block-order change would pass every test. Add
    per-model snapshots of the written files over the round-trip corpus,
    built like the load snapshots: one JSON file per model, keyed by
@@ -354,19 +398,54 @@ None of these block Phases 1-4.
    lower peak memory on 11 of 13 models. The two exceptions are
    `test1000_751x751` (307 vs. 279 MB) and `test1005_secp` (360 vs.
    345 MB). The harness is `benchmarks/` (`test_load.py`, `test_write.py`,
-   `test_memory.py`). Rerun it after Phases 3 and 4. Neither phase should
+   `test_memory.py`). Rerun it after A3, B3 and S2, and for Phase C. Neither phase should
    regress load or write time beyond noise, and the converter rewrite
    shouldn't widen the memory gap on those two models.
 
 ## Phases
 
 Each phase keeps the round-trip suite, the load snapshots, the
-written-file snapshots, and the touched tests green.
+written-file snapshots, and the touched tests green. A Track B phase keeps
+them green for the typed loader too, for the components it covers.
 
-1. **Block spec from codegen**, with a runtime accessor and tests that it
-   matches the DFN (including the field-order rule). No converter changes
-   yet.
-2. **Value parsers.** Build one grid-array parser driven by shape,
+### Shared
+
+S1. **Loader switch and name mapping.**
+   - A way to choose the loader per load (e.g. `load(..., loader="basic" |
+     "typed")`), with basic the default. The round-trip suite, the load
+     snapshots and the benchmarks take it as a parameter, so each loader
+     runs against the same tests and the same snapshots. Track B starts
+     out covering a few components and falls back to basic for the rest,
+     and the tests say which components each loader handled.
+   - One function from a DFN field to its class attribute, which codegen
+     uses to name the attribute and both tracks use to find it. Today the
+     rule lives inside `make.py` (`safe_name`, record flattening, the
+     period block's `stress_period_data`).
+
+### Track A: basic loader, DFN-driven converter
+
+A1. **Stored DFNs and a runtime accessor.** Sync stores the DFNs again
+   (restoring `_store_dfns`, dropped in #455), and `spec.dfn(cls)` returns
+   a class's DFN `Component`. On top of it, a cached per-class lookup of
+   each block's header, untagged attribute, row keys and dynamic keys,
+   read from the DFN, with tests that it agrees with the classes (every
+   class attribute's block is in the DFN, every tagged field's keys
+   resolve, the field-order rule holds). The tests read the stored DFNs,
+   not the ones CI downloads, so DFN drift on modflow6 `develop` doesn't
+   affect them. No converter changes yet.
+
+   This replaces a first attempt (local commit `c4a1d7a8`) that had
+   codegen emit a `BlockSpec` per block onto each class and rebuilt the
+   row keys at runtime from the classes' Python types. That restated the
+   DFN in a vocabulary of its own (`untagged`, `binding`, header type
+   names) and needed a ranking to settle key clashes that the DFN either
+   doesn't have or settles with the second token. Drop it.
+
+   The checked-in classes' `_contract.py` records DFN commit `203d72f0`.
+   Store the DFNs from that commit, and check that regenerating from them
+   reproduces the checked-in classes; if it doesn't, re-sync first, as its
+   own change.
+A2. **Value parsers.** Build one grid-array parser driven by shape,
    replacing `_parse_array_block`, `_parse_readarray_period_block` and the
    Pass 3c control-record call. Pull the keyed-row, record and list value
    parsers out of Pass 1 and Pass 2.
@@ -377,17 +456,80 @@ written-file snapshots, and the touched tests green.
    `Array.MF-RechDIST.txt`, ten periods) load as ten different arrays,
    and the writer falls back to writing them inline. The values are right,
    but the shared file is lost. With the factor recorded, egress can write
-   `OPEN/CLOSE <file> FACTOR <f>` back per period.
-3. **Ingress loop.** Replace Passes 1-4 (2b, 3b and 3c included) with the
+   `OPEN/CLOSE <file> FACTOR <f>` back per period. `ArrayIO` is shared, so
+   Track B keeps the factor the same way.
+A3. **Ingress loop.** Replace Passes 1-4 (2b, 3b and 3c included) with the
    loop above, and `solutiongroup` grouping with the header step. Along the
    way, scope key matching to the block, unify the alias rule, and gate on
    effective dims everywhere.
-4. **Egress mirror.** Unify the package and component paths. Remove the
+
+### Track B: typed loader
+
+B1. **Grammar rules named after class attributes.** Generate the grammars
+   with the Phase S1 name mapping, so a typed parse's output is keyed by
+   class attribute (`head_file`, not `head_filerecord`) and maps straight
+   onto the classes. Today it's keyed by DFN name (`loads_typed` on an OC
+   file gives `{"options": {"head_filerecord": {"headfile": "a.hds"}},
+   "period 1": {"saverecord": [...]}}`).
+B2. **Full typed load for a few components.** From the typed parse to
+   component kwargs, for a set covering each block kind in "Repetition":
+   DIS, NPF, IC, CHD (list period), RCHA (G/A period, with `aux`), OC
+   (tagged-list period), OBS (record header), TAS (double header), STO,
+   and the simulation and model name files (bindings, `solutiongroup`).
+   What's left after the parse:
+   - shaping values: grid arrays to the grid's dims, `LAYERED`, OPEN/CLOSE
+     and `FACTOR` into `ArrayIO`, item rows into `Item`s;
+   - fill-forward and clearing, through `flopy4.mf6.period_arrays`;
+   - bindings, resolved into child components (the same post-parse step as
+     Track A's);
+   - dynamic keys: a G/A `aux` row is keyed by an `auxiliary` name, which
+     a grammar made before the file was read can't know. Check how the
+     typed grammar parses those rows today, and settle it here (a generic
+     rule whose key is checked against `auxiliary` afterwards, say).
+   Shaping and fill-forward read the class's own fields, so there's no
+   DFN at runtime.
+B3. **All components.** Extend B2 to every generated component, until the
+   typed loader passes the whole round-trip suite and the load snapshots
+   with no fallback to basic.
+B4. **Grammar build cost.** Building the grammars is the typed loader's
+   cold-start cost (1.74 s for 30 components). Cache the built parsers
+   (lark's `cache` option, or parsers serialized at sync time), and build
+   each only when a file of its component is first read.
+
+### Shared: egress
+
+S2. **Egress mirror.** Unify the package and component paths. Remove the
    `maxbound` injection (move it to codegen or keep it as a field), the
-   `solutiongroup 1` hack, and the `isinstance` dispatch.
-5. **STO period representation** (decision 1) once devtools has the
+   `solutiongroup 1` hack, and the `isinstance` dispatch. Egress doesn't
+   depend on the loader, so this can go ahead on either track's schedule,
+   reading block structure through A1's accessor (or, if Track B wins, the
+   classes' fields and the Phase S1 name mapping).
+
+### C: compare
+
+C. **Pick a loader.** Once A3 and B3 are done, and each has had its own
+   tuning, compare them over the same corpus:
+   - correctness: both pass the round-trip suite and produce identical
+     load snapshots;
+   - load time and peak memory, with the `benchmarks/` harness on the
+     standard tier, against the baseline in "Before the phases";
+   - cold start, including Track A's DFN loading and Track B's grammar
+     builds;
+   - errors: a small set of malformed files (a missing `END`, a misspelled
+     keyword, a value of the wrong type, a short list row, a bad
+     OPEN/CLOSE path), comparing what each loader reports and where;
+   - size: the code each loader needs from parse to kwargs.
+
+   Write the results up next to `load-benchmarks.md`, decide, and delete
+   the losing loader. If Track B wins, the stored DFNs and A1's accessor
+   go too, and egress reads the classes' fields.
+
+### Later
+
+- **STO period representation** (decision 1) once devtools has the
    rename, and, if it checks out, the `stress_period_data` consolidation
-   (decision 2), each as its own change.
+   (decision 2), each as its own change. Both loaders produce the new
+   shape if both still exist.
 
 ## Related, outside the converter
 
@@ -405,12 +547,6 @@ written-file snapshots, and the touched tests green.
 
 ## Out of scope
 
-- Switching ingress from the basic token-row parser to the typed DFN
-  grammar (`codec/reader`, `loads_typed`). The typed grammar would
-  eventually take over the control-record, OPEN/CLOSE and `LAYERED`
-  handling now in `structure.py`. The per-field value parsers above are
-  the seam where that change would plug in, so this refactor should make
-  it smaller, but it's not a prerequisite.
 - The index-domain / time-dimension sentinel discussion (deliberately
   dropped).
 
