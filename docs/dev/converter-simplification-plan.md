@@ -417,8 +417,8 @@ written-file snapshots, and the touched tests green.
 ## History
 
 The first draft's Phase 0 survey (load → write → reload over 239 corpus
-models) found ten pre-existing issues, recorded in `ROUNDTRIP-FINDINGS.md`
-and the `finding-*.md` files. All are fixed on `develop`:
+models) found ten pre-existing issues (write-ups dropped once resolved; see this
+file's git history). All are fixed on `develop`:
 - #1 ISO datetimes, #2 float precision, #3 model subdirectories, #4
   trailing tokens, #5 single-name `AUXILIARY`: fixed directly;
 - #6 aux-named G/A period arrays (`fk`-keyed `aux`, devtools #371), #7
