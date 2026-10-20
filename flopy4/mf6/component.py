@@ -20,7 +20,8 @@ from flopy4.uio import IO, Loader, Writer
 from flopy4.utils import empty_if_none
 
 if TYPE_CHECKING:
-    from flopy4.mf6.load_context import LoadContext, Loader
+    from flopy4.mf6.load_context import LoadContext
+    from flopy4.mf6.load_context import Loader as MF6Loader
 
 FNAMES: "dict[str, type[Component]]" = {}
 """MF6 component name (e.g. 'gwf-dis') -> component class."""
@@ -791,7 +792,7 @@ class Component(DimensionResolverMixin, ABC, MutableMapping, metaclass=LegacyKwa
         name: "str | None" = None,
         *,
         context: "LoadContext | None" = None,
-        loader: "Loader | None" = None,
+        loader: "MF6Loader | None" = None,
     ) -> "Component":
         """Load a component from a file.
 

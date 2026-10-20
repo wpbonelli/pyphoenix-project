@@ -51,6 +51,32 @@ def _inner_class_type(field_type) -> type[Record] | None:
     return None
 
 
+def _tagged_value(f: Any, row: list) -> Any:
+    """The value of the tagged field `f` from its row, which begins with
+    its key: a record's, from all its tokens; a keyword's, True; an
+    inline array's (AUXILIARY's names), the rest of the row; a scalar's,
+    the token after the key. MF6 ignores anything after what the field
+    takes (often an inline comment, or a second value like IMS's
+    `UNDER_RELAXATION NONE DBD`)."""
+    # A Record-typed field must go through from_tokens(), even when the
+    # matched token is the field's own name rather than the record's
+    # trigger keyword.
+    if (inner_cls := _inner_class_type(f.type)) is not None:
+        return inner_cls.from_tokens(row)
+    t = unwrap_optional(f.type)
+    if t is bool:
+        return True
+    if get_origin(t) in (list, np.ndarray, npt.NDArray):
+        # even with one element; numpy >= 2.5's NDArray[X] has origin
+        # NDArray, not ndarray
+        return list(row[1:])
+    if t is str:
+        # a numeric-looking string (e.g. a bare year for START_DATE_TIME)
+        # tokenizes as a number
+        return str(row[1])
+    return row[1]
+
+
 def _parse_rows(
     rows: list,
     item_cls: "type[Item] | tuple[type[Item], ...]",
@@ -219,25 +245,24 @@ def _numeric_prefix(row: list) -> list:
     return out
 
 
-def _apply_factor(values: np.ndarray, vrow: list) -> np.ndarray:
-    """Scale `values` by the INTERNAL/OPEN-CLOSE control record's
-    ``FACTOR <f>`` option, if `vrow` has one. MF6 reads an integer
-    array's FACTOR as an integer, so it's truncated to one here too."""
+def _factor(vrow: list, dtype) -> "int | float | None":
+    """The INTERNAL/OPEN-CLOSE control record's ``FACTOR <f>`` option, if
+    `vrow` has one. MF6 reads an integer array's FACTOR as an integer, so
+    it's truncated to one here too."""
     tokens = [str(t) for t in vrow[1:]]
     for j, tok in enumerate(tokens):
         if tok.upper() == "FACTOR" and j + 1 < len(tokens):
             factor = float(tokens[j + 1])
-            if values.dtype == np.int64:
-                return values * int(factor)
-            return values * factor
-    return values
+            return int(factor) if dtype == np.int64 else factor
+    return None
 
 
 def _control_io(vrow: list, values: np.ndarray) -> ArrayIO:
     """How a control record wrote its array, to write it back the same
     way: its kind, as an `ArrayFormat`, and ``IPRN <n>``; an OPEN/CLOSE
     record's file, as written (relative to the simulation directory), and
-    the hash of the `values` read from it."""
+    the hash of the `values` read from it, scaled by its FACTOR. The
+    FACTOR itself isn't kept: see `ArrayIO`."""
     kind = _leading_word(vrow)
     if kind == "CONSTANT":
         return ArrayIO(format="constant")
@@ -287,42 +312,45 @@ def _record_array_io(
 
 def _read_control_record(
     rows: list, i: int, context: LoadContext, dtype, length: int
-) -> "tuple[np.ndarray, int]":
+) -> "tuple[np.ndarray, ArrayIO, int]":
     """Read one CONSTANT/INTERNAL/OPEN-CLOSE array control record starting
-    at ``rows[i]`` (a block's `parts`), shared by array blocks (`_parse_array_block`) and
-    READARRAY period (`_parse_readarray_period_block`) array ingress.
+    at ``rows[i]`` (a block's `parts`), for `_read_array`.
 
-    Always returns a full ``length``-element ``ndarray`` (CONSTANT
-    broadcasts here rather than leaving that to the caller) plus the next
-    row index to resume from. INTERNAL's (and a bare, keyword-less data
-    row's) values commonly wrap across multiple physical lines for a large
-    array -- each is one row here -- so both keep consuming rows until
-    ``length`` values are collected, rather than assuming exactly one row.
+    Returns a full ``length``-element ``ndarray`` (CONSTANT broadcasts
+    here rather than leaving that to the caller), scaled by its FACTOR;
+    how the record wrote it (see `_control_io`); and the next row index to
+    resume from. INTERNAL's (and a bare, keyword-less data row's) values
+    commonly wrap across multiple physical lines for a large array -- each
+    is one row here -- so both keep consuming rows until ``length`` values
+    are collected, rather than assuming exactly one row.
     """
     vrow = rows[i]
     kind = _leading_word(vrow)
     if kind == "CONSTANT":
         v = int(vrow[1]) if dtype == np.int64 else float(vrow[1])
-        return np.full(length, v, dtype=dtype), i + 1
+        return np.full(length, v, dtype=dtype), ArrayIO(format="constant"), i + 1
+    factor = _factor(vrow, dtype)
     if kind == "OPEN/CLOSE":
         # read only the values the array needs; a file may hold more
-        return _apply_factor(_read_open_close_values(vrow, context, dtype)[:length], vrow), i + 1
-    j = i + 1 if kind == "INTERNAL" else i
-    chunks: list[np.ndarray] = []
-    count = 0
-    while count < length and j < len(rows):
-        part = rows[j]
-        if isinstance(part, NumberRows):
-            chunk = row_values(part, dtype)
-        else:
-            chunk = np.array(_numeric_prefix(part), dtype=dtype)
-        chunks.append(chunk)
-        count += len(chunk)
-        j += 1
-    array = np.concatenate(chunks)[:length] if chunks else np.array([], dtype=dtype)
-    if kind == "INTERNAL":
-        array = _apply_factor(array, vrow)
-    return array, j
+        array = _read_open_close_values(vrow, context, dtype)[:length]
+        j = i + 1
+    else:
+        j = i + 1 if kind == "INTERNAL" else i
+        chunks: list[np.ndarray] = []
+        count = 0
+        while count < length and j < len(rows):
+            part = rows[j]
+            if isinstance(part, NumberRows):
+                chunk = row_values(part, dtype)
+            else:
+                chunk = np.array(_numeric_prefix(part), dtype=dtype)
+            chunks.append(chunk)
+            count += len(chunk)
+            j += 1
+        array = np.concatenate(chunks)[:length] if chunks else np.array([], dtype=dtype)
+    if factor is not None:
+        array = array * factor
+    return array, _control_io(vrow, array), j
 
 
 def _from_file_index(value: np.ndarray) -> np.ndarray:
@@ -331,18 +359,94 @@ def _from_file_index(value: np.ndarray) -> np.ndarray:
     return np.abs(value) - 1
 
 
-def _griddata_flat_length(f, dims: dict, default: int) -> int:
-    """Target length for a non-layered griddata field's flat array --
-    e.g. DIS's `delr`/`delc` are `(ncol,)`/`(nrow,)`, not `(nodes,)`. Falls
-    back to `default` (the grid's total node count) when the field's
-    declared shape dimension isn't resolvable from `dims`.
-    """
-    shape_meta = f.metadata.get("shape")
-    if shape_meta:
-        dim_name = shape_meta[-1] if isinstance(shape_meta, (tuple, list)) else shape_meta
-        if dim_name in dims:
-            return dims[dim_name]
-    return default
+@attrs.frozen
+class _Grid:
+    """The grid sizes an array's shape resolves against: the dims, with
+    ``nodes`` and ``ncpl`` filled in from each other and ``nlay``."""
+
+    dims: dict
+    nlay: int
+    ncpl: int
+
+    @classmethod
+    def of(cls, dims: Mapping[str, int]) -> "_Grid | None":
+        """The grid of `dims`, or None if they give no cells."""
+        nlay = dims.get("nlay", 1)
+        # a component with cells but no layers of its own has only ncpl (NCF)
+        nodes = dims.get("nodes") or nlay * dims.get("ncpl", 0)
+        if not nodes:
+            return None
+        ncpl = nodes // nlay if nlay else nodes
+        return cls({"nodes": nodes, "ncpl": ncpl, **dims}, nlay or 1, ncpl)
+
+    def size(self, f: Any) -> int:
+        """How many values the array field `f` holds: its DFN shape (one
+        dimension, e.g. DIS's `delr` is ``(ncol,)``, `botm` ``(nodes,)``)
+        resolved against the dims, else every node. An unknown field's
+        array is a layer's (a G/A package's)."""
+        if f is None:
+            return self.ncpl
+        shape = f.metadata.get("shape") or ()
+        name = shape[-1] if isinstance(shape, (tuple, list)) and shape else shape
+        return self.dims.get(name) or self.dims["nodes"]
+
+
+def _read_array(
+    rows: list,
+    i: int,
+    f: Any,
+    grid: _Grid,
+    context: LoadContext,
+    layered: bool,
+) -> "tuple[np.ndarray | None, list[ArrayIO], int]":
+    """Read the array field `f`'s control record(s) from ``rows[i]`` (a
+    block's `parts`) on: one, or with `layered` (its name row said
+    LAYERED), one per layer. Returns the array, flat and as long as the
+    field's shape says (see `_Grid.size`), or None if there's no record;
+    how each record wrote it; and the next row index. `f` is None for an
+    unknown field, whose records are read only to skip them."""
+    dtype = np.int64 if f is not None and to_field_type(f.type) == "integer" else np.float64
+    size = grid.size(f)
+    ios: list[ArrayIO] = []
+    if layered:
+        # Read as many per-layer control records as are actually there,
+        # rather than assuming exactly `nlay` -- some real-world files
+        # (mf5to15-converted ones observed so far) tag a field LAYERED
+        # with fewer rows than nlay (e.g. a single-row TOP); trusting
+        # nlay blindly would consume the next field's name row as if
+        # it were layer data. Stops at the first row that isn't a
+        # recognized control record -- i.e. the next field's row.
+        #
+        # A record is a layer's (ncpl values), or the whole field's if
+        # it's smaller (delr/delc/top tagged LAYERED despite not truly
+        # being layered): reading ncpl there would consume however many
+        # subsequent lines (including the next field's own name row) it
+        # takes to reach ncpl values.
+        record = min(grid.ncpl, size)
+        layers = []
+        while i < len(rows) and _leading_word(rows[i]) in _CONTROL_KINDS:
+            value, io, i = _read_control_record(rows, i, context, dtype, record)
+            layers.append(value)
+            ios.append(io)
+        if not layers:
+            return None, ios, i
+        # fewer records than layers repeat, to fill the field
+        values = np.concatenate(layers).astype(dtype)
+        if values.size and values.size < size:
+            values = np.resize(values, size)
+    else:
+        if i >= len(rows):
+            return None, ios, i
+        values, io, i = _read_control_record(rows, i, context, dtype, size)
+        ios.append(io)
+    if f is not None and f.metadata.get("index"):
+        values = _from_file_index(values)
+    return values, ios, i
+
+
+def _is_layered(row: list) -> bool:
+    """Whether an array's name row says LAYERED."""
+    return any(str(t).upper() == "LAYERED" for t in row[1:])
 
 
 def _parse_array_block(
@@ -353,88 +457,26 @@ def _parse_array_block(
     arrays: "dict | None" = None,
 ) -> dict:
     """Parse an array block's (GRIDDATA, DISU's CONNECTIONDATA) token rows
-    into {field_name: np.ndarray}.
-
-    Token rows alternate: [field_name, ?LAYERED] then one control record
-    per layer (LAYERED) or a single one otherwise -- CONSTANT/INTERNAL/
-    OPEN-CLOSE, per `_read_control_record`. How each array was written
-    goes in `arrays`, per `_record_array_io`.
+    into {field_name: np.ndarray}: each field's name row, ``LAYERED`` or
+    not, then its control record(s) (see `_read_array`). How each array
+    was written goes in `arrays`, per `_record_array_io`.
     """
     result: dict = {}
-    nlay = dims.get("nlay", 1)
-    # a component with cells but no layers of its own has only ncpl (NCF)
-    nodes = dims.get("nodes") or nlay * dims.get("ncpl", 0)
-    if not nodes:
+    if (grid := _Grid.of(dims)) is None:
         return result
-    ncpl = nodes // nlay if nlay else nodes
-
     rows = parts(rows)
     i = 0
     while i < len(rows):
         row = rows[i]
-        if not _leading_word(row):
-            i += 1
-            continue
-        key = str(row[0]).lower()
-        f = fields_by_name.get(key)
+        f = fields_by_name.get(str(row[0]).lower()) if _leading_word(row) else None
         if f is None:
             i += 1
             continue
-
-        dtype = np.int64 if to_field_type(f.type) == "integer" else np.float64
-        layered = any(str(t).upper() == "LAYERED" for t in row[1:])
-        i += 1
-
-        if layered:
-            # Read as many per-layer control records as are actually there,
-            # rather than assuming exactly `nlay` -- some real-world files
-            # (mf5to15-converted ones observed so far) tag a field LAYERED
-            # with fewer rows than nlay (e.g. a single-row TOP); trusting
-            # nlay blindly would consume the next field's name row as if
-            # it were layer data. Stops at the first row that isn't a
-            # recognized control record -- i.e. the next field's row.
-            #
-            # Per-record length is min(ncpl, target): correct for a truly
-            # per-layer field (botm/idomain, shape=(nodes,), target > ncpl)
-            # *and* for a field tagged LAYERED despite not truly being one
-            # (delr/delc/top, shape=(ncol,)/(nrow,)/(ncpl,), target <=
-            # ncpl) -- using ncpl unconditionally there would read far more
-            # values than the field's one real record has, consuming
-            # however many subsequent lines (including the next field's
-            # own name row) it takes to reach ncpl values.
-            target = _griddata_flat_length(f, dims, nodes)
-            record_len = min(ncpl, target) if target else ncpl
-            layers = []
-            layer_ios = []
-            while i < len(rows):
-                vrow = rows[i]
-                if _leading_word(vrow) not in _CONTROL_KINDS:
-                    break
-                value, j = _read_control_record(rows, i, context, dtype, record_len)
-                layer_ios.append(_control_io(vrow, value))
-                layers.append(value)
-                i = j
-            _record_array_io(arrays, (f.name,), layer_ios, layered=True)
-            if layers:
-                # A single-record LAYERED field (see above) is really a
-                # plain target-shaped array duplicated across nlay --
-                # broadcast to it rather than leaving it short
-                # (concatenating fewer than nlay records would).
-                stacked = np.concatenate(layers).astype(dtype)
-                if stacked.size < target and stacked.size and target % stacked.size == 0:
-                    stacked = np.tile(stacked, target // stacked.size)
-                result[f.name] = stacked
-        else:
-            if i >= len(rows):
-                break
-            length = _griddata_flat_length(f, dims, nodes)
-            value, j = _read_control_record(rows, i, context, dtype, length)
-            _record_array_io(arrays, (f.name,), [_control_io(rows[i], value)])
-            i = j
+        layered = _is_layered(row)
+        value, ios, i = _read_array(rows, i + 1, f, grid, context, layered)
+        _record_array_io(arrays, (f.name,), ios, layered=layered)
+        if value is not None:
             result[f.name] = value
-        if f.metadata.get("index") and f.name in result:
-            result[f.name] = _from_file_index(result[f.name])
-
     return result
 
 
@@ -471,11 +513,9 @@ def _parse_readarray_period_block(
     name, or an auxiliary variable's, for its named array (see Pass 3b). A
     time-array series reference gives the series' name. How each array was
     written goes in `arrays` by that name, per `_record_array_io`."""
-    nlay = dims.get("nlay", 1)
-    nodes = dims.get("nodes", 1)
-    ncpl = nodes // nlay if nlay > 1 else nodes
-
     result: dict[str, np.ndarray | TimeArraySeriesRef] = {}
+    if (grid := _Grid.of(dims)) is None:
+        return result
     rows = parts(rows)
     i = 0
     while i < len(rows):
@@ -499,70 +539,27 @@ def _parse_readarray_period_block(
                 result[key] = TimeArraySeriesRef(tokens[tas + 1])
             continue
 
-        if f is None:
-            # Unrecognized field name -- e.g. a per-period AUXILIARY-named
-            # array (RCHA/EVTA-style: `AUXILIARY <name>` in OPTIONS lets
-            # `<name>` appear as its own array field in the period block,
-            # keyed dynamically, so it's not one of `ra_fields`'s declared
-            # class fields). Still consume its control-record data so it
-            # doesn't get mistaken for the *next* real field's row; just
-            # don't store it (not resolved to a real array yet either).
-            is_layered_unknown = any(str(t).upper() == "LAYERED" for t in row[1:])
-            if is_layered_unknown:
-                while i < len(rows):
-                    vrow = rows[i]
-                    if _leading_word(vrow) not in _CONTROL_KINDS:
-                        break
-                    _, i = _read_control_record(rows, i, context, np.float64, ncpl)
-            elif i < len(rows):
-                _, i = _read_control_record(rows, i, context, np.float64, ncpl)
-            continue
-
-        is_int = to_field_type(f.type) == "integer"
-        # an array is layered only when given with LAYERED (the dfn's
+        # An array is layered only when given with LAYERED (the dfn's
         # `layered` flag just allows it); otherwise it covers the field's
-        # whole shape, all nodes for a grid package
-        is_layered = any(str(t).upper() == "LAYERED" for t in row[1:])
-        per_node = (f.metadata.get("shape") or ("",))[-1] == "nodes"
-        dtype = np.int64 if is_int else np.float64
-
-        if is_layered:
-            layers = []
-            layer_ios = []
-            while i < len(rows):
-                vrow = rows[i]
-                if _leading_word(vrow) not in _CONTROL_KINDS:
-                    break
-                value, j = _read_control_record(rows, i, context, dtype, ncpl)
-                layer_ios.append(_control_io(vrow, value))
-                layers.append(value)
-                i = j
-            _record_array_io(arrays, (key,), layer_ios, layered=True)
-            if layers:
-                if len(layers) < nlay:
-                    layers = (layers * nlay)[:nlay]
-                result[key] = np.stack(layers)  # (nlay, ncpl)
+        # whole shape, all nodes for a grid package. An unknown field's
+        # (an auxiliary name with no aux field) is read, to skip it.
+        layered = _is_layered(row)
+        value, ios, i = _read_array(rows, i, f, grid, context, layered)
+        if f is None:
+            continue
+        _record_array_io(arrays, (key,), ios, layered=layered)
+        if value is None:
+            continue
+        if layered:
+            result[key] = value.reshape(-1, grid.ncpl)  # (nlay, ncpl)
+        elif ios[0].format == "constant":
+            # one value for the period, kept as a 0-d array, as a
+            # scalar given at construction is (period_arrays._as_array)
+            result[key] = np.asarray(value[0])
+        elif (f.metadata.get("shape") or ("",))[-1] == "nodes" and grid.nlay > 1:
+            result[key] = value.reshape(grid.nlay, grid.ncpl)
         else:
-            if i >= len(rows):
-                break
-            if _leading_word(rows[i]) == "CONSTANT":
-                # one value for the period, kept as a 0-d array, as a
-                # scalar given at construction is (period_arrays._as_array)
-                v = int(rows[i][1]) if dtype == np.int64 else float(rows[i][1])
-                value = np.asarray(v, dtype=dtype)
-                _record_array_io(arrays, (key,), [_control_io(rows[i], value)])
-                i += 1
-                result[key] = value
-            else:
-                size = nlay * ncpl if per_node else ncpl
-                value, j = _read_control_record(rows, i, context, dtype, size)
-                _record_array_io(arrays, (key,), [_control_io(rows[i], value)])
-                i = j
-                result[key] = (
-                    np.asarray(value).reshape(nlay, ncpl) if per_node and nlay > 1 else value
-                )
-        if f.metadata.get("index") and isinstance(arr := result.get(key), np.ndarray):
-            result[key] = np.asarray(_from_file_index(arr))
+            result[key] = value
 
     return result
 
@@ -846,7 +843,9 @@ def _group_repeating_rows(
     return grouped
 
 
-def read_component(path: Path, cls: type, *, context: LoadContext, name: str | None = None) -> Any:
+def read_component(
+    path: Path, cls: "type[Component]", *, context: LoadContext, name: str | None = None
+) -> Any:
     """Read the MF6 input file ``path`` into a ``cls``, with the context's
     loader (see ``LoadContext.loader``)."""
     from flopy4.mf6.codec.reader import load, loads_typed
@@ -1068,9 +1067,8 @@ def structure_component(
             # A record's keyword wins over a field's name: utl-ts's SFAC is
             # sfacrecord_single's keyword, and the SFACS record's field name.
             if key in inner_class_fields:
-                cand_f, inner_cls = inner_class_fields[key]
-                cand_init = cand_f.alias if cand_f.alias else cand_f.name
-                kwargs[cand_init] = inner_cls.from_tokens(row)
+                cand_f, _ = inner_class_fields[key]
+                kwargs[cand_f.alias if cand_f.alias else cand_f.name] = _tagged_value(cand_f, row)
                 continue
             # keywords are renamed with a trailing underscore (CONTINUE: continue_)
             f = (
@@ -1092,30 +1090,7 @@ def structure_component(
                         stacklevel=2,
                     )
                 continue
-            init_key = f.alias if f.alias else f.name
-            # A Record-typed field must go through from_tokens(), even when
-            # the matched token is the field's own name rather than the
-            # record's trigger keyword.
-            inner_cls = _inner_class_type(f.type)
-            if inner_cls is not None:
-                kwargs[init_key] = inner_cls.from_tokens(row)
-                continue
-            # Take what the field's type needs from the row; MF6 ignores
-            # anything after it (often an inline comment, or a second value
-            # like IMS's `UNDER_RELAXATION NONE DBD`).
-            t = unwrap_optional(f.type)
-            if t is bool:
-                kwargs[init_key] = True
-            elif get_origin(t) in (list, np.ndarray, npt.NDArray):
-                # inline arrays (AUXILIARY's names), even with one element; numpy
-                # >= 2.5's NDArray[X] has origin NDArray, not ndarray
-                kwargs[init_key] = list(row[1:])
-            elif t is str:
-                # a numeric-looking string (e.g. a bare year for
-                # START_DATE_TIME) tokenizes as a number
-                kwargs[init_key] = str(row[1])
-            else:
-                kwargs[init_key] = row[1]
+            kwargs[f.alias if f.alias else f.name] = _tagged_value(f, row)
 
     item_types = [ic for _, ic in block_item_fields.values()]
     if period_item_cls is not None:
@@ -1150,14 +1125,11 @@ def structure_component(
             loaded_children[path] = _load_file_child(f, path, context)
         return loaded_children[path]
 
-    # ── Pass 2: block Item-list fields (packagedata, partitions …) ──────────
-    for block_name, (f, item_cls) in block_item_fields.items():
-        rows = raw_lower.get(block_name, [])
-        if not rows:
-            continue
-        rows = _resolve_open_close_rows(rows, context)
-        row_list = _parse_rows(
-            rows,
+    def parse_list(rows: list, item_cls: Any, words: tuple[str, ...] = ()) -> Any:
+        """A list field's value from the rows of its block (or a block's
+        OPEN/CLOSE file's), with the sizes and switches read so far."""
+        return _parse_rows(
+            _resolve_open_close_rows(rows, context),
             item_cls,
             sizes=sizes,
             enabled=enabled,
@@ -1165,8 +1137,15 @@ def structure_component(
             union_arm=union_arm,
             union_forms=union_forms,
             load_child=load_child,
-            words=item_list_words(f.type),
+            words=words,
         )
+
+    # ── Pass 2: block Item-list fields (packagedata, partitions …) ──────────
+    for block_name, (f, item_cls) in block_item_fields.items():
+        rows = raw_lower.get(block_name, [])
+        if not rows:
+            continue
+        row_list = parse_list(rows, item_cls, item_list_words(f.type))
         if row_list is not None:
             init_key = f.alias if (f.alias and not f.alias.startswith("_")) else f.name
             kwargs[init_key] = row_list
@@ -1180,16 +1159,7 @@ def structure_component(
             prefix, *header = raw_name.split()
             if prefix.lower() != block_name or not header:
                 continue
-            rows = _resolve_open_close_rows(rows, context)
-            items = _parse_rows(
-                rows,
-                item_cls,
-                sizes=sizes,
-                enabled=enabled,
-                context=rows_context,
-                union_arm=union_arm,
-                union_forms=union_forms,
-            )
+            items = parse_list(rows, item_cls)
             blocks.append(
                 block_cls(
                     **{block_cls._header: header_cls.from_tokens(header), list_name: items or []}
@@ -1216,18 +1186,7 @@ def structure_component(
                     # an empty period block turns off every boundary
                     spd[kper] = []
                     continue
-                rows = _resolve_open_close_rows(rows, context)
-                row_list = _parse_rows(
-                    rows,
-                    period_item_cls,
-                    sizes=sizes,
-                    enabled=enabled,
-                    context=rows_context,
-                    union_arm=union_arm,
-                    union_forms=union_forms,
-                    load_child=load_child,
-                    words=item_list_words(period_field.type),
-                )
+                row_list = parse_list(rows, period_item_cls, item_list_words(period_field.type))
                 if row_list is not None:
                     spd[kper] = row_list
             if spd:
@@ -1259,7 +1218,7 @@ def structure_component(
                 for n in _names(kwargs.get(fk.rsplit(".", 1)[-1]))
             }
             if ra_fields and dims:
-                grid = is_grid_package(cls)
+                grid_package = is_grid_package(cls)
 
                 # Each field holds the periods the file gives (see
                 # flopy4.mf6.period_arrays). An empty grid period block
@@ -1271,7 +1230,7 @@ def structure_component(
                 lookup = ra_fields | {k: f for k, (f, _) in named.items()}
                 for kper, rows in sorted(kper_rows.items()):
                     if not rows:
-                        if grid:
+                        if grid_package:
                             for fname in ra_fields:
                                 periods.setdefault(fname, {})[kper] = None
                         continue
@@ -1294,35 +1253,27 @@ def structure_component(
 
     # ── Pass 3c: array fields whose own block repeats (utl-tas.tas_array is
     # the only current DFN example) ──────────────────────────────────────────
-    # No `layered` form (single flat control record, always) -- confirmed
-    # every current field of this shape is only ever consumed by
-    # single-layer array packages (their own array fields are likewise
-    # ncpl-shaped, no layered form), so the flat length is ncpl, not the
-    # full-grid nodes count. Same derivation as Pass 3b's READARRAY period
-    # fields. Row grouping (by "{block} {header}" prefix, cast header value)
-    # is the same mechanic Pass 3 uses for "period" -- see
+    # The block is the array's control record alone, with no name row and
+    # no `layered` form. Row grouping (by "{block} {header}" prefix, cast
+    # header value) is the same mechanic Pass 3 uses for "period" -- see
     # _group_repeating_rows -- just with a no-offset header cast to the
     # field's own dict key type instead of period's int/-1 one.
     if repeating_array_fields:
         effective_dims = dims or _self_dims_from_kwargs(kwargs)
-        nodes = effective_dims.get("nodes", 0)
-        if nodes:
-            nlay = effective_dims.get("nlay", 1)
-            ncpl = nodes // nlay if nlay > 1 else nodes
+        if (grid := _Grid.of(effective_dims)) is not None and effective_dims.get("nodes"):
             for fname, f in repeating_array_fields.items():
                 block = f.metadata["block"]
                 key_type = repeating_array_key_type(f.type)
                 series_rows = _group_repeating_rows(raw_lower, {block}, key_type).get(block)
                 if not series_rows:
                     continue
-                dtype = np.int64 if to_field_type(f.type) == "integer" else np.float64
-                length = _griddata_flat_length(f, effective_dims, ncpl)
                 series: dict[Any, np.ndarray] = {}
                 for header, rows in sorted(series_rows.items()):
                     if not rows:
                         continue
-                    value, _ = _read_control_record(parts(rows), 0, context, dtype, length)
-                    series[header] = value
+                    value, _, _ = _read_array(parts(rows), 0, f, grid, context, layered=False)
+                    if value is not None:
+                        series[header] = value
                 if series:
                     init_key = f.alias if f.alias else fname
                     kwargs[init_key] = series

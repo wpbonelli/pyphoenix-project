@@ -663,7 +663,7 @@ def _dynamic_key(f: "InputField") -> str | None:
     if not isinstance(record, Record):
         return None
     first = next(iter(record.fields.values()), None)
-    return first.fk if _is_dynamic_key(first) else None
+    return first.fk if first is not None and _is_dynamic_key(first) else None
 
 
 def leading_tags(f: "InputField") -> list[str]:

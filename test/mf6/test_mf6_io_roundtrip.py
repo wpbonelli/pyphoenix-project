@@ -373,7 +373,7 @@ def test_open_close_reads_only_needed_values(tmp_path):
 
     (tmp_path / "values.txt").write_text("1.0 2.0 3.0 4.0 5.0\n")
     rows = [["OPEN/CLOSE", "values.txt"]]
-    values, i = _read_control_record(rows, 0, LoadContext(workspace=tmp_path), np.float64, 3)
+    values, _, i = _read_control_record(rows, 0, LoadContext(workspace=tmp_path), np.float64, 3)
     assert np.array_equal(values, [1.0, 2.0, 3.0]) and i == 1
 
 

@@ -1889,6 +1889,7 @@ def build_component_spec(
     # period array separately, keyed by the 0-based periods it's given in
     # (see flopy4.mf6.period_arrays).
     if _readarray_period_fields:
+        assert _ff_block is not None  # they're its fields
         # a grid package's period can be cleared, None (see period_arrays)
         _grid = any(f.name == "readarraygrid" for _, f in all_fields)
         for _ra_f in _readarray_period_fields:
@@ -1928,6 +1929,7 @@ def build_component_spec(
     # period, then by the auxiliary names (the fk), each array like a READARRAY
     # period field's.
     for _lf, _arr, _fk in _dynamically_named_period_fields:
+        assert _ff_block is not None  # they're its fields
         _na_meta: dict = {"block": _ff_block}
         if shape := getattr(_arr, "shape", None):
             _na_meta["shape"] = tuple(shape)

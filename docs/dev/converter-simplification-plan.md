@@ -472,15 +472,6 @@ A2. **Value parsers.** Build one grid-array parser driven by shape,
    replacing `_parse_array_block`, `_parse_readarray_period_block` and the
    Pass 3c control-record call. Pull the keyed-row, record and list value
    parsers out of Pass 1 and Pass 2.
-
-   Along the way, keep an external array's `FACTOR` in its `ArrayIO`.
-   Today the loader multiplies the factor into the values, so periods that
-   read one file with different factors (`test017_Crinkle`'s
-   `Array.MF-RechDIST.txt`, ten periods) load as ten different arrays,
-   and the writer falls back to writing them inline. The values are right,
-   but the shared file is lost. With the factor recorded, egress can write
-   `OPEN/CLOSE <file> FACTOR <f>` back per period. `ArrayIO` is shared, so
-   Track B keeps the factor the same way.
 A3. **Ingress loop.** Replace Passes 1-4 (2b, 3b and 3c included) with the
    loop above, and `solutiongroup` grouping with the header step. Along the
    way, scope key matching to the block, unify the alias rule, and gate on
@@ -500,8 +491,8 @@ B2. **Full typed load for a few components.** From the typed parse to
    (tagged-list period), OBS (record header), TAS (double header), STO,
    and the simulation and model name files (bindings, `solutiongroup`).
    What's left after the parse:
-   - shaping values: grid arrays to the grid's dims, `LAYERED`, OPEN/CLOSE
-     and `FACTOR` into `ArrayIO`, item rows into `Item`s;
+   - shaping values: grid arrays to the grid's dims, `LAYERED` and
+     OPEN/CLOSE into `ArrayIO`, `FACTOR` applied, item rows into `Item`s;
    - fill-forward and clearing, through `flopy4.mf6.period_arrays`;
    - bindings, resolved into child components (the same post-parse step as
      Track A's);
