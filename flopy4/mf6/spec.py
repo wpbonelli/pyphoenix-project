@@ -5,9 +5,20 @@ These include field decorators and introspection functions.
 
 import builtins
 import types
+from collections.abc import Mapping
 from datetime import datetime
+from functools import cache
 from pathlib import Path
-from typing import Any, Literal, TypedDict, Union, Unpack, get_args, get_origin
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    TypedDict,
+    Union,
+    Unpack,
+    get_args,
+    get_origin,
+)
 
 import attrs
 import numpy as np
@@ -23,6 +34,9 @@ from flopy4.mf6._types import (
 )
 from flopy4.mf6.item import to_union_arm
 from flopy4.spec import fields_dict as flopy_fields_dict
+
+if TYPE_CHECKING:
+    from modflow_devtools.dfns.schema import Component, InputField
 
 FieldType = Literal["keyword", "integer", "double", "string", "list", "record"]
 
@@ -579,3 +593,121 @@ def block_sort_key(item) -> int:
         return 4
     else:
         return 3
+
+
+# The DFNs the classes were generated from, which sync stores beside them
+# (flopy4/mf6/dfns). The converter reads block structure from these rather
+# than from the classes.
+
+
+@cache
+def _dfns() -> "Mapping[str, Component]":
+    import warnings
+
+    from flopy4.mf6._sync import _DFN_SCHEMA_VERSION, _DFNS
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*modflow_devtools.dfns.*experimental.*")
+        from modflow_devtools.dfns import LocalDfnRegistry
+
+    stored = Path(__file__).parent / _DFNS
+    if not stored.is_dir():
+        raise FileNotFoundError(
+            f"flopy4.mf6 has no stored DFNs ({stored}). Run `flopy4 mf6 sync` to re-sync."
+        )
+    return LocalDfnRegistry(path=stored).spec(schema_version=_DFN_SCHEMA_VERSION).components
+
+
+def dfn(cls) -> "Component":
+    """The DFN component ``cls`` was generated from, by its ``dfn_name``."""
+    return _dfns()[cls.dfn_name]
+
+
+@cache
+def attr_names(cls) -> dict[tuple[str, str], str]:
+    """The attribute of ``cls`` holding each of its DFN's fields, by
+    (block, field name), as codegen named it (see
+    ``flopy4.mf6.utils.codegen.make.attr_names``)."""
+    from flopy4.mf6.utils.codegen.make import attr_names as _attr_names
+
+    return _attr_names(dfn(cls), _dfns())
+
+
+@attrs.frozen
+class BlockKeys:
+    """How the rows of one of a DFN's blocks find their fields.
+
+    Attributes
+    ----------
+    tagged :
+        Fields by the keyword their rows begin with, in DFN order. Where a
+        keyword begins more than one field's rows (OC's ``HEAD``), the next
+        keyword tells them apart (see ``following_tags``).
+    dynamic :
+        Fields whose rows begin with a value of another field instead, by
+        that field's path: RCHA's ``aux``, by ``options.auxiliary``.
+    untagged :
+        The field the block's other rows belong to, if any.
+    """
+
+    tagged: dict[str, tuple["InputField", ...]]
+    dynamic: dict[str, "InputField"]
+    untagged: "InputField | None"
+
+
+def _dynamic_key(f: "InputField") -> str | None:
+    """The path of the field whose values begin ``f``'s rows, if they do."""
+    from modflow_devtools.dfns.schema import List, Record, _is_dynamic_key
+
+    record = f.item if isinstance(f, List) else f
+    if not isinstance(record, Record):
+        return None
+    first = next(iter(record.fields.values()), None)
+    return first.fk if _is_dynamic_key(first) else None
+
+
+def leading_tags(f: "InputField") -> list[str]:
+    """The keywords ``f``'s rows can begin with."""
+    from modflow_devtools.dfns.schema import _leading_tags
+
+    return [t.lower() for t in _leading_tags(f)]
+
+
+def following_tags(f: "InputField") -> list[str]:
+    """The keywords that can follow the one ``f``'s rows begin with, if
+    ``f`` is a record whose second member is a keyword, or a file with its
+    direction's (OC's ``HEAD FILEOUT`` and ``HEAD PRINT_FORMAT``)."""
+    from modflow_devtools.dfns.schema import File, Keyword, Record
+
+    if not isinstance(f, Record):
+        return []
+    members = list(f.fields.values())
+    if len(members) < 2:
+        return []
+    second = members[1]
+    if isinstance(second, Keyword):
+        return [t.lower() for t in [second.name, *second.aliases]]
+    if isinstance(second, File) and second.mode_keyword and second.direction:
+        return [f"file{second.direction}"]
+    return []
+
+
+@cache
+def block_keys(cls, block: str) -> BlockKeys:
+    """How the rows of ``block`` in ``cls``'s DFN find their fields. Fields
+    codegen leaves out (developmode, removed) aren't keyed."""
+    from flopy4.mf6.utils.codegen.filters import flat_fields
+
+    tagged: dict[str, tuple] = {}
+    dynamic: dict[str, Any] = {}
+    untagged = None
+    for name, f in flat_fields(dfn(cls)):
+        if name != block:
+            continue
+        if not getattr(f, "tagged", True):
+            untagged = f
+        elif key := _dynamic_key(f):
+            dynamic[key] = f
+        for tag in leading_tags(f):
+            tagged[tag] = (*tagged.get(tag, ()), f)
+    return BlockKeys(tagged=tagged, dynamic=dynamic, untagged=untagged)
