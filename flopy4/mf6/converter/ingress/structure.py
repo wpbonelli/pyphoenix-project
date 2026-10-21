@@ -175,8 +175,14 @@ def _read_open_close_values(vrow: list, context: LoadContext, dtype) -> np.ndarr
     if not tokens:
         raise ValueError("OPEN/CLOSE control record missing a filename")
     path = context.resolve(_strip_quotes(tokens[0]))
+    binary = any(t.upper() in ("BINARY", "(BINARY)") for t in tokens[1:])
+    return read_array_file(path, binary, dtype)
 
-    if any(t.upper() in ("BINARY", "(BINARY)") for t in tokens[1:]):
+
+def read_array_file(path: Path, binary: bool, dtype) -> np.ndarray:
+    """The values in an OPEN/CLOSE array file: an MF6 binary-array record,
+    or numbers separated by whitespace or commas."""
+    if binary:
         return _read_binary_array_values(path, dtype)
     text = path.read_text().replace(",", " ")
     return np.array(text.split(), dtype=dtype)
@@ -802,12 +808,13 @@ def _period_array(
     return value
 
 
-class _Load:
-    """One component's load: its `__init__` arguments, read a block at a
-    time in DFN order, so a block can read by those before it (the
-    auxiliary names, the sizes and switches of a list's columns, a dims
-    provider's own dims); how the file wrote each array; and the rows
-    naming children, for `_resolve_bindings`."""
+class ComponentLoad:
+    """What any loader's read of one component's file builds: its
+    `__init__` arguments, so far; how the file wrote each array; and the
+    rows naming children, for `_resolve_bindings`. Its fields are read a
+    block at a time in file-schema order, options and dimensions first, so
+    a block can read by those before it (the auxiliary names, the sizes
+    and switches of a list's columns, a dims provider's own dims)."""
 
     def __init__(self, cls: type, context: LoadContext) -> None:
         self.cls = cls
@@ -817,15 +824,13 @@ class _Load:
         # write_context
         self.array_ios: dict = {}
         self.bindings: dict[str, list] = {}
-        self._fields = attrs.fields_dict(cls)
-        self._names = attr_names(cls)
         self._children: dict[Path, Any] = {}
         self._union_arm = _union_arm(context.parent)
         self._union_forms = _union_forms(context.parent)
         # blocks whose rows name children (a model's packages, the
         # simulation's models and solutions); a file record's child loads
         # with its record
-        self._binding_blocks = {
+        self.binding_blocks = {
             f.metadata["block"]
             for f in attrs.fields(cls)  # type: ignore[arg-type]
             if f.metadata.get("child") and "block" in f.metadata and not f.metadata.get("_keyword")
@@ -837,29 +842,38 @@ class _Load:
         has none yet, its own (see `_self_dims_from_kwargs`)."""
         return dict(self.context.dims) or _self_dims_from_kwargs(self.kwargs)
 
-    def attribute(self, block: str, f: Any) -> "attrs.Attribute | None":
-        """The class's field holding the DFN field `f` of `block`, if it
-        has one: not a computed one (a list package's MAXBOUND) or one
-        codegen leaves out."""
-        a = self._fields.get(self._names.get((block, f.name), ""))
-        return a if a is not None and a.init is not False else None
+    def finish(self, name: str | None = None) -> Any:
+        """The component, from the arguments read, with its children
+        loaded from the rows naming them and its arrays written back the
+        way the file wrote them."""
+        kwargs = self.kwargs
+        if self.context.workspace and self.bindings:
+            kwargs.update(_resolve_bindings(self.cls, self.bindings, self.context))
+        if name is not None:
+            kwargs["name"] = name
+        if self.array_ios:
+            kwargs["write_context"] = WriteContext(arrays=self.array_ios)
+        return self.cls(**kwargs)
 
-    def value_at(self, path: str) -> Any:
-        """The value read so far for the DFN field at `path` (``block.field``)."""
-        block, name = path.split(".", 1)
-        a = self._fields.get(self._names.get((block, name), ""))
-        return None if a is None else self.kwargs.get(_init_key(a))
-
-    def read(self, name: str, block: Any, found: dict[Any, list]) -> None:
-        """Read the occurrences of the DFN block `block` into the
-        arguments: its fields' values, or a repeating block's by header.
-        An empty period clears the period's lists and, for a grid package,
-        its arrays."""
-        if block.header is None:
+    def read_blocks(
+        self,
+        name: str,
+        fields: list,
+        found: dict[Any, Any],
+        *,
+        numbered: bool,
+        fill_forward: bool,
+    ) -> None:
+        """Read the occurrences of the block `name`, ``{header: contents}``
+        (``{None: contents}`` for a block that doesn't repeat), into the
+        arguments: its `fields`' values, or a repeating block's by header,
+        in order if `numbered`. An empty occurrence of a `fill_forward`
+        block (a period) clears its lists and, for a grid package, its
+        arrays. `body` reads each occurrence's contents."""
+        if None in found:
             for f, value in self.body(name, found[None], None).items():
                 self.kwargs[_init_key(f)] = value
             return
-        fields = [a for f in block.fields.values() if (a := self.attribute(name, f)) is not None]
         if len(found) > 1 and not any(_per_header(f) for f in fields):
             # several solution groups, each with its own MXITER, would be
             # merged into one, which MF6 runs differently
@@ -867,12 +881,11 @@ class _Load:
             raise ValueError(
                 f"{self.cls.__name__}: more than one {name} block ({names}); only one is supported"
             )
-        numbered = block.header.field.type in ("integer", "double")
         values: dict[attrs.Attribute, dict] = {}
         for header in sorted(found) if numbered else found:
-            if rows := found[header]:
-                body = self.body(name, rows, header)
-            elif block.header.fill_forward:
+            if contents := found[header]:
+                body = self.body(name, contents, header)
+            elif fill_forward:
                 body = self.cleared(fields)
             else:
                 body = {}
@@ -896,6 +909,10 @@ class _Load:
                     by_header if _per_header(f) else next(iter(by_header.values()))
                 )
 
+    def body(self, name: str, contents: Any, header: Any) -> dict:
+        """The values of one occurrence of the block `name`, by field."""
+        raise NotImplementedError
+
     def cleared(self, fields: list) -> dict:
         """An empty period's values: no rows for each list, and for a grid
         package, no array."""
@@ -903,6 +920,74 @@ class _Load:
         if not is_grid_package(self.cls):
             return lists
         return lists | {f: None for f in fields if _is_grid_array(f) and not f.metadata.get("fk")}
+
+    def parse_list(self, rows: list, item_cls: Any, words: tuple[str, ...] = ()) -> Any:
+        """A list field's value from its rows, with the sizes (aux by
+        auxiliary, GNC's alphasj by numalphaj) and switches (boundnames)
+        of its columns read so far."""
+        sizes = {}
+        for shape in sized_by(item_cls):
+            n = dim_value(shape, lookup=lambda name: dim_lookup(self.kwargs, name))
+            if n is not None:
+                sizes[shape] = n
+        enabled = frozenset(o for o in conditional_fields(item_cls).values() if self.kwargs.get(o))
+        return _parse_rows(
+            rows,
+            item_cls,
+            sizes=sizes,
+            enabled=enabled,
+            # the grid's dims give the cellids' width (see LoadContext.ncelldim)
+            context=attrs.evolve(self.context, dims=self.dims),
+            union_arm=self._union_arm,
+            union_forms=self._union_forms,
+            load_child=self.load_child,
+            words=words,
+        )
+
+    def load_child(self, f: Any, token: str) -> Any:
+        """A row's child column (LAK's TAB6 file), loaded from its file,
+        once per file (SFR's periods may name one table again)."""
+        path = Path(_strip_quotes(token))
+        if path not in self._children:
+            context = attrs.evolve(self.context, dims=self.dims, parent=self.cls)
+            self._children[path] = _load_file_child(f, path, context)
+        return self._children[path]
+
+
+class _Load(ComponentLoad):
+    """The basic loader's read of one component's file, a block at a time
+    in DFN order (see `ComponentLoad`)."""
+
+    def __init__(self, cls: type, context: LoadContext) -> None:
+        super().__init__(cls, context)
+        self._fields = attrs.fields_dict(cls)
+        self._names = attr_names(cls)
+
+    def attribute(self, block: str, f: Any) -> "attrs.Attribute | None":
+        """The class's field holding the DFN field `f` of `block`, if it
+        has one: not a computed one (a list package's MAXBOUND) or one
+        codegen leaves out."""
+        a = self._fields.get(self._names.get((block, f.name), ""))
+        return a if a is not None and a.init is not False else None
+
+    def value_at(self, path: str) -> Any:
+        """The value read so far for the DFN field at `path` (``block.field``)."""
+        block, name = path.split(".", 1)
+        a = self._fields.get(self._names.get((block, name), ""))
+        return None if a is None else self.kwargs.get(_init_key(a))
+
+    def read(self, name: str, block: Any, found: dict[Any, list]) -> None:
+        """Read the occurrences of the DFN block `block` into the
+        arguments (see `ComponentLoad.read_blocks`)."""
+        fields = [a for f in block.fields.values() if (a := self.attribute(name, f)) is not None]
+        header = block.header
+        self.read_blocks(
+            name,
+            fields,
+            found,
+            numbered=header is not None and header.field.type in ("integer", "double"),
+            fill_forward=header is not None and bool(header.fill_forward),
+        )
 
     def body(self, name: str, rows: list, header: Any) -> dict:
         """The values of one occurrence of the block `name`, by field. A
@@ -913,7 +998,7 @@ class _Load:
         array's control records, say) are skipped."""
         keys = block_keys(self.cls, name)
         rows = _resolve_open_close_rows(rows, self.context)
-        binds = name in self._binding_blocks
+        binds = name in self.binding_blocks
         untagged = self.attribute(name, keys.untagged) if keys.untagged else None
         if not keys.tagged and not keys.dynamic:
             if binds:
@@ -1082,38 +1167,6 @@ class _Load:
             return value
         return None
 
-    def parse_list(self, rows: list, item_cls: Any, words: tuple[str, ...] = ()) -> Any:
-        """A list field's value from its rows, with the sizes (aux by
-        auxiliary, GNC's alphasj by numalphaj) and switches (boundnames)
-        of its columns read so far."""
-        sizes = {}
-        for shape in sized_by(item_cls):
-            n = dim_value(shape, lookup=lambda name: dim_lookup(self.kwargs, name))
-            if n is not None:
-                sizes[shape] = n
-        enabled = frozenset(o for o in conditional_fields(item_cls).values() if self.kwargs.get(o))
-        return _parse_rows(
-            rows,
-            item_cls,
-            sizes=sizes,
-            enabled=enabled,
-            # the grid's dims give the cellids' width (see LoadContext.ncelldim)
-            context=attrs.evolve(self.context, dims=self.dims),
-            union_arm=self._union_arm,
-            union_forms=self._union_forms,
-            load_child=self.load_child,
-            words=words,
-        )
-
-    def load_child(self, f: Any, token: str) -> Any:
-        """A row's child column (LAK's TAB6 file), loaded from its file,
-        once per file (SFR's periods may name one table again)."""
-        path = Path(_strip_quotes(token))
-        if path not in self._children:
-            context = attrs.evolve(self.context, dims=self.dims, parent=self.cls)
-            self._children[path] = _load_file_child(f, path, context)
-        return self._children[path]
-
 
 def structure_component(
     raw: dict,
@@ -1163,13 +1216,4 @@ def structure_component(
         if block_name in found:
             load.read(block_name, block, found[block_name])
 
-    kwargs = load.kwargs
-    if context.workspace and load.bindings:
-        kwargs.update(_resolve_bindings(cls, load.bindings, context))
-    if name is not None:
-        kwargs["name"] = name
-    if load.array_ios:
-        # write the arrays back the way the file wrote them
-        kwargs["write_context"] = WriteContext(arrays=load.array_ios)
-
-    return cls(**kwargs)
+    return load.finish(name)

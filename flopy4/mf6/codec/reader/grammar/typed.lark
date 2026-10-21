@@ -124,5 +124,6 @@ BANG_COMMENT: /![^\n]*/
 // `!`), so `5!note` is the number 5 and then a comment.
 INT: /\d+(?![^\s,#!])/
 SIGNED_INT: /[+-]\d+(?![^\s,#!])/
-NUMBER: /(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?(?![^\s,#!])/
-SIGNED_NUMBER: /[+-](\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?(?![^\s,#!])/
+// An exponent may be Fortran's D (1D-5), as MF6 reads one.
+NUMBER: /(\d+(\.\d*)?|\.\d+)([eEdD][+-]?\d+)?(?![^\s,#!])/
+SIGNED_NUMBER: /[+-](\d+(\.\d*)?|\.\d+)([eEdD][+-]?\d+)?(?![^\s,#!])/

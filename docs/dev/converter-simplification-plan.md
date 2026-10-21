@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, A1, A2, A3 and B1 done; B2 next** (see "Phases"). Written
+Status: **S1, A1, A2, A3, B1 and B2 done; B3 next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -538,7 +538,47 @@ B1. **Grammar rules named after class attributes.** Done. `make_grammars`
    onto the classes. Today it's keyed by DFN name (`loads_typed` on an OC
    file gives `{"options": {"head_filerecord": {"headfile": "a.hds"}},
    "period 1": {"saverecord": [...]}}`).
-B2. **Full typed load for a few components.** From the typed parse to
+B2. **Full typed load for a few components.** Done.
+   `converter/ingress/typed.py` reads the typed parse into a component for
+   sim-nam, gwf-nam, sim-tdis, DIS, NPF, IC, STO, CHD, RCHA, OC, OBS and TAS,
+   by the class's fields alone: no DFN at runtime. A block's fields are the
+   class attributes whose `block` metadata names it, read in field order
+   (options and dimensions first); a period's header is 0-based, a TAS time
+   a float, OBS's a record's words. What both loaders do after a block's
+   values are read moved into a shared base, `ComponentLoad`: assembling a
+   repeating block's values by header (block lists included), fill-forward
+   clearing, the one-solution-group rule, list rows into `Item`s, row
+   children, bindings, and the instance's `WriteContext`. So what's
+   typed-only is the per-value step: array control records to values and
+   `ArrayIO` (FACTOR, IPRN, LAYERED, OPEN/CLOSE and binary files, through
+   a shared `read_array_file`), union elements into their arm's `Item` (by
+   keyword), records from their parts, file records to paths or children,
+   and a block's OPEN/CLOSE redirect, parsed with the component's grammar.
+   Dynamic keys: the grammar's generic `aux` rule reads any `<word>
+   <array>` row; its name is checked against `auxiliary` afterwards, kept
+   in AUXILIARY's spelling, and warns like the basic loader if unknown.
+   Unlike the basic loader, an auxiliary name that's also a field's (an aux
+   named RECHARGE) parses as the field, not the aux: B3, if a file does it.
+   A TAS time's array isn't recorded in `ArrayIO`, as in the basic loader
+   (which reads it as the block's untagged field); both should, later.
+
+   The transformer changed in three places: a union's value arm keeps its
+   arm (`("frequency", 2)`, which a union field takes; it was `2`), a
+   keyword arm its case as written (it was lower case; the basic loader
+   keeps the file's), and a block's OPEN/CLOSE line reads as
+   `"open/close": <path>` (it was dropped). Number terminals take a Fortran
+   D exponent (`1D-5`), as MF6 does. A layered array's `netcdf` slot read
+   the LAYERED tree; fixed.
+
+   Over the corpus (261 models), 254 load with identical values, warnings
+   and written files under both loaders. The other 7 are typed-grammar
+   parse failures in NPF, left for B3: 4 `DEV_` options not in the DFN
+   (the basic loader warns and skips them), 2 remarks containing a
+   reserved word (`KNOWN_TYPED_GAPS`), and `test060_gms_ets`, which
+   neither loader reads. `test_mf6_typed_loader.py` checks one file of
+   each block kind and four corpus models against the basic loader.
+
+   As planned: From the typed parse to
    component kwargs, for a set covering each block kind in "Repetition":
    DIS, NPF, IC, CHD (list period), RCHA (G/A period, with `aux`), OC
    (tagged-list period), OBS (record header), TAS (double header), STO,

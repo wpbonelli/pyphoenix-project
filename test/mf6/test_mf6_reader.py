@@ -584,10 +584,10 @@ def test_transform_gwf_oc_file(model_workspace):
     assert "HEAD" in rtypes
     assert "BUDGET" in rtypes
 
-    # Check that all records use ALL frequency
+    # Check that all records use ALL frequency, as the file spells it
     for rec in save_records:
         assert "ocsetting" in rec
-        assert rec["ocsetting"] == "all"
+        assert rec["ocsetting"].upper() == "ALL"
 
 
 @pytest.mark.parametrize("model_workspace", ["mf6/example/ex-gwf-csub-p01"], indirect=True)
@@ -960,9 +960,12 @@ def test_typed_loads_keyword_after_comment_line():
         "options": {"print_flows": True, "save_flows": True},
         "dimensions": {"maxbound": 1},
     }
-    # ...or after an OPEN/CLOSE line, which any block may have
+    # ...or after an OPEN/CLOSE line, which any block may have, and which
+    # reads as the file it names
     chd = "BEGIN OPTIONS\n  OPEN/CLOSE opts.txt\n  PRINT_FLOWS\nEND OPTIONS\n"
-    assert loads_typed(chd, "gwf-chd") == {"options": {"print_flows": True}}
+    assert loads_typed(chd, "gwf-chd") == {
+        "options": {"open/close": Path("opts.txt"), "print_flows": True}
+    }
 
 
 def test_typed_grammars_no_line_token_beside_keyword():

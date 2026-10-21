@@ -28,7 +28,12 @@ def _is_records(item: Any) -> bool:
 
 
 # A whole token that's a number, as typed.lark's number terminals take one.
-_NUMBER = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
+_NUMBER = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eEdD][+-]?\d+)?")
+
+
+def _number(token: Any) -> int | float:
+    """A number token's value. Its exponent may be Fortran's D (1D-5)."""
+    return parse_number(str(token).replace("d", "e").replace("D", "E"))
 
 
 def record_rows(text: str) -> list[list[Any]]:
@@ -37,7 +42,7 @@ def record_rows(text: str) -> list[list[Any]]:
     rows = []
     for line in text.replace(",", " ").split("\n"):
         if (tokens := line.split()) and tokens[0][0] not in "#!":
-            rows.append([parse_number(t) if _NUMBER.fullmatch(t) else t for t in tokens])
+            rows.append([_number(t) if _NUMBER.fullmatch(t) else t for t in tokens])
     return rows
 
 
@@ -156,7 +161,7 @@ class TypedTransformer(Transformer):
         return TypedTransformer.try_create_dataarray(arr)
 
     def layered_array(self, items: list[Any]) -> list[dict]:
-        netcdf = items[0]
+        netcdf = items[1]  # after LAYERED
         layers = []
         for arr in items[2:]:
             if arr is None:
@@ -237,11 +242,11 @@ class TypedTransformer(Transformer):
         return int(items[0])
 
     def double(self, items: list[Any]) -> float:
-        return float(items[0])
+        return float(_number(items[0]))
 
     def number(self, items: list[Any]) -> int | float:
         """Handle generic number (could be int or float)."""
-        return parse_number(str(items[0]))
+        return _number(items[0])
 
     def data(self, items: list[Any]) -> np.ndarray:
         if not any(_is_numbers(i) for i in items):
@@ -263,9 +268,14 @@ class TypedTransformer(Transformer):
     def netcdf(self, _) -> dict[str, bool]:
         return {"netcdf": True}
 
+    def open_close_redirect(self, items: list[Any]) -> tuple[str, Path]:
+        """A block's rows in another file (``OPEN/CLOSE <file>``), read
+        into the block's contents under "open/close"."""
+        return "open/close", items[0]
+
     def block_index(self, items: list[Any]) -> int | float:
         """Extract block index (e.g., period number, or utl-tas's time)."""
-        return parse_number(str(items[0]))
+        return _number(items[0])
 
     def record(self, items: list[Any]) -> list[Any] | NumberRows:
         """A list row, or a NUMBERS token's rows (a NumberRows) or a RECORDS token's.
@@ -318,7 +328,7 @@ class TypedTransformer(Transformer):
 
     def double_index(self, items: list[Any]) -> float:
         """A block index that's a time (utl-tas's TIME block)."""
-        return float(items[0])
+        return float(_number(items[0]))
 
     def _block(self, block_name: str, children: list[Any]) -> dict | None:
         """A block: [fields], or [index, fields, closing index], or [header,
@@ -375,10 +385,11 @@ class TypedTransformer(Transformer):
             return name, children  # its parts as written, see _header_key
         value: Any
         if "kw" in tags:
-            # A keyword union arm keeps its token: the arm, as spelled in
-            # the DFN (AMT-LMK, not amt_lmk).
+            # A keyword union arm keeps its token: the arm, spelled as in
+            # the DFN (AMT-LMK, not amt_lmk), in the file's case, as the
+            # basic loader reads it.
             if children and isinstance(children[0], Token):
-                name = str(children[0]).lower()
+                name = str(children[0])
             value = True
         elif "arr" in tags:
             value = list(children)
@@ -387,9 +398,10 @@ class TypedTransformer(Transformer):
             # part that's absent is None.
             value = {c[0]: c[1] for c in children if isinstance(c, tuple)}
         elif "union" in tags:
+            # a keyword arm reads as its name, another as (arm, value), as
+            # a union field takes it (OC's ("frequency", 2))
             arm, value = children[0]
-            if value is True:  # only a keyword reads as True
-                value = arm
+            value = arm if value is True else (arm, value)
         elif "val" in tags:
             value = children[0] if len(children) == 1 else children
         else:
