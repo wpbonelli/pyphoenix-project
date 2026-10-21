@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, A1, A2, A3, B1, B2 and B3 done; B4 next** (see "Phases"). Written
+Status: **S1, A1, A2, A3, B1, B2, B3 and B4 done; S2 or C next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -640,10 +640,37 @@ B3. **All components.** Done. The typed loader reads every component,
    As planned: Extend B2 to every generated component, until the
    typed loader passes the whole round-trip suite and the load snapshots
    with no fallback to basic.
-B4. **Grammar build cost.** Building the grammars is the typed loader's
-   cold-start cost (1.74 s for 30 components). Cache the built parsers
-   (lark's `cache` option, or parsers serialized at sync time), and build
-   each only when a file of its component is first read.
+B4. **Grammar build cost.** Done. Each typed parser was already built
+   only when a file of its component is first read (`get_typed_parser`'s
+   `lru_cache`). Now a built parser is also cached on disk, in the user's
+   cache directory (`~/Library/Caches/flopy4`, `~/.cache/flopy4`, or
+   `%LOCALAPPDATA%\flopy4`; `FLOPY4_CACHE_DIR` overrides it, empty for
+   none), one file per grammar keyed by its text, `typed.lark`'s, and
+   lark's and Python's versions. A changed grammar's stale entry is
+   removed, a corrupt one rebuilt, and an unwritable cache skipped. Not
+   lark's own `cache` option, which writes in place, so a concurrent
+   process (pytest-xdist) could read a half-written entry or interleave
+   writes; entries here are written to a temporary file and renamed. Not
+   parsers serialized at sync time either: they'd be lark's pickles,
+   tied to its and Python's versions, shipped in the package.
+
+   A warm cache loads a parser in ~10 ms (lark's own deserialization,
+   mostly pickle), against ~34 ms to build one: all 129 grammars take
+   0.74 s instead of 4.4 s. On the standard benchmark tier's 19
+   components, `test_typed_grammar_build` (now with no cache) is 0.78 s
+   and the new `test_typed_grammar_load` (a warm cache) 0.24 s. All
+   grammars cached take 15 MB.
+
+   Along the way, the parse benchmarks' corpus was empty: since #483 the
+   reader's `BASIC_PARSER` transforms as it parses, from bytes, so
+   parsing text with it failed for every file. `test_parse[basic]` now
+   uses the basic parser without the transformer, so it's still parse
+   only.
+
+   As planned: Building the grammars is the typed loader's cold-start
+   cost (1.74 s for 30 components). Cache the built parsers (lark's
+   `cache` option, or parsers serialized at sync time), and build each
+   only when a file of its component is first read.
 
 ### Shared: egress
 

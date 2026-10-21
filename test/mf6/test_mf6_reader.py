@@ -1046,3 +1046,41 @@ def test_transform_record_header():
     keys = ["continuous FILEOUT Heads.csv", "continuous FILEOUT flows.bsv BINARY"]
     assert list(loads_typed(text, "utl-obs")) == keys
     assert [k.lower() for k in loads(text)] == [k.lower() for k in keys]
+
+
+def test_typed_parser_cache(tmp_path, monkeypatch):
+    """A built typed parser is cached on disk, loaded from there next time,
+    and rebuilt if the entry's corrupt or its grammar changed."""
+    from flopy4.mf6.codec.reader import parser
+
+    text = "BEGIN GRIDDATA\n  strt\n    CONSTANT 1.0\nEND GRIDDATA\n"
+    monkeypatch.setenv("FLOPY4_CACHE_DIR", str(tmp_path))
+    parser.get_typed_parser.cache_clear()
+    built = parser.get_typed_parser("gwf-ic")
+    (entry,) = (tmp_path / "grammars").glob("gwf-ic-*.pickle")
+
+    def fail(grammar):
+        raise AssertionError("rebuilt")
+
+    with monkeypatch.context() as m:
+        m.setattr(parser, "_build_typed", fail)
+        parser.get_typed_parser.cache_clear()
+        assert parser.get_typed_parser("gwf-ic").parse(text) == built.parse(text)
+
+    entry.write_bytes(b"corrupt")
+    parser.get_typed_parser.cache_clear()
+    assert parser.get_typed_parser("gwf-ic").parse(text) == built.parse(text)
+    assert entry.read_bytes() != b"corrupt"
+
+    # A changed grammar is a new entry, which replaces the stale one.
+    stale = entry.with_name("gwf-ic-0000000000000000.pickle")
+    entry.rename(stale)
+    parser.get_typed_parser.cache_clear()
+    parser.get_typed_parser("gwf-ic")
+    assert entry.exists() and not stale.exists()
+
+    monkeypatch.setenv("FLOPY4_CACHE_DIR", "")
+    parser.get_typed_parser.cache_clear()
+    parser.get_typed_parser("gwf-dis")
+    assert not list((tmp_path / "grammars").glob("gwf-dis-*"))
+    parser.get_typed_parser.cache_clear()

@@ -20,9 +20,12 @@ Benchmarks (each parametrized by parser, ``basic`` or ``typed``):
 - `test_parse_transform` -- parse plus the Lark transformer, i.e.
   ``loads_basic`` / ``loads_typed``.
 - `test_typed_grammar_build` -- cold construction of the typed parsers,
-  excluded from the two above.
+  excluded from the two above, with no on-disk cache.
+- `test_typed_grammar_load` -- the same parsers from a warm on-disk cache
+  (see `get_typed_parser`), a cold start after the first.
 """
 
+import functools
 import logging
 import warnings
 from pathlib import Path
@@ -51,7 +54,7 @@ class Corpus(NamedTuple):
 def corpus(request, tmp_path_factory) -> Corpus:
     from modflow_devtools.models import copy_to
 
-    from flopy4.mf6.codec.reader import BASIC_PARSER, loads_basic, loads_typed
+    from flopy4.mf6.codec.reader import loads_basic, loads_typed
     from flopy4.mf6.codec.reader.parser import get_typed_parser
 
     manifest: Path | None = request.config.getoption("bench_parse_manifest")
@@ -78,7 +81,7 @@ def corpus(request, tmp_path_factory) -> Corpus:
                         continue
                     text = path.read_text()
                     try:
-                        BASIC_PARSER.parse(text)
+                        _basic_parser().parse(text)
                         get_typed_parser(dfn_name).parse(text)
                         loads_basic(text)
                         loads_typed(text, dfn_name)
@@ -99,11 +102,18 @@ def corpus(request, tmp_path_factory) -> Corpus:
     return Corpus(files)
 
 
-def _parse_basic(corpus: Corpus) -> None:
-    from flopy4.mf6.codec.reader import BASIC_PARSER
+@functools.cache
+def _basic_parser():
+    """The basic grammar's parser, without the reader's transformer, which
+    `BASIC_PARSER` applies as it parses (see `get_basic_parser`)."""
+    from flopy4.mf6.codec.reader.parser import get_basic_parser
 
+    return get_basic_parser()
+
+
+def _parse_basic(corpus: Corpus) -> None:
     for _, text in corpus.files:
-        BASIC_PARSER.parse(text)
+        _basic_parser().parse(text)
 
 
 def _parse_typed(corpus: Corpus) -> None:
@@ -143,8 +153,7 @@ def test_parse_transform(benchmark, corpus, parser):
     benchmark.pedantic(fn, args=(corpus,), rounds=ROUNDS, iterations=1)
 
 
-def test_typed_grammar_build(benchmark, corpus):
-    """Cold construction of every typed parser the corpus uses."""
+def _typed_grammars(benchmark, corpus, group: str) -> None:
     from flopy4.mf6.codec.reader.parser import get_typed_parser
 
     names = sorted({name for name, _ in corpus.files})
@@ -154,6 +163,20 @@ def test_typed_grammar_build(benchmark, corpus):
         for name in names:
             get_typed_parser(name)
 
-    benchmark.group = "typed-grammar-build"
+    build()  # fills the cache, if there is one
+    benchmark.group = group
     benchmark.extra_info["n_components"] = len(names)
     benchmark.pedantic(build, rounds=ROUNDS, iterations=1)
+    get_typed_parser.cache_clear()
+
+
+def test_typed_grammar_build(benchmark, corpus, monkeypatch):
+    """Cold construction of every typed parser the corpus uses."""
+    monkeypatch.setenv("FLOPY4_CACHE_DIR", "")
+    _typed_grammars(benchmark, corpus, "typed-grammar-build")
+
+
+def test_typed_grammar_load(benchmark, corpus, monkeypatch, tmp_path):
+    """Every typed parser the corpus uses, from a warm on-disk cache."""
+    monkeypatch.setenv("FLOPY4_CACHE_DIR", str(tmp_path))
+    _typed_grammars(benchmark, corpus, "typed-grammar-load")

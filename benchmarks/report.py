@@ -195,7 +195,7 @@ def collect(runs: list[Run]) -> Results:
                 res.scenarios[group][variant] = b["stats"]
                 continue
             t = b["stats"]["min"]
-            if "parser" in params or group == "typed-grammar-build":
+            if "parser" in params or group.startswith("typed-grammar-"):
                 res.parse[group][params.get("parser", "typed")] = t
                 continue
             library = params["library"]
