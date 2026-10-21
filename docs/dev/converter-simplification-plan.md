@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1 done** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1–D2 done** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -801,7 +801,11 @@ D2. **One header parse for both loaders.** `_header` and `_occurrences`
     typed by the block name `period`; only basic parses a `double`
     header; only typed keys a TAS time by float. Share the header parse
     (from the DFN block's header field), so the loaders differ only in
-    what the parse hands them.
+    what the parse hands them. *Done,* by the block's name instead, so
+    the typed loader still needs no DFN: in the stored DFNs every
+    `period` header is IPER, the one `double` header is TAS's `time`.
+    One `structure._header`; each loader's `_occurrences` stays, as
+    their parses differ (the typed one has TAS times already keyed).
 D3. **Rewrite `_resolve_bindings`** (`structure.py:535`, ~140 lines),
     the one part of ingress left in the old style: its own field index
     (D1 replaces it), ad hoc matching of a row's ftype token against

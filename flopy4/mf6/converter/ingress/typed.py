@@ -24,6 +24,7 @@ from flopy4.mf6.converter.ingress.structure import (
     ComponentLoad,
     _from_file_index,
     _Grid,
+    _header,
     _init_key,
     _is_grid_array,
     _load_file_child,
@@ -39,27 +40,11 @@ from flopy4.mf6.write_context import ArrayIO, array_hash
 from flopy4.utils import unwrap_optional
 
 
-def _header(block: str, words: list[str]) -> Any:
-    """A repeating block's header, from the words after its name in the
-    typed parse's key: a period's number as a 0-based period, another
-    number as is, a record (OBS's ``FILEOUT <name>``) as its words."""
-    if not words:
-        return None
-    if len(words) == 1:
-        try:
-            n = int(words[0])
-        except ValueError:
-            pass
-        else:
-            return n - 1 if block == "period" else n
-    return tuple(words)
-
-
 def _occurrences(parsed: dict) -> dict[str, dict[Any, Any]]:
     """The parse's blocks by name, each as ``{None: contents}``, or for a
-    repeating block ``{header: contents}`` (see `_header`) in file order.
-    A TAS time's block is keyed by its time. Unknown blocks are left out
-    (see `structure_typed`)."""
+    repeating block ``{header: contents}`` (see `structure._header`) in
+    file order. A TAS time's block is keyed by its time. Unknown blocks
+    are left out (see `structure_typed`)."""
     found: dict[str, dict[Any, Any]] = {}
     for key, contents in parsed.items():
         name, *words = key.split()
@@ -73,7 +58,7 @@ def _occurrences(parsed: dict) -> dict[str, dict[Any, Any]]:
         ):
             found.setdefault(name, {}).update(contents)
             continue
-        found.setdefault(name, {})[_header(name, words)] = contents
+        found.setdefault(name, {})[_header(name, words) if words else None] = contents
     return found
 
 

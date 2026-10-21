@@ -744,20 +744,22 @@ def _per_header(f: attrs.Attribute) -> bool:
     return get_origin(unwrap_optional(f.type)) is dict or block_list_type(f.type) is not None
 
 
-def _header(block: Any, tokens: list[str]) -> Any:
-    """A repeating block's header, from the words after its name: IPER as
-    a 0-based period, another number as one, a record (OBS's ``FILEOUT
-    <name>``) as its words, case kept. Raises ValueError if there are
-    none, or the number doesn't parse."""
-    if not tokens:
-        raise ValueError("no header")
-    field = block.header.field
-    if field.type == "integer":
-        value = int(tokens[0])
-        return value - 1 if field.name == "iper" else value
-    if field.type == "double":
-        return float(tokens[0])
-    return tuple(tokens)
+def _header(block: str, words: list[str]) -> Any:
+    """A repeating block's header, from the words after its name, by the
+    block's name, as both loaders key its occurrences: a period's IPER as
+    a 0-based period, a TAS time as a number, another single number
+    (SOLUTIONGROUP's) as one, a record (OBS's ``FILEOUT <name>``) as its
+    words, case kept. Raises ValueError if there are none, or a period's
+    or time's doesn't parse."""
+    if not words:
+        raise ValueError(f"no {block} header")
+    if block == "period":
+        return int(words[0]) - 1
+    if block == "time":
+        return float(words[0])
+    if len(words) == 1 and words[0].lstrip("+-").isdigit():
+        return int(words[0])
+    return tuple(words)
 
 
 def _occurrences(raw: dict, cls: type) -> dict[str, dict[Any, list]]:
@@ -777,7 +779,7 @@ def _occurrences(raw: dict, cls: type) -> dict[str, dict[Any, list]]:
         header = None
         if block.header is not None:
             try:
-                header = _header(block, raw_name.split()[1:])
+                header = _header(name, raw_name.split()[1:])
             except ValueError:
                 continue
         found.setdefault(name, {})[header] = rows
