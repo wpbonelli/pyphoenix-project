@@ -7,12 +7,13 @@ import builtins
 import types
 from collections.abc import Mapping
 from datetime import datetime
-from functools import cache
+from functools import cache, cached_property
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    NamedTuple,
     TypedDict,
     Union,
     Unpack,
@@ -576,26 +577,122 @@ def block_sort_key(item) -> int:
 
 
 # The DFNs the classes were generated from, which sync stores beside them
-# (flopy4/mf6/dfns). The converter reads block structure from these rather
-# than from the classes.
+# (flopy4/mf6/dfns), one TOML file each. The converter reads block structure
+# from these rather than from the classes. Each is loaded when first asked
+# for, not the whole set: devtools' `Dfns.load` parses every file and checks
+# the relations between them, which costs a fresh process ~0.15 s on its
+# first load. The relations were checked when the set was synced (and are
+# again in the tests), so they aren't checked here.
 
 
-@cache
-def _dfns() -> "Mapping[str, Component]":
-    import warnings
-
-    from flopy4.mf6._sync import _DFN_SCHEMA_VERSION, _DFNS
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message=".*modflow_devtools.dfns.*experimental.*")
-        from modflow_devtools.dfns import LocalDfnRegistry
+def _stored_dfns() -> Path:
+    from flopy4.mf6._sync import _DFNS
 
     stored = Path(__file__).parent / _DFNS
     if not stored.is_dir():
         raise FileNotFoundError(
             f"flopy4.mf6 has no stored DFNs ({stored}). Run `flopy4 mf6 sync` to re-sync."
         )
-    return LocalDfnRegistry(path=stored).spec(schema_version=_DFN_SCHEMA_VERSION).components
+    return stored
+
+
+@cache
+def _component_adapter():
+    import warnings
+
+    from pydantic import TypeAdapter
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*modflow_devtools.dfns.*experimental.*")
+        from modflow_devtools.dfns.schema import Component
+
+    return TypeAdapter(Component)
+
+
+@cache
+def _load_dfn(name: str) -> "Component":
+    import tomli
+    from modflow_devtools.dfns.schema import _inject_names
+
+    from flopy4.mf6._sync import _DFN_SCHEMA_VERSION
+
+    with (_stored_dfns() / f"{name}.toml").open("rb") as f:
+        data = tomli.load(f)
+    _inject_names(data)  # as `Dfns.load` does
+    component = _component_adapter().validate_python(data)
+    if component.schema_version not in (None, _DFN_SCHEMA_VERSION):
+        raise ValueError(
+            f"stored DFN {name!r} has schema version {component.schema_version}, "
+            f"expected {_DFN_SCHEMA_VERSION}. Run `flopy4 mf6 sync` to re-sync."
+        )
+    return component
+
+
+class DfnHeader(NamedTuple):
+    """A stored DFN's top-level keys: all codegen reads of the components
+    a link may target (see ``make._headers``), without loading them."""
+
+    name: str
+    type: str
+    subtype: str | None
+    parent: str | list[str] | None
+    ftype: str | None
+    multi: bool
+
+
+def _read_header(path: Path) -> DfnHeader:
+    import tomli
+
+    # sync writes a DFN's top-level keys before its first table
+    lines = []
+    with path.open() as f:
+        for line in f:
+            if line.startswith("["):
+                break
+            lines.append(line)
+    data = tomli.loads("".join(lines))
+    return DfnHeader(
+        data["name"],
+        data["type"],
+        data.get("subtype"),
+        data.get("parent"),
+        data.get("ftype"),
+        data.get("multi", False),
+    )
+
+
+class _StoredDfns(Mapping[str, "Component"]):
+    """The stored DFNs by name, each loaded on first access. `headers`
+    has every DFN's top-level keys, for scans that only need those."""
+
+    def __init__(self) -> None:
+        # as `Dfns.load` skips them
+        exclude = {"common", "flopy"}
+        self._names = sorted(p.stem for p in _stored_dfns().glob("*.toml") if p.stem not in exclude)
+
+    @cached_property
+    def headers(self) -> dict[str, DfnHeader]:
+        stored = _stored_dfns()
+        return {n: _read_header(stored / f"{n}.toml") for n in self._names}
+
+    def __getitem__(self, name: str) -> "Component":
+        if name not in self._names:
+            raise KeyError(name)
+        return _load_dfn(name)
+
+    def __contains__(self, name: object) -> bool:
+        return name in self._names
+
+    def __iter__(self):
+        return iter(self._names)
+
+    def __len__(self) -> int:
+        return len(self._names)
+
+
+@cache
+def _dfns() -> "Mapping[str, Component]":
+    return _StoredDfns()
 
 
 def dfn(cls) -> "Component":

@@ -1113,6 +1113,14 @@ def _is_child_of(child: Component, parent: Component) -> bool:
     return admits(child.parent, parent)
 
 
+def _headers(dfns: Mapping[str, Component]) -> Mapping[str, Any]:
+    """The DFNs for reading only a link target's top-level keys (type,
+    subtype, parent, ftype, multi). A mapping that loads each DFN when
+    first asked for (`flopy4.mf6.spec`'s) has them as ``headers``, so
+    resolving a link doesn't load every component it might target."""
+    return getattr(dfns, "headers", dfns)
+
+
 def resolve_link(
     component: Component,
     path: str,
@@ -1134,7 +1142,7 @@ def resolve_link(
             raise ValueError(f"{component.name}.{path}: resolving {sel!r} needs the DFNs")
         found += [
             n
-            for n, c in dfns.items()
+            for n, c in _headers(dfns).items()
             if sel in (c.type, getattr(c, "subtype", None)) and _is_child_of(c, component)
         ]
     if not found:
@@ -1151,7 +1159,7 @@ def _has_class(target: str, link: File, dfns: Mapping[str, Component] | None) ->
     """Whether flopy4 has a class for a link's target: a hand-written base
     for a family picked per row, otherwise a generated module."""
     if link.component_ftype is not None:
-        c = dfns[target] if dfns is not None else None
+        c = _headers(dfns)[target] if dfns is not None else None
         return c is not None and bool({c.type, getattr(c, "subtype", None)} & set(_CHILD_BASES))
     return _has_module(target)
 
@@ -1271,7 +1279,7 @@ def _child_field_spec(
         if not filters.is_list_field(f):
             raise ValueError(f"{component.name}.{f.name}: component_ftype outside a list")
         assert dfns is not None  # resolve_link needed them
-        bases = {_child_base(dfns[t]) for t in targets}
+        bases = {_child_base(_headers(dfns)[t]) for t in targets}
         if len(bases) != 1:
             raise NotImplementedError(f"{component.name}.{f.name}: children of {sorted(bases)}")
         module, base = bases.pop().split(":")
@@ -1437,6 +1445,7 @@ def _model_package_specs(
     CHDG) share a field typed as their union; a type MF6 reads more than
     once (``multi``) is a list. Packages without a generated class are left
     out until they have one. The discretization comes first."""
+    headers = _headers(dfns)
     slots: dict[str, list[str]] = {}
     for t in targets:
         if not _has_module(t):
@@ -1445,7 +1454,7 @@ def _model_package_specs(
         # types reads an OBS6 file (PRT has none yet)
         if t == "utl-obs" and not component.observations:
             continue
-        ftype = dfns[t].ftype
+        ftype = headers[t].ftype
         if ftype is None:
             raise ValueError(f"{component.name}: package {t} has no ftype")
         name = _SLOTS.get(ftype, ftype.lower().removesuffix("6"))
@@ -1455,12 +1464,12 @@ def _model_package_specs(
         slots = {**{g: slots.pop(g) for g in grid_names}, **slots}
     specs, imports = [], []
     for name, members in slots.items():
-        if len({bool(dfns[t].multi) for t in members}) > 1:
+        if len({bool(headers[t].multi) for t in members}) > 1:
             raise ValueError(f"{component.name}.{name}: {members} disagree on multi")
         classes = [filters.class_name(t) for t in members]
         imports += [f"from {_component_module(t)} import {c}" for t, c in zip(members, classes)]
         cls = classes[0] if len(classes) == 1 else f"Union[{', '.join(classes)}]"
-        if dfns[members[0]].multi:
+        if headers[members[0]].multi:
             annotation = f"list[{cls}]"
             call = f'child(block="{block_name}", default=attrs.Factory(list))'
         else:

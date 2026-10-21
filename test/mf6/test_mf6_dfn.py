@@ -38,6 +38,42 @@ def test_stored_dfns_cover_classes():
         assert spec.dfn(cls).name == name == cls.dfn_name
 
 
+@pytest.fixture(scope="module")
+def whole_set():
+    """The stored DFNs as devtools loads them, all at once, checking the
+    relations between them, which the converter's lazy loads skip."""
+    from modflow_devtools.dfns import LocalDfnRegistry
+
+    from flopy4.mf6._sync import _DFN_SCHEMA_VERSION
+
+    registry = LocalDfnRegistry(path=spec._stored_dfns())
+    return registry.spec(schema_version=_DFN_SCHEMA_VERSION).components
+
+
+def test_lazy_dfns_match_whole_set(whole_set):
+    """Each DFN loaded alone is the one devtools loads in the whole set,
+    and its header has the same top-level keys."""
+    stored = spec._dfns()
+    assert sorted(stored) == sorted(whole_set)
+    for name, component in whole_set.items():
+        assert stored[name] == component, name
+        header = stored.headers[name]
+        for key in spec.DfnHeader._fields:
+            # only packages have multi
+            default = False if key == "multi" else None
+            assert getattr(header, key) == getattr(component, key, default), (name, key)
+
+
+@pytest.mark.parametrize("name", sorted(CLASSES))
+def test_attr_names_from_headers(name, whole_set):
+    """Codegen names the same attributes resolving links by the lazy
+    loader's headers as by the whole set."""
+    from flopy4.mf6.utils.codegen.make import attr_names
+
+    cls = CLASSES[name]
+    assert spec.attr_names(cls) == attr_names(whole_set[name], whole_set)
+
+
 @pytest.mark.parametrize("name", sorted(CLASSES))
 def test_attr_names(name):
     """Every DFN field codegen made an attribute for maps to it, and every
