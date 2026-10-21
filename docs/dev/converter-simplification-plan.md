@@ -403,6 +403,29 @@ None of these block Tracks A or B.
    regress load or write time beyond noise, and the converter rewrite
    shouldn't widen the memory gap on those two models.
 
+   **Rerun after S2** (2026-10-21, standard tier, Apple M2 Max), against
+   the branch's merge base with `develop` (`c5c606eb`) on the same
+   machine, flopy4 with the basic loader:
+   - load and write: no regression beyond noise. Loading all models took
+     0.206 s against 0.212 s (load and materialize 0.251 against 0.261);
+     writing 0.481 against 0.469. Per model, loads were 0–11% faster and
+     writes within ±9%, inside flopy3's own run-to-run spread on unchanged
+     code (up to 7%).
+   - peak memory: within ±5% on every load and write, no change on the
+     two models above.
+   - cold start (a fresh process importing flopy4, then loading and
+     materializing `test050_circle_island`): 1.28 s against 1.12 s. The
+     import was unchanged; the first load took 0.36 s against 0.21 s,
+     loading all 129 stored DFNs (A1). With each DFN loaded when first
+     asked for (A1, `3da330ce`), alternating runs of the two commits gave
+     1.23–1.25 s against 1.17–1.20 s, the first load 0.26 s against
+     0.21 s. The rest is the 10 DFNs this model needs and building
+     codegen's spec of each class for `attr_names`; computing the
+     attribute names at sync time would remove it.
+   - not compared: the parse benchmarks, which had no corpus at the base
+     (fixed in B4), and the typed loader, which joins `LIBRARIES` in
+     Phase C.
+
 ## Phases
 
 Each phase keeps the round-trip suite, the load snapshots, the
@@ -448,8 +471,15 @@ A1. **Stored DFNs and a runtime accessor.** Done: `flopy4/mf6/dfns`,
    `spec.dfn(cls)`, `spec.block_keys(cls, block)` (fields by leading
    keyword, by dynamic key path, and the untagged field) and
    `spec.following_tags(f)` for keywords two fields share; the devtools
-   private helpers are wrapped there. Loading the 129 stored DFNs takes
-   0.16 s, once per process. The stored DFNs are the 2026-10-12 nightly's,
+   private helpers are wrapped there. Each stored DFN is loaded when the
+   converter first asks for it, about 10 for a typical simulation.
+   Loading all 129 through devtools (`Dfns.load`, which also checks the
+   relations between them) took 0.15 s on a process's first load; the
+   relations are checked in the tests instead
+   (`test_lazy_dfns_match_whole_set`). Codegen's link resolution, which
+   `attr_names` runs, reads the other DFNs' top-level keys from a header
+   index (`_StoredDfns.headers`, 6 ms for all 129) rather than loading
+   them. The stored DFNs are the 2026-10-12 nightly's,
    which regenerate every checked-in class and grammar unchanged (the
    contract's commit `203d72f0` isn't in a local checkout);
    `test_installed_dfns_match_classes` keeps it so. The first attempt was
