@@ -743,7 +743,17 @@ S2. **Egress mirror.** Done. `unstructure_component` is one path for
 
 ### C: compare (keeps both loaders)
 
-C. **Pick a loader.** Once A3 and B3 are done, and each has had its own
+C. **Compare the loaders.** Done: [`loader-comparison.md`](loader-comparison.md).
+   The typed loader loads 1.25× slower over the standard tier (6–70% per
+   model), with up to 1.8× the peak memory on two models and about the
+   same on the rest; its first load is 0.33 s against 0.27 s with its
+   grammar cache warm. It's stricter: a missing `END` or a wrong-typed
+   value raises, with a line and column, where the basic loader loads.
+   Recommended: basic stays the default, typed the opt-in. Both stay. The
+   benchmarks' load, cold-start and load-memory runs take `flopy4-typed`
+   (`_ops.LOADS`), and `report.py` compares the loaders.
+
+   As planned: Once A3 and B3 are done, and each has had its own
    tuning, compare them over the same corpus:
    - correctness: both pass the round-trip suite and produce identical
      load snapshots;
@@ -788,6 +798,19 @@ mention them where they came up; this is the one list.
 - **A TAS time's array isn't recorded in `ArrayIO`** by either loader
    (B2), so its read options aren't kept on write.
 - **`test060_gms_ets`** loads under neither loader (B2, B3).
+- **Short arrays load** under both loaders (C): an array with fewer
+   values than its shape keeps them (non-layered) or is filled by
+   repeating them (`LAYERED`, whose `np.resize` is meant for fewer
+   records than layers). Each control record should have its full count.
+- **Load errors don't name the file** (C): the typed loader's parse
+   errors give a line and column, the basic loader's neither, and
+   neither names the file.
+- **The basic loader is lenient where MF6 isn't** (C): a missing `END`
+   reads the next block's `BEGIN` as an unknown option, and a wrong-typed
+   value of a computed field (`MAXBOUND two`) is ignored silently.
+- **The typed loader's memory** (C): 1.8× the basic loader's peak on
+   `test016_Keating_dev` and 1.7× on `test045_lake4ss_dev`. Not looked
+   into; worth it before deciding to delete the basic loader.
 - **The devtools follow-ups** above, and **developer-mode fields on sync**
    (under "Related, outside the converter").
 
