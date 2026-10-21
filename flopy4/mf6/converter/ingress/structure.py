@@ -14,7 +14,7 @@ from flopy4.dimensions import DimensionProvider
 from flopy4.mf6._types import TimeArraySeriesRef
 from flopy4.mf6.block import block_list_type
 from flopy4.mf6.codec.reader.transformer.rows import BlockRows, NumberRows, parts, row_values
-from flopy4.mf6.component import Component, get_ftype
+from flopy4.mf6.component import Component, get_ftypes
 from flopy4.mf6.item import (
     Item,
     RowContext,
@@ -536,79 +536,61 @@ def _exchange_models(model_names: list, models: list) -> tuple[Any, Any] | None:
     return found[0], found[1]
 
 
-def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> dict[str, Any]:
-    """Resolve the rows naming children (a model's packages, the
-    simulation's models, exchanges and solutions), by block, into loaded
-    child component instances, keyed by field name -- merged
-    into `structure_component`'s kwargs so children are attached the same
-    way manual construction already attaches them (`Gwf(dis=Dis(...))`).
+def _binding_classes(accepted: tuple[type, ...]) -> list[type]:
+    """The classes a child field takes, as concrete ones: an abstract
+    one (the simulation's `Model`, `Exchange`, `Solution`) as each
+    component class deriving from it."""
+    out: list[type] = []
+    for c in accepted:
+        if ABC in c.__bases__:
+            out += [k for k in dict.fromkeys(get_ftypes().values()) if issubclass(k, c)]
+        else:
+            out.append(c)
+    return out
 
-    The child fields are `binding_fields`', by block, since several
-    fields can share one (every `Gwf` package field shares
-    `"packages"`); egress's `_Unstructure.bindings` is the inverse. Within a block,
-    `DimensionProvider` targets (`dis`/`disv`/`disu`) are resolved first so
-    their dims can be threaded into the context of that block's other
-    children -- `dimensions.py`'s object-graph walk only helps once a child
-    is already attached, not while its siblings are still loading. An
-    exchange's context gets the models it connects, from the models block,
-    loaded before the exchanges block (field order).
-    """
+
+def _binding_target(row: list, field_specs: list, context: LoadContext) -> tuple | None:
+    """The child field a row names (``CHD6 <file> <name>``) and the class
+    to load it as, by the row's ftype, or None if no field takes it. A
+    G/A pair (`Chd`/`Chdg`) shares one ftype, so is told apart by the
+    file's options (see `_disambiguate_ga_variant`)."""
     from flopy4.mf6.converter.binding import component_ftype
-    from flopy4.mf6.exchange import Exchange
-    from flopy4.mf6.model import Model
-    from flopy4.mf6.solution import Solution
 
-    # Model scope to prefer when resolving this class's own binding rows'
-    # ftype tokens via get_ftype() below -- e.g. structuring a Gwf's
-    # "packages" block should resolve "DIS6" to gwf's own Dis, not gwt's/
-    # gwe's/prt's.
-    # A Model class's __module__ is "flopy4.mf6.<model>" (defined directly
-    # in that subpackage's __init__.py), not "...<model>.<name>" like its
-    # child packages, so this can't reuse component.py's _model_prefix --
-    # a Model's own class name *is* its model prefix by convention.
-    model_prefix = cls.__name__.lower() if issubclass(cls, Model) else None
+    token = str(row[0]).lower()
+    matches = [
+        (f, kind, c)
+        for f, kind, accepted in field_specs
+        for c in _binding_classes(accepted)
+        if component_ftype(c).lower() == token
+    ]
+    if len(matches) > 1:
+        target = _disambiguate_ga_variant([c for *_, c in matches], context.resolve(str(row[1])))
+        return next(m for m in matches if m[2] is target)
+    return matches[0] if matches else None
+
+
+def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> dict[str, Any]:
+    """The children the rows of `cls`'s blocks name (a model's packages,
+    the simulation's models, exchanges and solutions), loaded, by field:
+    the kwargs construction attaches them by (`Gwf(dis=Dis(...))`).
+    Egress's `_Unstructure.bindings` is the inverse.
+
+    A block's dims providers (`dis`/`disv`/`disu`) load first, so the
+    rest load with their dims; the object-graph walk in `dimensions.py`
+    only finds them once the children are attached. An exchange loads
+    with the models it connects, from the models block, which comes
+    first (field order). A row's terms after the file are a model's or
+    package's name, or an exchange's or solution's models."""
+    from flopy4.mf6.exchange import Exchange
+    from flopy4.mf6.solution import Solution
 
     kwargs: dict[str, Any] = {}
     for block_name, field_specs in binding_fields(cls).items():
-        rows = rows_by_block.get(block_name)
-        if not rows:
-            continue
-
-        # Resolve each row's target class + owning field up front, so rows
-        # can be reordered (dims providers first) without re-parsing.
-        resolved = []
-        for row in rows:
+        targets = []
+        for row in rows_by_block.get(block_name) or []:
             if not row:
                 continue
-            token = str(row[0]).lower()
-            for child_field, kind, accepted in field_specs:
-                # Concrete candidates first: compare each accepted class's
-                # own ftype directly to the row's token. G/A-variant pairs
-                # (Chd/Chdg, Rch/Rcha, ...) share one namefile ftype (real
-                # MF6 has no separate 'CHDG6' case, only 'CHD6' -- see
-                # component_ftype()'s docstring), so more than one concrete
-                # candidate can match; disambiguate from the file content.
-                concrete = [c for c in accepted if ABC not in c.__bases__]
-                matches = [c for c in concrete if component_ftype(c).lower() == token]
-                if len(matches) > 1:
-                    target_cls = _disambiguate_ga_variant(matches, context.resolve(str(row[1])))
-                elif matches:
-                    target_cls = matches[0]
-                else:
-                    # Fall back to the ftype registry for abstract-typed
-                    # fields (Model/Exchange/Solution), where the
-                    # field's declared type can't be compared to a token
-                    # directly.
-                    resolved_cls = get_ftype(token, prefix=model_prefix)
-                    if resolved_cls is None or not any(
-                        issubclass(resolved_cls, t) for t in accepted
-                    ):
-                        continue
-                    target_cls = resolved_cls
-
-                resolved.append((row, target_cls, child_field.name, kind))
-                break
-            else:
+            if (target := _binding_target(row, field_specs, context)) is None:
                 # a package flopy4 has no class for yet, say
                 warnings.warn(
                     f"{cls.__name__}: no field takes {block_name} entry "
@@ -616,48 +598,32 @@ def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> d
                     UserWarning,
                     stacklevel=2,
                 )
+                continue
+            targets.append((row, *target))
+        targets.sort(key=lambda t: not issubclass(t[3], DimensionProvider))
 
-        resolved.sort(key=lambda r: 0 if issubclass(r[1], DimensionProvider) else 1)
-
-        dims: dict = {}
-        collectors: dict[str, Any] = {}
-        for row, target_cls, child_name, kind in resolved:
-            fname = str(row[1])
-            # A row's third+ terms mean different things by target kind (see
-            # _apply_binding_terms): for a plain Model/Package they're the
-            # pname, passed through as name= and preserved directly on the
-            # loaded child's own .name attribute; for Exchange/Solution
-            # they're real semantic data (coupled model names / applicable
-            # models), not a name to assign the loaded child itself.
-            # an empty pname is none
-            pname = (
-                str(row[2]) or None
-                if len(row) > 2 and not issubclass(target_cls, (Exchange, Solution))
-                else None
-            )
-            child_context = attrs.evolve(
-                context,
-                dims=dims,
-                parent=None,
-                exchange=(
-                    _exchange_models(row[2:], kwargs.get("models", []))
-                    if issubclass(target_cls, Exchange)
-                    else None
-                ),
-            )
-            child = target_cls.load(context.resolve(fname), name=pname, context=child_context)
+        child_context = attrs.evolve(context, dims={}, parent=None)
+        for row, f, kind, target_cls in targets:
+            fname, terms = str(row[1]), row[2:]
+            models = kwargs.get("models", [])
+            # a model's or package's name (an empty one is none); an
+            # exchange's or solution's terms are its models
+            name = None
+            if terms and not issubclass(target_cls, (Exchange, Solution)):
+                name = str(terms[0]) or None
+            load_context = child_context
+            if issubclass(target_cls, Exchange):
+                load_context = attrs.evolve(child_context, exchange=_exchange_models(terms, models))
+            child = target_cls.load(context.resolve(fname), name=name, context=load_context)
             child.filename = Path(fname)
-            _apply_binding_terms(child, row[2:], kwargs.get("models", []))
+            _apply_binding_terms(child, terms, models)
             if isinstance(child, DimensionProvider):
-                dims = {**dims, **child.get_dims()}
-
-            if kind == "only":
-                collectors[child_name] = child
-            elif kind == "list":
-                collectors.setdefault(child_name, []).append(child)
-
-        kwargs.update(collectors)
-
+                dims = {**child_context.dims, **child.get_dims()}
+                child_context = attrs.evolve(child_context, dims=dims)
+            if kind == "list":
+                kwargs.setdefault(f.name, []).append(child)
+            else:
+                kwargs[f.name] = child
     return kwargs
 
 

@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1–D2 done** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1–D3 done** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -810,7 +810,12 @@ D3. **Rewrite `_resolve_bindings`** (`structure.py:535`, ~140 lines),
     the one part of ingress left in the old style: its own field index
     (D1 replaces it), ad hoc matching of a row's ftype token against
     concrete classes then the registry, and a context rebuilt per child.
-    Keep dims providers first and an exchange's models.
+    Keep dims providers first and an exchange's models. *Done:* a row's
+    field and class come from `_binding_target`, one ftype comparison
+    over each field's classes (an abstract one, the simulation's
+    `Model`/`Exchange`/`Solution`, as its concrete ones), so the
+    registry fallback and the model-prefix scoping go; one context is
+    carried through a block, gaining dims as providers load.
 D4. **Untangle `_Load.body`**: a 70-line `while` loop whose index
     `array()` advances by returning the next row, with OC's
     `HEAD FILEOUT` / `HEAD PRINT_FORMAT` direction check inline. Group
