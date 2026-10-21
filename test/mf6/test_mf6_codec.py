@@ -1628,9 +1628,9 @@ def test_dumps_tas_inner_classes():
 
     unstructured = COMPONENT_CONVERTER.unstructure(tas)
     assert "attributes" in unstructured
-    assert unstructured["attributes"]["time_series_name"] == ("NAME", "my_ts")
-    assert unstructured["attributes"]["interpolation_method"] == ("METHOD", "linear")
-    assert unstructured["attributes"]["sfac"] == ("SFAC", 1.5)
+    assert unstructured["attributes"]["time_series_namerecord"] == ("NAME", "my_ts")
+    assert unstructured["attributes"]["interpolation_methodrecord"] == ("METHOD", "linear")
+    assert unstructured["attributes"]["sfacrecord"] == ("SFAC", 1.5)
 
     dumped = dumps(unstructured)
     assert "BEGIN ATTRIBUTES" in dumped
@@ -1649,8 +1649,8 @@ def test_dumps_tas_inner_classes_multi_value():
     )
 
     unstructured = COMPONENT_CONVERTER.unstructure(tas)
-    assert unstructured["attributes"]["time_series_name"] == ("NAME", "ts1", "ts2")
-    assert unstructured["attributes"]["sfac"] == ("SFAC", 1.5, 2.0)
+    assert unstructured["attributes"]["time_series_namerecord"] == ("NAME", "ts1", "ts2")
+    assert unstructured["attributes"]["sfacrecord"] == ("SFAC", 1.5, 2.0)
 
     dumped = dumps(unstructured)
     assert "NAME ts1 ts2" in dumped
@@ -2320,8 +2320,8 @@ def test_oc_period_string_int_keys():
     pb_str = _period_blocks(oc_str)
 
     assert pb_int == pb_str
-    assert pb_int["period 1"]["period"] == [("SAVE", "BUDGET", "ALL")]
-    assert pb_int["period 2"]["period"] == [("SAVE", "BUDGET", "LAST")]
+    assert pb_int["period 1"]["output"] == [("SAVE", "BUDGET", "ALL")]
+    assert pb_int["period 2"]["output"] == [("SAVE", "BUDGET", "LAST")]
     # No fill-forward: period 3 was not specified so it produces no block.
     assert "period 3" not in pb_int
 
@@ -2339,7 +2339,7 @@ def test_oc_period_wildcard_fillforward():
 
     assert len(pb) == 4
     for i in range(1, 5):
-        assert pb[f"period {i}"]["period"] == [("SAVE", "HEAD", "ALL"), ("SAVE", "BUDGET", "LAST")]
+        assert pb[f"period {i}"]["output"] == [("SAVE", "HEAD", "ALL"), ("SAVE", "BUDGET", "LAST")]
 
 
 def test_oc_period_steps_syntax():
@@ -2355,11 +2355,11 @@ def test_oc_period_steps_syntax():
     )
     pb = _period_blocks(oc)
 
-    assert ("SAVE", "BUDGET", "STEPS", 1, 3, 5) in pb["period 1"]["period"]
-    assert ("PRINT", "BUDGET", "STEPS", 1) in pb["period 1"]["period"]
+    assert ("SAVE", "BUDGET", "STEPS", 1, 3, 5) in pb["period 1"]["output"]
+    assert ("PRINT", "BUDGET", "STEPS", 1) in pb["period 1"]["output"]
     # no fill-forward: period 2 doesn't re-emit SAVE BUDGET
-    assert not any(t[:2] == ("SAVE", "BUDGET") for t in pb["period 2"]["period"])
-    assert ("PRINT", "BUDGET", "LAST") in pb["period 2"]["period"]
+    assert not any(t[:2] == ("SAVE", "BUDGET") for t in pb["period 2"]["output"])
+    assert ("PRINT", "BUDGET", "LAST") in pb["period 2"]["output"]
 
 
 def test_oc_period_stop_sentinel():
@@ -2380,11 +2380,11 @@ def test_oc_period_stop_sentinel():
 
     assert len(pb) == 3
     for i in range(1, 4):
-        assert ("SAVE", "HEAD", "ALL") in pb[f"period {i}"]["period"]
+        assert ("SAVE", "HEAD", "ALL") in pb[f"period {i}"]["output"]
 
-    assert ("SAVE", "BUDGET", "STEPS", 1) in pb["period 1"]["period"]
-    assert not any(t[:2] == ("SAVE", "BUDGET") for t in pb["period 2"]["period"])
-    assert not any(t[:2] == ("SAVE", "BUDGET") for t in pb["period 3"]["period"])
+    assert ("SAVE", "BUDGET", "STEPS", 1) in pb["period 1"]["output"]
+    assert not any(t[:2] == ("SAVE", "BUDGET") for t in pb["period 2"]["output"])
+    assert not any(t[:2] == ("SAVE", "BUDGET") for t in pb["period 3"]["output"])
 
 
 def test_oc_period_mixed_keys_no_silent_drop():
@@ -2401,9 +2401,9 @@ def test_oc_period_mixed_keys_no_silent_drop():
     )
     pb = _period_blocks(oc)
 
-    assert ("SAVE", "HEAD", "FIRST") in pb["period 1"]["period"]
-    assert ("SAVE", "HEAD", "LAST") in pb["period 2"]["period"]
-    assert ("SAVE", "HEAD", "ALL") in pb["period 3"]["period"]
+    assert ("SAVE", "HEAD", "FIRST") in pb["period 1"]["output"]
+    assert ("SAVE", "HEAD", "LAST") in pb["period 2"]["output"]
+    assert ("SAVE", "HEAD", "ALL") in pb["period 3"]["output"]
 
 
 def test_oc_dumps_steps_in_output():
@@ -2447,10 +2447,10 @@ def test_oc_period_frequency():
     )
     pb = _period_blocks(oc)
 
-    assert ("SAVE", "HEAD", "FREQUENCY", 2) in pb["period 1"]["period"]
-    assert ("SAVE", "HEAD", "FREQUENCY", 2) in pb["period 2"]["period"]
-    assert ("SAVE", "HEAD", "FREQUENCY", 2) in pb["period 3"]["period"]
-    assert ("SAVE", "BUDGET", "ALL") in pb["period 1"]["period"]
+    assert ("SAVE", "HEAD", "FREQUENCY", 2) in pb["period 1"]["output"]
+    assert ("SAVE", "HEAD", "FREQUENCY", 2) in pb["period 2"]["output"]
+    assert ("SAVE", "HEAD", "FREQUENCY", 2) in pb["period 3"]["output"]
+    assert ("SAVE", "BUDGET", "ALL") in pb["period 1"]["output"]
 
 
 # ---------------------------------------------------------------------------
@@ -2481,7 +2481,7 @@ def test_lak_period_lake_keywords():
     )
     pb = _lak_period_blocks(lak)
 
-    rows_p1 = pb["period 1"]["period"]
+    rows_p1 = pb["period 1"]["perioddata"]
     assert (1, "STATUS", "ACTIVE") in rows_p1  # emitted 1-based
     assert (2, "STATUS", "CONSTANT") in rows_p1
     assert (2, "STAGE", 5.0) in rows_p1
@@ -2505,7 +2505,7 @@ def test_lak_period_outlet_keywords():
     )
     pb = _lak_period_blocks(lak)
 
-    rows = pb["period 1"]["period"]
+    rows = pb["period 1"]["perioddata"]
     assert (1, "RATE", 100.0) in rows  # emitted 1-based
     assert (2, "RATE", 200.0) in rows
     assert (1, "INVERT", 4.5) in rows
@@ -3532,7 +3532,7 @@ def test_lkt_period_keywords():
         }
     )
     pb = _lkt_period_blocks(lkt)
-    rows = pb["period 1"]["period"]
+    rows = pb["period 1"]["lakeperioddata"]
     assert (1, "STATUS", "ACTIVE") in rows  # emitted 1-based
     assert (2, "STATUS", "CONSTANT") in rows
     assert (1, "CONCENTRATION", 10.0) in rows
@@ -3648,7 +3648,7 @@ def test_lke_period_keywords():
         }
     )
     pb = _lke_period_blocks(lke)
-    rows = pb["period 1"]["period"]
+    rows = pb["period 1"]["lakeperioddata"]
     assert (1, "STATUS", "ACTIVE") in rows  # emitted 1-based
     assert (2, "STATUS", "CONSTANT") in rows
     assert (1, "TEMPERATURE", 15.0) in rows

@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, A1, A2, A3, B1, B2, B3 and B4 done; S2 or C next** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3 and B4 done; C next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -674,7 +674,36 @@ B4. **Grammar build cost.** Done. Each typed parser was already built
 
 ### Shared: egress
 
-S2. **Egress mirror.** Unify the package and component paths. Remove the
+S2. **Egress mirror.** Done. `unstructure_component` is one path for
+   every component (`_Unstructure`, the inverse of `_Load`). It walks the
+   DFN's blocks in order through A1's accessor, takes each field from its
+   attribute by the Phase S1 name mapping, and keys it by its DFN name.
+   - A field's value is written by its attribute's DFN type (the field
+     functions' `type` metadata), not by `isinstance` on the value. The
+     few checks left tell apart representations one type allows: a
+     list of children or one, a `Record` or not (which raises, as
+     before), raw tuples or items.
+   - `maxbound` isn't injected: a DFN field the class computes with a
+     property is read from it (and left out when 0, as before).
+   - A repeating block is written once per header, whatever the header:
+     a period's number, a TAS time, OBS's `CONTINUOUS FILEOUT <name>`.
+     A field holding one value rather than one per header is the first
+     occurrence's, which replaces the `solutiongroup 1` hack.
+   - The rows naming children come from a binding block's untagged
+     field (`bindings`, the inverse of `_resolve_bindings`), in place of
+     `_make_binding_blocks`.
+   - Empty blocks are left out unless codegen marked them
+     `write_if_empty`, or they're a name file's, as before.
+
+   The written files differ only in field order, which is now the
+   DFN's: `MXITER` comes before the solution rows in `SOLUTIONGROUP`
+   (206 of the 241 written-file snapshots), and EVT's `MAXBOUND` before
+   `NSEG`. Tests that read the unstructured dict use DFN names now
+   (`output`, not `period`, for OC's period rows). Two codegen tests,
+   whose synthetic DFNs aren't stored, have failed since A1; they now
+   store theirs (`_store_dfn`).
+
+   As planned: Unify the package and component paths. Remove the
    `maxbound` injection (move it to codegen or keep it as a field), the
    `solutiongroup 1` hack, and the `isinstance` dispatch. Egress doesn't
    depend on the loader, so this can go ahead on either track's schedule,

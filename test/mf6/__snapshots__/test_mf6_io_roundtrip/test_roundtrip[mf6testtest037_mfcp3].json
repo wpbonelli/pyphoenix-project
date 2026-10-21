@@ -15,8 +15,8 @@
     "END EXCHANGES",
     "",
     "BEGIN SOLUTIONGROUP 1",
-    " IMS6 test037.ims test037",
     " MXITER 1",
+    " IMS6 test037.ims test037",
     "END SOLUTIONGROUP 1"
   ],
   "test037.dis": [

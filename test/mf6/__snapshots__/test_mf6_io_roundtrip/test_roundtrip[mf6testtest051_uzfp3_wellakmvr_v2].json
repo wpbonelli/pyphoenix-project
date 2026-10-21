@@ -15,8 +15,8 @@
     "END EXCHANGES",
     "",
     "BEGIN SOLUTIONGROUP 1",
-    " IMS6 uzfp3_lakmvr_v2.ims uzfp3_lakmvr",
     " MXITER 1",
+    " IMS6 uzfp3_lakmvr_v2.ims uzfp3_lakmvr",
     "END SOLUTIONGROUP 1"
   ],
   "sfr.obs": [
