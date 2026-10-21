@@ -237,6 +237,34 @@ def _leading_word(part) -> str:
     return str(part[0]).upper()
 
 
+def _is_record(part) -> bool:
+    """Whether the part continues an array's name row: a control record,
+    or its values (a row of numbers)."""
+    if isinstance(part, NumberRows):
+        return True
+    return _leading_word(part) in _CONTROL_KINDS or isinstance(part[0], (int, float))
+
+
+def _groups(parts: list) -> list[list]:
+    """A block's parts (see `parts`), each row with the records after it
+    (see `_is_record`): an array's name row with its control records and
+    values. Records before any row are a group of their own."""
+    groups: list[list] = []
+    for part in parts:
+        if not part:
+            continue
+        if groups and _is_record(part):
+            groups[-1].append(part)
+        else:
+            groups.append([part])
+    return groups
+
+
+def _rows_of(parts: list) -> list:
+    """Parts as rows, a `NumberRows`' each."""
+    return [row for part in parts for row in (part if isinstance(part, NumberRows) else [part])]
+
+
 def _numeric_prefix(row: list) -> list:
     """Tokens from the start of `row` up to (not including) the first
     non-numeric one. Real INTERNAL/bare-data-row array data is purely
@@ -947,9 +975,9 @@ class _Load(ComponentLoad):
         """The values of one occurrence of the block `name`, by field. A
         row whose first word is a tagged field's key is that field's; the
         rest are the block's untagged field's, or name children (see
-        `_resolve_bindings`). A tagged list collects its rows. An unknown
-        word warns, and the rows after it that aren't another field's (its
-        array's control records, say) are skipped."""
+        `_resolve_bindings`). An array's name row comes with its control
+        records (see `_groups`). A tagged list collects its rows. An
+        unknown word warns, and its records are skipped."""
         keys = block_keys(self.cls, name)
         rows = _resolve_open_close_rows(rows, self.context)
         binds = name in self.binding_blocks
@@ -964,43 +992,24 @@ class _Load(ComponentLoad):
         values: dict[attrs.Attribute, Any] = {}
         lists: dict[attrs.Attribute, list] = {}
         rest: list = []
-        rows = parts(rows)
-        i = 0
-        while i < len(rows):
-            row = rows[i]
-            found = self.field_of(keys, row) if row else None
-            if found is None:
-                if not row:
-                    pass
-                elif binds or keys.untagged is not None:
-                    rest.extend(row if isinstance(row, NumberRows) else [row])
-                elif _leading_word(row) not in _CONTROL_KINDS and not isinstance(
-                    row[0], (int, float)
-                ):
-                    self.unknown(name, row)
-                i += 1
+        for head, *records in _groups(parts(rows)):
+            if (found := self.field_of(keys, head)) is None:
+                if binds or keys.untagged is not None:
+                    rest += _rows_of([head, *records])
+                elif not _is_record(head):
+                    self.unknown(name, head)
                 continue
             f, aux_name = found
-            a = self.attribute(name, f)
-            if a is None or (
-                a.metadata.get("direction")
-                and str(row[1] if len(row) > 1 else "").upper() not in ("FILEIN", "FILEOUT")
-            ):
-                # a file record has its direction token, so OC's "HEAD
-                # PRINT_FORMAT ..." isn't the "HEAD FILEOUT <path>" record
-                self.unknown(name, row)
-                i += 1
+            if (a := self.attribute(name, f)) is None:
+                self.unknown(name, head)
             elif _is_grid_array(a):
-                i = self.array(a, aux_name, rows, i, header, values)
+                self.array(a, aux_name, [head, *records], header, values)
             elif item_list_type(a.type) is not None:
-                lists.setdefault(a, []).append(row)
-                i += 1
+                lists.setdefault(a, []).append(head)
             elif a.metadata.get("_keyword"):
-                self.file(a, row, values)
-                i += 1
+                self.file(a, head, values)
             else:
-                values[a] = _tagged_value(a, row)
-                i += 1
+                values[a] = _tagged_value(a, head)
         for a, list_rows in lists.items():
             item_cls = item_list_type(a.type)
             value = self.parse_list(list_rows, item_cls, item_list_words(a.type))
@@ -1019,7 +1028,8 @@ class _Load(ComponentLoad):
         of numbers, or a word no field's. A dynamic key wins: an auxiliary
         name that matches a field's (Q) is the aux array, as in MF6. Where
         a word begins several fields' rows (OC's HEAD), the next one tells
-        them apart."""
+        them apart; a file record's row has its direction, so OC's ``HEAD
+        PRINT_FORMAT`` isn't a ``HEAD FILEOUT <path>`` record."""
         word = _leading_word(row).lower()
         if not word:
             return None
@@ -1027,13 +1037,20 @@ class _Load(ComponentLoad):
             for n in _names(self.value_at(path)):
                 if n.lower() == word:
                     return f, n
+        following = str(row[1]).lower() if len(row) > 1 else ""
         candidates = keys.tagged.get(word, ())
         if len(candidates) > 1:
-            following = str(row[1]).lower() if len(row) > 1 else ""
             candidates = tuple(f for f in candidates if following in following_tags(f)) or tuple(
                 f for f in candidates if not following_tags(f)
             )
-        return (candidates[0], None) if candidates else None
+        if not candidates:
+            return None
+        if following_tags(candidates[0]) in (["filein"], ["fileout"]) and following not in (
+            "filein",
+            "fileout",
+        ):
+            return None
+        return candidates[0], None
 
     def unknown(self, name: str, row: list) -> None:
         """Warn of a row no field of the block `name` takes. MF6 rejects a
@@ -1048,19 +1065,16 @@ class _Load(ComponentLoad):
                 stacklevel=4,
             )
 
-    def array(
-        self, f: Any, aux_name: "str | None", rows: list, i: int, header: Any, values: dict
-    ) -> int:
-        """Read the grid array `f` named on ``rows[i]`` into `values`, and
-        how the file wrote it, by `ArrayKey`, into `array_ios`; an
-        auxiliary variable's (`aux_name`) into `f`'s value by that name.
-        Returns the next row's index. A field can come from a time-array
-        series, by name -- ``RECHARGE TIMEARRAYSERIES <name>`` -- instead
-        of a control record on the next row; its value keeps the name
-        (see flopy4.mf6.period_arrays)."""
-        row = rows[i]
+    def array(self, f: Any, aux_name: "str | None", rows: list, header: Any, values: dict) -> None:
+        """Read the grid array `f`, from its name row and control records
+        (`rows`), into `values`, and how the file wrote it, by `ArrayKey`,
+        into `array_ios`; an auxiliary variable's (`aux_name`) into `f`'s
+        value by that name. A field can come from a time-array series, by
+        name -- ``RECHARGE TIMEARRAYSERIES <name>`` -- instead of a control
+        record; its value keeps the name (see flopy4.mf6.period_arrays)."""
+        row = rows[0]
         if (grid := _Grid.of(self.dims)) is None:
-            return i + 1
+            return
         tokens = [str(t) for t in row[1:]]
         tas = next(
             (j for j, t in enumerate(tokens) if t.upper() in ("TIMEARRAYSERIES", "TAS6")), None
@@ -1068,26 +1082,25 @@ class _Load(ComponentLoad):
         value: Any
         if tas is not None:
             if not f.metadata.get("time_series") or tas + 1 >= len(tokens):
-                return i + 1
-            value, i = TimeArraySeriesRef(tokens[tas + 1]), i + 1
+                return
+            value = TimeArraySeriesRef(tokens[tas + 1])
         else:
             # An array is layered only when given with LAYERED (the dfn's
             # `layered` flag just allows it); otherwise it covers the
             # field's whole shape, all nodes for a grid package.
             layered = _is_layered(row)
-            value, ios, i = _read_array(rows, i + 1, f, grid, self.context, layered)
+            value, ios, _ = _read_array(rows, 1, f, grid, self.context, layered)
             if aux_name is None:
                 key = (f.name,) if header is None else (f.name, header)
                 _record_array_io(self.array_ios, key, ios, layered=layered)
             if value is None:
-                return i
+                return
             if header is not None:
                 value = _period_array(value, ios, f, grid, layered)
         if aux_name is None:
             values[f] = value
         else:
             values.setdefault(f, {})[aux_name] = value
-        return i
 
     def file(self, f: Any, row: list, values: dict) -> None:
         """A file record's value (``KEYWORD [FILEIN|FILEOUT] <path>``) into

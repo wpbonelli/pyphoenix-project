@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1–D3 done** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1–D4 done** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -823,6 +823,11 @@ D4. **Untangle `_Load.body`**: a 70-line `while` loop whose index
     (as `parts()` does for number rows), so each row is one field's and
     the loop is a plain `for`; the direction check belongs in
     `field_of`, which already tells `HEAD` rows apart by the next word.
+    *Done:* `_groups` puts each row with the records after it, so the
+    loop is a `for` over groups and `array()` reads its own group. The
+    direction check is in `field_of`, for file records only: requiring
+    any record's second keyword broke optional ones (``XT3D [RHS]``).
+    About +13 lines, for the three small helpers.
 D5. **Value kind from the DFN on ingress.** Block structure comes from
     the DFN, but a value's kind still comes from the annotations
     (`item_list_type`, `block_list_type`, `_is_grid_array`, `_per_header`,
