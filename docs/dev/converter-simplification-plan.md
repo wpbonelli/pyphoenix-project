@@ -45,8 +45,9 @@ So this plan builds both loaders to the same standard, side by side:
 - **Track B**, a full typed load: the typed parse, then the post-parse
   steps (shaping, fill-forward, bindings);
 
-and then compares the best version of each (Phase C). Whichever loses is
-deleted. The two tracks share egress, the value representations, and the
+and then compares the best version of each (Phase C). Phase C deletes
+neither: both loaders stay, whatever the comparison shows, until
+deleting one is decided separately. The two tracks share egress, the value representations, and the
 name mapping (Phase S1). Neither waits on the other, so each phase below
 says which track it's on.
 
@@ -298,8 +299,8 @@ What the DFN doesn't say is which class attribute holds a DFN field
 block's list). That's codegen's naming rule, and both tracks need it
 (Phase S1).
 
-The stored DFNs are a stopgap for the comparison. If Track B wins, they
-go again.
+The stored DFNs stay while Track A does. If Track A is ever deleted,
+they can go again.
 
 ## Sketch
 
@@ -710,7 +711,7 @@ S2. **Egress mirror.** Done. `unstructure_component` is one path for
    reading block structure through A1's accessor (or, if Track B wins, the
    classes' fields and the Phase S1 name mapping).
 
-### C: compare
+### C: compare (keeps both loaders)
 
 C. **Pick a loader.** Once A3 and B3 are done, and each has had its own
    tuning, compare them over the same corpus:
@@ -725,9 +726,12 @@ C. **Pick a loader.** Once A3 and B3 are done, and each has had its own
      OPEN/CLOSE path), comparing what each loader reports and where;
    - size: the code each loader needs from parse to kwargs.
 
-   Write the results up next to `load-benchmarks.md`, decide, and delete
-   the losing loader. If Track B wins, the stored DFNs and A1's accessor
-   go too, and egress reads the classes' fields.
+   Write the results up next to `load-benchmarks.md`, with a
+   recommendation. **Phase C deletes neither loader**, whatever the
+   results: both stay, with `--loader` choosing between them, until
+   deleting one is decided as its own change. If that change deletes
+   Track A, the stored DFNs and A1's accessor go with it, and egress
+   reads the classes' fields.
 
 ### Later
 
