@@ -1,7 +1,6 @@
 import struct
 import warnings
 from abc import ABC
-from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast, get_args, get_origin
@@ -32,7 +31,7 @@ from flopy4.mf6.load_context import LoadContext
 from flopy4.mf6.package import Package
 from flopy4.mf6.period_arrays import is_grid_package
 from flopy4.mf6.record import Record
-from flopy4.mf6.spec import repeating_array_key_type, to_field_type
+from flopy4.mf6.spec import BlockKeys, attr_names, block_keys, dfn, following_tags, to_field_type
 from flopy4.mf6.write_context import ArrayIO, WriteContext, array_hash
 from flopy4.spec import is_array, resolve
 from flopy4.utils import unwrap_optional
@@ -449,37 +448,6 @@ def _is_layered(row: list) -> bool:
     return any(str(t).upper() == "LAYERED" for t in row[1:])
 
 
-def _parse_array_block(
-    rows: list,
-    fields_by_name: dict,
-    dims: dict,
-    context: LoadContext,
-    arrays: "dict | None" = None,
-) -> dict:
-    """Parse an array block's (GRIDDATA, DISU's CONNECTIONDATA) token rows
-    into {field_name: np.ndarray}: each field's name row, ``LAYERED`` or
-    not, then its control record(s) (see `_read_array`). How each array
-    was written goes in `arrays`, per `_record_array_io`.
-    """
-    result: dict = {}
-    if (grid := _Grid.of(dims)) is None:
-        return result
-    rows = parts(rows)
-    i = 0
-    while i < len(rows):
-        row = rows[i]
-        f = fields_by_name.get(str(row[0]).lower()) if _leading_word(row) else None
-        if f is None:
-            i += 1
-            continue
-        layered = _is_layered(row)
-        value, ios, i = _read_array(rows, i + 1, f, grid, context, layered)
-        _record_array_io(arrays, (f.name,), ios, layered=layered)
-        if value is not None:
-            result[f.name] = value
-    return result
-
-
 def _self_dims_from_kwargs(kwargs: dict) -> dict:
     """Derive grid dimensions from a component's own just-parsed DIMENSIONS
     block (already in `kwargs` from Pass 1) -- needed when structuring a
@@ -500,68 +468,6 @@ def _self_dims_from_kwargs(kwargs: dict) -> dict:
 def _names(value: Any) -> list[str]:
     """A string-array field's entries (AUXILIARY's names), or none."""
     return [] if value is None else [str(v) for v in np.atleast_1d(value)]
-
-
-def _parse_readarray_period_block(
-    rows: list,
-    ra_fields: dict,
-    dims: dict,
-    context: LoadContext,
-    arrays: "dict | None" = None,
-) -> "dict[str, np.ndarray | TimeArraySeriesRef]":
-    """Arrays by the (lowercase) name they're written under: a field's
-    name, or an auxiliary variable's, for its named array (see Pass 3b). A
-    time-array series reference gives the series' name. How each array was
-    written goes in `arrays` by that name, per `_record_array_io`."""
-    result: dict[str, np.ndarray | TimeArraySeriesRef] = {}
-    if (grid := _Grid.of(dims)) is None:
-        return result
-    rows = parts(rows)
-    i = 0
-    while i < len(rows):
-        row = rows[i]
-        if not _leading_word(row):
-            i += 1
-            continue
-        key = str(row[0]).lower()
-        f = ra_fields.get(key)
-        i += 1
-
-        # A field can come from a time-array series, by name --
-        # "RECHARGE TIMEARRAYSERIES <name>" -- instead of a control record on
-        # the next row. Keep the name (see flopy4.mf6.period_arrays).
-        tokens = [str(t) for t in row[1:]]
-        tas = next(
-            (j for j, t in enumerate(tokens) if t.upper() in ("TIMEARRAYSERIES", "TAS6")), None
-        )
-        if tas is not None:
-            if f is not None and f.metadata.get("time_series") and tas + 1 < len(tokens):
-                result[key] = TimeArraySeriesRef(tokens[tas + 1])
-            continue
-
-        # An array is layered only when given with LAYERED (the dfn's
-        # `layered` flag just allows it); otherwise it covers the field's
-        # whole shape, all nodes for a grid package. An unknown field's
-        # (an auxiliary name with no aux field) is read, to skip it.
-        layered = _is_layered(row)
-        value, ios, i = _read_array(rows, i, f, grid, context, layered)
-        if f is None:
-            continue
-        _record_array_io(arrays, (key,), ios, layered=layered)
-        if value is None:
-            continue
-        if layered:
-            result[key] = value.reshape(-1, grid.ncpl)  # (nlay, ncpl)
-        elif ios[0].format == "constant":
-            # one value for the period, kept as a 0-d array, as a
-            # scalar given at construction is (period_arrays._as_array)
-            result[key] = np.asarray(value[0])
-        elif (f.metadata.get("shape") or ("",))[-1] == "nodes" and grid.nlay > 1:
-            result[key] = value.reshape(grid.nlay, grid.ncpl)
-        else:
-            result[key] = value
-
-    return result
 
 
 def _apply_binding_terms(child: Any, terms: list, models: list) -> None:
@@ -616,9 +522,10 @@ def _exchange_models(model_names: list, models: list) -> tuple[Any, Any] | None:
     return found[0], found[1]
 
 
-def _resolve_bindings(cls: type, raw_lower: dict, context: LoadContext) -> dict[str, Any]:
-    """Resolve packages/models/exchanges/solutiongroup-style binding rows
-    into loaded child component instances, keyed by field name -- merged
+def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> dict[str, Any]:
+    """Resolve the rows naming children (a model's packages, the
+    simulation's models, exchanges and solutions), by block, into loaded
+    child component instances, keyed by field name -- merged
     into `structure_component`'s kwargs so children are attached the same
     way manual construction already attaches them (`Gwf(dis=Dis(...))`).
 
@@ -650,15 +557,8 @@ def _resolve_bindings(cls: type, raw_lower: dict, context: LoadContext) -> dict[
     model_prefix = cls.__name__.lower() if issubclass(cls, Model) else None
 
     fields_by_block: dict[str, list] = {}
-    # Blocks with other fields too. In the rest, every row names a child (a
-    # model's packages, the simulation's models), and a row no field takes,
-    # as for a package flopy4 has no class for yet, warns.
-    mixed: set[str] = set()
     for f in attrs.fields(cls):  # type: ignore[arg-type]
         spec = child_field_candidates(f) if f.metadata.get("child") else None
-        if spec is None or f.metadata.get("_keyword"):
-            if (block := f.metadata.get("block")) is not None:
-                mixed.add(block)
         if spec is None:
             continue
         block_name = f.metadata.get("block")
@@ -672,22 +572,7 @@ def _resolve_bindings(cls: type, raw_lower: dict, context: LoadContext) -> dict[
 
     kwargs: dict[str, Any] = {}
     for block_name, field_specs in fields_by_block.items():
-        # Some binding blocks are numbered (e.g. "SOLUTIONGROUP 1", like
-        # "PERIOD 1" elsewhere) -- gather every raw block whose name matches
-        # or starts with "{block_name} ".
-        raw_names = [
-            raw_name
-            for raw_name in raw_lower
-            if raw_name == block_name or raw_name.startswith(f"{block_name} ")
-        ]
-        # several solution groups, each with its own MXITER, would be
-        # merged into one, which MF6 runs differently
-        if block_name == "solutiongroup" and len(raw_names) > 1:
-            groups = ", ".join(n.upper() for n in raw_names)
-            raise ValueError(
-                f"{cls.__name__}: more than one solution group ({groups}); only one is supported"
-            )
-        rows = [row for raw_name in raw_names for row in raw_lower[raw_name]]
+        rows = rows_by_block.get(block_name)
         if not rows:
             continue
 
@@ -726,8 +611,7 @@ def _resolve_bindings(cls: type, raw_lower: dict, context: LoadContext) -> dict[
                 resolved.append((row, target_cls, child_name, kind))
                 break
             else:
-                if block_name in mixed:
-                    continue
+                # a package flopy4 has no class for yet, say
                 warnings.warn(
                     f"{cls.__name__}: no field takes {block_name} entry "
                     f"{str(row[0]).upper()} ({row[1] if len(row) > 1 else ''}), skipped",
@@ -827,22 +711,6 @@ def _load_file_child(field: Any, path: Path, context: LoadContext) -> Any:
     return child
 
 
-def _group_repeating_rows(
-    raw_lower: dict, prefixes: "set[str]", cast
-) -> "dict[str, dict[Any, list]]":
-    grouped: dict[str, dict[Any, list]] = {}
-    for block_name, rows in raw_lower.items():
-        names = block_name.split()
-        if len(names) < 2 or names[0] not in prefixes:
-            continue
-        try:
-            header = cast(names[1])
-        except ValueError:
-            continue
-        grouped.setdefault(names[0], {})[header] = rows
-    return grouped
-
-
 def read_component(
     path: Path, cls: "type[Component]", *, context: LoadContext, name: str | None = None
 ) -> Any:
@@ -859,6 +727,394 @@ def read_component(
     return structure_component(raw, cls, context=context, name=name)
 
 
+def _init_key(f: attrs.Attribute) -> str:
+    """The `__init__` argument setting the field `f`: its alias (a private
+    field's name without the underscore, as ``stress_period_data``), else
+    its name."""
+    return f.alias or f.name
+
+
+def _is_grid_array(f: Any) -> bool:
+    """Whether `f` holds a numeric array read with control records
+    (griddata, a G/A period's, a TAS time's), not inline (AUXILIARY's)."""
+    return is_array(f) and to_field_type(f.type) in ("integer", "double")
+
+
+def _per_header(f: attrs.Attribute) -> bool:
+    """Whether the field `f`, of a repeating block, holds a value per
+    header (a period's, a time's, an OBS output file's), not one."""
+    return get_origin(unwrap_optional(f.type)) is dict or block_list_type(f.type) is not None
+
+
+def _header(block: Any, tokens: list[str]) -> Any:
+    """A repeating block's header, from the words after its name: IPER as
+    a 0-based period, another number as one, a record (OBS's ``FILEOUT
+    <name>``) as its words, case kept. Raises ValueError if there are
+    none, or the number doesn't parse."""
+    if not tokens:
+        raise ValueError("no header")
+    field = block.header.field
+    if field.type == "integer":
+        value = int(tokens[0])
+        return value - 1 if field.name == "iper" else value
+    if field.type == "double":
+        return float(tokens[0])
+    return tuple(tokens)
+
+
+def _occurrences(raw: dict, cls: type) -> dict[str, dict[Any, list]]:
+    """The file's blocks by DFN block name, each as ``{None: rows}``, or for
+    a repeating block ``{header: rows}`` (see `_header`) in file order. MF6
+    ignores a block it doesn't read (an old IMS file's XMD), so one that
+    isn't in the DFN warns and is skipped; so, silently, is a repeating
+    one whose header doesn't parse."""
+    blocks = dfn(cls).blocks or {}
+    found: dict[str, dict[Any, list]] = {}
+    for raw_name, rows in raw.items():
+        name, *tokens = raw_name.lower().split()
+        if (block := blocks.get(name)) is None:
+            if rows:
+                warnings.warn(f"{cls.__name__}: ignoring unknown block {raw_name.upper()}")
+            continue
+        header = None
+        if block.header is not None:
+            try:
+                header = _header(block, raw_name.split()[1:])
+            except ValueError:
+                continue
+        found.setdefault(name, {})[header] = rows
+    return found
+
+
+def _period_array(
+    value: np.ndarray, ios: "list[ArrayIO]", f: Any, grid: _Grid, layered: bool
+) -> np.ndarray:
+    """A G/A period's array as the field holds it (see
+    flopy4.mf6.period_arrays): a LAYERED one by layer, a CONSTANT one as
+    its value (0-d, as a scalar given at construction is), a nodes-shaped
+    one by layer, else flat."""
+    if layered:
+        return value.reshape(-1, grid.ncpl)  # (nlay, ncpl)
+    if ios[0].format == "constant":
+        return np.asarray(value[0])
+    if (f.metadata.get("shape") or ("",))[-1] == "nodes" and grid.nlay > 1:
+        return value.reshape(grid.nlay, grid.ncpl)
+    return value
+
+
+class _Load:
+    """One component's load: its `__init__` arguments, read a block at a
+    time in DFN order, so a block can read by those before it (the
+    auxiliary names, the sizes and switches of a list's columns, a dims
+    provider's own dims); how the file wrote each array; and the rows
+    naming children, for `_resolve_bindings`."""
+
+    def __init__(self, cls: type, context: LoadContext) -> None:
+        self.cls = cls
+        self.context = context
+        self.kwargs: dict[str, Any] = {}
+        # how the file wrote each array, by `ArrayKey`, for the instance's
+        # write_context
+        self.array_ios: dict = {}
+        self.bindings: dict[str, list] = {}
+        self._fields = attrs.fields_dict(cls)
+        self._names = attr_names(cls)
+        self._children: dict[Path, Any] = {}
+        self._union_arm = _union_arm(context.parent)
+        self._union_forms = _union_forms(context.parent)
+        # blocks whose rows name children (a model's packages, the
+        # simulation's models and solutions); a file record's child loads
+        # with its record
+        self._binding_blocks = {
+            f.metadata["block"]
+            for f in attrs.fields(cls)  # type: ignore[arg-type]
+            if f.metadata.get("child") and "block" in f.metadata and not f.metadata.get("_keyword")
+        }
+
+    @property
+    def dims(self) -> dict:
+        """The grid's dims: the context's, or for a dims provider, which
+        has none yet, its own (see `_self_dims_from_kwargs`)."""
+        return dict(self.context.dims) or _self_dims_from_kwargs(self.kwargs)
+
+    def attribute(self, block: str, f: Any) -> "attrs.Attribute | None":
+        """The class's field holding the DFN field `f` of `block`, if it
+        has one: not a computed one (a list package's MAXBOUND) or one
+        codegen leaves out."""
+        a = self._fields.get(self._names.get((block, f.name), ""))
+        return a if a is not None and a.init is not False else None
+
+    def value_at(self, path: str) -> Any:
+        """The value read so far for the DFN field at `path` (``block.field``)."""
+        block, name = path.split(".", 1)
+        a = self._fields.get(self._names.get((block, name), ""))
+        return None if a is None else self.kwargs.get(_init_key(a))
+
+    def read(self, name: str, block: Any, found: dict[Any, list]) -> None:
+        """Read the occurrences of the DFN block `block` into the
+        arguments: its fields' values, or a repeating block's by header.
+        An empty period clears the period's lists and, for a grid package,
+        its arrays."""
+        if block.header is None:
+            for f, value in self.body(name, found[None], None).items():
+                self.kwargs[_init_key(f)] = value
+            return
+        fields = [a for f in block.fields.values() if (a := self.attribute(name, f)) is not None]
+        if len(found) > 1 and not any(_per_header(f) for f in fields):
+            # several solution groups, each with its own MXITER, would be
+            # merged into one, which MF6 runs differently
+            names = ", ".join(f"{name.upper()} {h}" for h in found)
+            raise ValueError(
+                f"{self.cls.__name__}: more than one {name} block ({names}); only one is supported"
+            )
+        numbered = block.header.field.type in ("integer", "double")
+        values: dict[attrs.Attribute, dict] = {}
+        for header in sorted(found) if numbered else found:
+            if rows := found[header]:
+                body = self.body(name, rows, header)
+            elif block.header.fill_forward:
+                body = self.cleared(fields)
+            else:
+                body = {}
+            for f, value in body.items():
+                values.setdefault(f, {})[header] = value
+        for f in fields:
+            if (blocks := block_list_type(f.type)) is not None:
+                header_cls, list_name, _ = blocks.parts()
+                self.kwargs[_init_key(f)] = [
+                    blocks(
+                        **{
+                            blocks._header: header_cls.from_tokens(list(header)),
+                            list_name: values.get(f, {}).get(header) or [],
+                        }
+                    )
+                    for header in found
+                ]
+            elif f in values:
+                by_header = values[f]
+                self.kwargs[_init_key(f)] = (
+                    by_header if _per_header(f) else next(iter(by_header.values()))
+                )
+
+    def cleared(self, fields: list) -> dict:
+        """An empty period's values: no rows for each list, and for a grid
+        package, no array."""
+        lists: dict[Any, Any] = {f: [] for f in fields if item_list_type(f.type) is not None}
+        if not is_grid_package(self.cls):
+            return lists
+        return lists | {f: None for f in fields if _is_grid_array(f) and not f.metadata.get("fk")}
+
+    def body(self, name: str, rows: list, header: Any) -> dict:
+        """The values of one occurrence of the block `name`, by field. A
+        row whose first word is a tagged field's key is that field's; the
+        rest are the block's untagged field's, or name children (see
+        `_resolve_bindings`). A tagged list collects its rows. An unknown
+        word warns, and the rows after it that aren't another field's (its
+        array's control records, say) are skipped."""
+        keys = block_keys(self.cls, name)
+        rows = _resolve_open_close_rows(rows, self.context)
+        binds = name in self._binding_blocks
+        untagged = self.attribute(name, keys.untagged) if keys.untagged else None
+        if not keys.tagged and not keys.dynamic:
+            if binds:
+                self.bindings.setdefault(name, []).extend(rows)
+                return {}
+            value = None if untagged is None else self.untagged(untagged, rows)
+            return {} if value is None else {untagged: value}
+
+        values: dict[attrs.Attribute, Any] = {}
+        lists: dict[attrs.Attribute, list] = {}
+        rest: list = []
+        rows = parts(rows)
+        i = 0
+        while i < len(rows):
+            row = rows[i]
+            found = self.field_of(keys, row) if row else None
+            if found is None:
+                if not row:
+                    pass
+                elif binds or keys.untagged is not None:
+                    rest.extend(row if isinstance(row, NumberRows) else [row])
+                elif _leading_word(row) not in _CONTROL_KINDS and not isinstance(
+                    row[0], (int, float)
+                ):
+                    self.unknown(name, row)
+                i += 1
+                continue
+            f, aux_name = found
+            a = self.attribute(name, f)
+            if a is None or (
+                a.metadata.get("direction")
+                and str(row[1] if len(row) > 1 else "").upper() not in ("FILEIN", "FILEOUT")
+            ):
+                # a file record has its direction token, so OC's "HEAD
+                # PRINT_FORMAT ..." isn't the "HEAD FILEOUT <path>" record
+                self.unknown(name, row)
+                i += 1
+            elif _is_grid_array(a):
+                i = self.array(a, aux_name, rows, i, header, values)
+            elif item_list_type(a.type) is not None:
+                lists.setdefault(a, []).append(row)
+                i += 1
+            elif a.metadata.get("_keyword"):
+                self.file(a, row, values)
+                i += 1
+            else:
+                values[a] = _tagged_value(a, row)
+                i += 1
+        for a, list_rows in lists.items():
+            item_cls = item_list_type(a.type)
+            value = self.parse_list(list_rows, item_cls, item_list_words(a.type))
+            if value is not None:
+                values[a] = value
+        if binds:
+            self.bindings.setdefault(name, []).extend(rest)
+        elif untagged is not None and rest:
+            if (value := self.untagged(untagged, rest)) is not None:
+                values[untagged] = value
+        return values
+
+    def field_of(self, keys: BlockKeys, row: Any) -> "tuple[Any, str | None] | None":
+        """The DFN field whose row `row` is, by its first word, with the
+        name a dynamic key gives (an auxiliary variable's); None for a row
+        of numbers, or a word no field's. A dynamic key wins: an auxiliary
+        name that matches a field's (Q) is the aux array, as in MF6. Where
+        a word begins several fields' rows (OC's HEAD), the next one tells
+        them apart."""
+        word = _leading_word(row).lower()
+        if not word:
+            return None
+        for path, f in keys.dynamic.items():
+            for n in _names(self.value_at(path)):
+                if n.lower() == word:
+                    return f, n
+        candidates = keys.tagged.get(word, ())
+        if len(candidates) > 1:
+            following = str(row[1]).lower() if len(row) > 1 else ""
+            candidates = tuple(f for f in candidates if following in following_tags(f)) or tuple(
+                f for f in candidates if not following_tags(f)
+            )
+        return (candidates[0], None) if candidates else None
+
+    def unknown(self, name: str, row: list) -> None:
+        """Warn of a row no field of the block `name` takes. MF6 rejects a
+        keyword it doesn't know, so this is likely one flopy4 doesn't
+        support yet. A computed one (a list package's MAXBOUND) is
+        derived, not read."""
+        key = str(row[0])
+        if not isinstance(getattr(self.cls, key.lower(), None), property):
+            warnings.warn(
+                f"{self.cls.__name__}: no field takes {name.upper()} entry {key.upper()}, skipped",
+                UserWarning,
+                stacklevel=4,
+            )
+
+    def array(
+        self, f: Any, aux_name: "str | None", rows: list, i: int, header: Any, values: dict
+    ) -> int:
+        """Read the grid array `f` named on ``rows[i]`` into `values`, and
+        how the file wrote it, by `ArrayKey`, into `array_ios`; an
+        auxiliary variable's (`aux_name`) into `f`'s value by that name.
+        Returns the next row's index. A field can come from a time-array
+        series, by name -- ``RECHARGE TIMEARRAYSERIES <name>`` -- instead
+        of a control record on the next row; its value keeps the name
+        (see flopy4.mf6.period_arrays)."""
+        row = rows[i]
+        if (grid := _Grid.of(self.dims)) is None:
+            return i + 1
+        tokens = [str(t) for t in row[1:]]
+        tas = next(
+            (j for j, t in enumerate(tokens) if t.upper() in ("TIMEARRAYSERIES", "TAS6")), None
+        )
+        value: Any
+        if tas is not None:
+            if not f.metadata.get("time_series") or tas + 1 >= len(tokens):
+                return i + 1
+            value, i = TimeArraySeriesRef(tokens[tas + 1]), i + 1
+        else:
+            # An array is layered only when given with LAYERED (the dfn's
+            # `layered` flag just allows it); otherwise it covers the
+            # field's whole shape, all nodes for a grid package.
+            layered = _is_layered(row)
+            value, ios, i = _read_array(rows, i + 1, f, grid, self.context, layered)
+            if aux_name is None:
+                key = (f.name,) if header is None else (f.name, header)
+                _record_array_io(self.array_ios, key, ios, layered=layered)
+            if value is None:
+                return i
+            if header is not None:
+                value = _period_array(value, ios, f, grid, layered)
+        if aux_name is None:
+            values[f] = value
+        else:
+            values.setdefault(f, {})[aux_name] = value
+        return i
+
+    def file(self, f: Any, row: list, values: dict) -> None:
+        """A file record's value (``KEYWORD [FILEIN|FILEOUT] <path>``) into
+        `values`: its path, or the child loaded from it. A list of them (a
+        DFN tagged list of file records) gets one element per row."""
+        has_direction = len(row) > 1 and str(row[1]).upper() in ("FILEIN", "FILEOUT")
+        tokens = row[2:] if has_direction else row[1:]
+        if not tokens:
+            return
+        path = Path(_strip_quotes(str(tokens[0])))
+        value = (
+            _load_file_child(f, path, attrs.evolve(self.context, parent=self.cls))
+            if f.metadata.get("child")
+            else path
+        )
+        if get_origin(unwrap_optional(f.type)) is list:
+            values.setdefault(f, []).append(value)
+        else:
+            values[f] = value
+
+    def untagged(self, f: Any, rows: list) -> Any:
+        """The value of a block's untagged field from its rows: a list's
+        elements (an OBS output file's, for a list of blocks), or a TAS
+        time's array, a control record with no name row."""
+        if (item_cls := item_list_type(f.type)) is not None:
+            return self.parse_list(rows, item_cls, item_list_words(f.type))
+        if (blocks := block_list_type(f.type)) is not None:
+            return self.parse_list(rows, blocks.parts()[2])
+        if _is_grid_array(f) and (grid := _Grid.of(self.dims)) is not None:
+            value, _, _ = _read_array(parts(rows), 0, f, grid, self.context, layered=False)
+            return value
+        return None
+
+    def parse_list(self, rows: list, item_cls: Any, words: tuple[str, ...] = ()) -> Any:
+        """A list field's value from its rows, with the sizes (aux by
+        auxiliary, GNC's alphasj by numalphaj) and switches (boundnames)
+        of its columns read so far."""
+        sizes = {}
+        for shape in sized_by(item_cls):
+            n = dim_value(shape, lookup=lambda name: dim_lookup(self.kwargs, name))
+            if n is not None:
+                sizes[shape] = n
+        enabled = frozenset(o for o in conditional_fields(item_cls).values() if self.kwargs.get(o))
+        return _parse_rows(
+            rows,
+            item_cls,
+            sizes=sizes,
+            enabled=enabled,
+            # the grid's dims give the cellids' width (see LoadContext.ncelldim)
+            context=attrs.evolve(self.context, dims=self.dims),
+            union_arm=self._union_arm,
+            union_forms=self._union_forms,
+            load_child=self.load_child,
+            words=words,
+        )
+
+    def load_child(self, f: Any, token: str) -> Any:
+        """A row's child column (LAK's TAB6 file), loaded from its file,
+        once per file (SFR's periods may name one table again)."""
+        path = Path(_strip_quotes(token))
+        if path not in self._children:
+            context = attrs.evolve(self.context, dims=self.dims, parent=self.cls)
+            self._children[path] = _load_file_child(f, path, context)
+        return self._children[path]
+
+
 def structure_component(
     raw: dict,
     cls: type,
@@ -868,13 +1124,19 @@ def structure_component(
 ) -> Any:
     """Reconstruct a component instance from a raw parsed MF6 input dict.
 
+    The file's blocks are read in the order of ``cls``'s DFN, whose
+    options and dimensions blocks come first (see `_Load`). Each row goes
+    to the field of its block whose key it begins with, else to the
+    block's untagged field; a repeating block's values are kept by header
+    (see `_occurrences`). The rows naming children are resolved last (see
+    `_resolve_bindings`).
+
     Parameters
     ----------
     raw : dict
         Output of ``loads()`` — {BLOCK_NAME_UPPER: list_of_token_rows}.
     cls : type
-        The component class to instantiate. Fields are read via their
-        ``block`` metadata (see ``flopy4.mf6.spec``).
+        The component class to instantiate.
     context : LoadContext, optional
         Where the file sits in the simulation: the workspace relative
         paths resolve against, the grid dims (e.g. {"nlay": 3, "nodes":
@@ -894,409 +1156,20 @@ def structure_component(
     -------
     Component instance.
     """
-
     context = context or LoadContext()
-    dims = dict(context.dims)
-    raw_lower = {k.lower(): v for k, v in raw.items()}
-    binding_kwargs = _resolve_bindings(cls, raw_lower, context) if context.workspace else {}
+    load = _Load(cls, context)
+    found = _occurrences(raw, cls)
+    for block_name, block in (dfn(cls).blocks or {}).items():
+        if block_name in found:
+            load.read(block_name, block, found[block_name])
 
-    # Only DFN-block-derived fields -- excludes identity/bookkeeping
-    # attributes (Component.name, filename, ...) with no `block` metadata,
-    # so a block keyword can't shadow them (e.g. utl-tas's "NAME ..." row
-    # is for time_series_name, not Package.name).
-    all_fields = {
-        f.name: f for f in attrs.fields(cls) if f.init is not False and "block" in f.metadata
-    }
-    alias_map: dict[str, str] = {}  # alias → name
-    for f in attrs.fields(cls):
-        if f.alias and f.alias != f.name:
-            alias_map[f.alias] = f.name
-
-    # Block-level file records ("TS6 FILEIN <file>") are keyed by their
-    # trigger keyword, the path field's _keyword metadata (see spec.file),
-    # not by the field's py name (ts_file).
-    file_fields: dict[str, Any] = {
-        f.metadata["_keyword"]: f for f in all_fields.values() if f.metadata.get("_keyword")
-    }
-
-    # Index Optional[InnerClass] fields by the inner class's _keyword (lowercase).
-    # Covers options-block compound records like Npf.Cvoptions, Ims.Rclose, etc.
-    inner_class_fields: dict[str, tuple] = {}
-    for f in attrs.fields(cls):
-        if f.init is False:
-            continue
-        inner_cls = _inner_class_type(f.type)
-        if inner_cls is None:
-            continue
-        if kw := vars(inner_cls).get("_keyword", ""):
-            for k in (kw, *vars(inner_cls).get("_aliases", ())):
-                inner_class_fields[k.lower()] = (f, inner_cls)
-
-    # Identify Item-list fields (packagedata, connectiondata, partitions …) --
-    # the field's own type annotation (Optional[list[ItemClass]] or
-    # Optional[dict[int, list[ItemClass]]]) is the schema. One alone in its
-    # block takes all the block's rows; one sharing its block with other
-    # fields (a DFN tagged list) takes the rows starting with its elements'
-    # keyword(s).
-    block_item_fields: dict[str, tuple] = {}  # block_name → (field, item_cls)
-    keyword_item_fields: dict[str, tuple] = {}  # keyword → (field, item_cls)
-    period_field = None  # field for the period Item-list
-    period_item_cls: "type[Item] | tuple[type[Item], ...] | None" = None
-
-    # Fill-forward repeating blocks (period), per the fields' own
-    # fill_forward metadata (from the DFN's BlockHeader.fill_forward).
-    fill_forward_blocks = {
-        f.metadata["block"] for f in attrs.fields(cls) if f.metadata.get("fill_forward")
-    }
-    block_sizes = Counter(f.metadata["block"] for f in all_fields.values())
-
-    for f in attrs.fields(cls):
-        block = f.metadata.get("block", "")
-        item_cls = item_list_type(f.type)
-        if item_cls is None:
-            continue
-        if f.metadata.get("fill_forward"):
-            period_field = f
-            period_item_cls = item_cls
-        elif block_sizes[block] == 1:
-            block_item_fields[block] = (f, item_cls)
-        else:
-            for elem_cls in item_cls if isinstance(item_cls, tuple) else (item_cls,):
-                keyword_item_fields[elem_cls.keyword().lower()] = (f, elem_cls)
-
-    # Array fields whose own block repeats per header value -- e.g.
-    # utl-tas's tas_array, dict[float, ndarray]. Detected structurally from
-    # the field's own annotation (Optional[dict[K, ArrayLike]]), the same
-    # way block_item_fields above is detected via item_list_type -- not via
-    # a metadata flag. Mirrors egress/unstructure.py's write path.
-    repeating_array_fields = {
-        f.name: f
-        for f in attrs.fields(cls)
-        if repeating_array_key_type(f.type) is not None
-        and not f.metadata.get("fill_forward")
-        and f.init is not False
-        and not f.metadata.get("fk")
-    }
-    repeating_array_block_prefixes = {f.metadata["block"] for f in repeating_array_fields.values()}
-
-    # Blocks of plain numeric arrays, read by Pass 4: GRIDDATA, and DISU's
-    # CONNECTIONDATA.
-    array_fields: dict[str, dict[str, Any]] = {}
-    for f in all_fields.values():
-        if (
-            is_array(f)
-            and not f.metadata.get("fill_forward")
-            and f.name not in repeating_array_fields
-            and item_list_type(f.type) is None
-            and to_field_type(f.type) in ("integer", "double")
-        ):
-            array_fields.setdefault(f.metadata["block"], {})[f.name] = f
-
-    # Blocks repeating under a record header (OBS's CONTINUOUS), by block.
-    header_block_fields = {
-        f.metadata["block"]: (f, b) for f in attrs.fields(cls) if (b := block_list_type(f.type))
-    }
-
-    # ── Pass 1: scalar blocks (options, dimensions, etc.) ────────────────────
-    known_blocks = {f.metadata.get("block") for f in attrs.fields(cls)}
-    # Blocks naming children (a model's packages, the simulation's
-    # solutions), whose rows _resolve_bindings takes, and warns for.
-    binding_blocks = {
-        f.metadata.get("block")
-        for f in attrs.fields(cls)
-        if f.metadata.get("child") and not f.metadata.get("_keyword")
-    }
-    if isinstance(getattr(cls, "maxbound", None), property):
-        known_blocks.add("dimensions")  # computed maxbound, see unstructure.py
-    kwargs: dict[str, Any] = {}
-    # how the file wrote each array, by `ArrayKey`, for the instance's
-    # write_context
-    array_ios: dict = {}
-    for block_name, rows in raw_lower.items():
-        if not rows:
-            continue
-        if block_name.split()[0] not in known_blocks:
-            # MF6 ignores blocks it doesn't read (an old IMS file's XMD)
-            warnings.warn(f"{cls.__name__}: ignoring unknown block {block_name.upper()}")
-            continue
-        if (
-            block_name in block_item_fields
-            or block_name.split()[0] in fill_forward_blocks
-            or block_name in array_fields
-            or block_name.split()[0] in repeating_array_block_prefixes
-            or block_name.split()[0] in header_block_fields
-        ):
-            continue
-        rows = _resolve_open_close_rows(rows, context)
-        for row in rows:
-            if not row:
-                continue
-            key = str(row[0]).lower()
-            has_direction = len(row) > 1 and str(row[1]).upper() in ("FILEIN", "FILEOUT")
-            # A file record has its direction token, so OC's "HEAD
-            # PRINT_FORMAT ..." isn't the "HEAD FILEOUT <path>" record.
-            if (ff := file_fields.get(key)) is not None and (
-                has_direction or not ff.metadata.get("direction")
-            ):
-                # KEYWORD FILEIN|FILEOUT <path>: the path follows the
-                # keyword and the direction token.
-                tokens = row[2:] if has_direction else row[1:]
-                if tokens:
-                    path = Path(_strip_quotes(str(tokens[0])))
-                    init_key = ff.alias or ff.name
-                    if ff.metadata.get("child"):
-                        child = _load_file_child(ff, path, attrs.evolve(context, parent=cls))
-                        if get_origin(unwrap_optional(ff.type)) is list:
-                            kwargs.setdefault(init_key, []).append(child)
-                        else:
-                            kwargs[init_key] = child
-                        continue
-                    # A list[Path] field (a DFN tagged list of file
-                    # records) gets one element per row.
-                    if get_origin(unwrap_optional(ff.type)) is list:
-                        kwargs.setdefault(init_key, []).append(path)
-                    else:
-                        kwargs[init_key] = path
-                continue
-            if (kf := keyword_item_fields.get(key)) is not None:
-                # One element of an Item list sharing its block with other
-                # fields (a DFN tagged list), by its leading keyword.
-                f, item_cls = kf
-                kwargs.setdefault(f.alias or f.name, []).append(item_cls.from_tokens(row))
-                continue
-            # A record's keyword wins over a field's name: utl-ts's SFAC is
-            # sfacrecord_single's keyword, and the SFACS record's field name.
-            if key in inner_class_fields:
-                cand_f, _ = inner_class_fields[key]
-                kwargs[cand_f.alias if cand_f.alias else cand_f.name] = _tagged_value(cand_f, row)
-                continue
-            # keywords are renamed with a trailing underscore (CONTINUE: continue_)
-            f = (
-                all_fields.get(key)
-                or all_fields.get(alias_map.get(key, ""))
-                or all_fields.get(f"{key}_")
-            )
-            if f is None:
-                # MF6 rejects a keyword it doesn't know, so this is likely
-                # one flopy4 doesn't support yet. A computed one (a list
-                # package's MAXBOUND) is derived, not read.
-                if block_name.split()[0] not in binding_blocks and not isinstance(
-                    getattr(cls, key, None), property
-                ):
-                    warnings.warn(
-                        f"{cls.__name__}: no field takes {block_name.upper()} entry "
-                        f"{str(row[0]).upper()}, skipped",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                continue
-            kwargs[f.alias if f.alias else f.name] = _tagged_value(f, row)
-
-    item_types = [ic for _, ic in block_item_fields.values()]
-    if period_item_cls is not None:
-        item_types.append(period_item_cls)
-    # Sizes of the package fields and dimensions sizing item columns
-    # (aux by auxiliary, GNC's alphasj by numalphaj).
-    sizes = {}
-    for ic in item_types:
-        for shape in sized_by(ic):
-            if (n := dim_value(shape, lookup=lambda name: dim_lookup(kwargs, name))) is not None:
-                sizes[shape] = n
-    enabled = frozenset(
-        o for ic in item_types for o in conditional_fields(ic).values() if kwargs.get(o)
-    )
-
-    # The grid's dims give the cellids' width (see LoadContext.ncelldim).
-    # Same "self dims, since a DimensionProvider has none threaded to it
-    # yet" fallback as Pass 4's griddata parsing.
-    effective_dims = dims or _self_dims_from_kwargs(kwargs)
-    rows_context = attrs.evolve(context, dims=effective_dims)
-    union_arm = _union_arm(context.parent)
-    union_forms = _union_forms(context.parent)
-
-    loaded_children: dict[Path, Any] = {}
-
-    def load_child(f: Any, token: str) -> Any:
-        """A row's child column (LAK's TAB6 file), loaded from its file,
-        once per file (SFR's periods may name one table again)."""
-        path = Path(_strip_quotes(token))
-        if path not in loaded_children:
-            context = attrs.evolve(rows_context, parent=cls)
-            loaded_children[path] = _load_file_child(f, path, context)
-        return loaded_children[path]
-
-    def parse_list(rows: list, item_cls: Any, words: tuple[str, ...] = ()) -> Any:
-        """A list field's value from the rows of its block (or a block's
-        OPEN/CLOSE file's), with the sizes and switches read so far."""
-        return _parse_rows(
-            _resolve_open_close_rows(rows, context),
-            item_cls,
-            sizes=sizes,
-            enabled=enabled,
-            context=rows_context,
-            union_arm=union_arm,
-            union_forms=union_forms,
-            load_child=load_child,
-            words=words,
-        )
-
-    # ── Pass 2: block Item-list fields (packagedata, partitions …) ──────────
-    for block_name, (f, item_cls) in block_item_fields.items():
-        rows = raw_lower.get(block_name, [])
-        if not rows:
-            continue
-        row_list = parse_list(rows, item_cls, item_list_words(f.type))
-        if row_list is not None:
-            init_key = f.alias if (f.alias and not f.alias.startswith("_")) else f.name
-            kwargs[init_key] = row_list
-
-    # ── Pass 2b: blocks repeating under a record header ──────────────────────
-    # Read from `raw`, not `raw_lower`: the header keeps its case (a file name).
-    for block_name, (f, block_cls) in header_block_fields.items():
-        header_cls, list_name, item_cls = block_cls.parts()
-        blocks = []
-        for raw_name, rows in raw.items():
-            prefix, *header = raw_name.split()
-            if prefix.lower() != block_name or not header:
-                continue
-            items = parse_list(rows, item_cls)
-            blocks.append(
-                block_cls(
-                    **{block_cls._header: header_cls.from_tokens(header), list_name: items or []}
-                )
-            )
-        if blocks:
-            kwargs[f.alias or f.name] = blocks
-
-    # ── Pass 3: period blocks ────────────────────────────────────────────────
-    # At most one fill-forward block per component (enforced by codegen).
-    kper_rows: dict[int, list] = {}
-    if fill_forward_blocks:
-        (fill_forward_block,) = fill_forward_blocks
-        kper_rows = _group_repeating_rows(raw_lower, fill_forward_blocks, lambda s: int(s) - 1).get(
-            fill_forward_block, {}
-        )
-
-    if kper_rows:
-        if period_field is not None:
-            assert period_item_cls is not None  # set together with period_field above
-            spd: dict[int, list | ItemTable] = {}
-            for kper, rows in sorted(kper_rows.items()):
-                if not rows:
-                    # an empty period block turns off every boundary
-                    spd[kper] = []
-                    continue
-                row_list = parse_list(rows, period_item_cls, item_list_words(period_field.type))
-                if row_list is not None:
-                    spd[kper] = row_list
-            if spd:
-                # Use the alias (stress_period_data) as the init kwarg
-                init_key = period_field.alias if period_field.alias else period_field.name
-                kwargs[init_key] = spd
-
-        else:
-            # ── Pass 3b: READARRAY period fields (G/A variants) ─────────────
-            # Packages like Rcha/Chdg store full-grid arrays per stress period.
-            # Each field is fill_forward and a dict[int, Int|FloatArrayLike]
-            # keyed by period -- not an Item-list (else period_field would be
-            # set above).
-            ra_fields = {
-                f.name: f
-                for f in attrs.fields(cls)
-                if f.metadata.get("fill_forward")
-                and f.name not in repeating_array_fields
-                and to_field_type(f.type) in ("integer", "double")
-                and f.init is not False
-                and not f.metadata.get("fk")
-            }
-            # Dynamically named arrays (RCHA's aux), one per name in the field the fk
-            # points at: written under the name, not the field's.
-            named: dict[str, tuple[Any, str]] = {
-                str(n).lower(): (f, str(n))
-                for f in attrs.fields(cls)
-                if f.metadata.get("fill_forward") and (fk := f.metadata.get("fk"))
-                for n in _names(kwargs.get(fk.rsplit(".", 1)[-1]))
-            }
-            if ra_fields and dims:
-                grid_package = is_grid_package(cls)
-
-                # Each field holds the periods the file gives (see
-                # flopy4.mf6.period_arrays). An empty grid period block
-                # clears every boundary: its stress arrays are None.
-                periods: dict[str, dict[int, np.ndarray | TimeArraySeriesRef | None]] = {}
-                named_periods: dict[str, dict[int, dict[str, np.ndarray | TimeArraySeriesRef]]] = {}
-                # An auxiliary name that matches a field's (Q) is the aux
-                # array, as in MF6.
-                lookup = ra_fields | {k: f for k, (f, _) in named.items()}
-                for kper, rows in sorted(kper_rows.items()):
-                    if not rows:
-                        if grid_package:
-                            for fname in ra_fields:
-                                periods.setdefault(fname, {})[kper] = None
-                        continue
-                    period_ios: dict = {}
-                    parsed = _parse_readarray_period_block(rows, lookup, dims, context, period_ios)
-                    for k, io in period_ios.items():
-                        name_, *layer = (k,) if isinstance(k, str) else k
-                        if name_ not in named:
-                            array_ios[(name_, kper, *layer)] = io
-                    for key, arr in parsed.items():
-                        if key in named:
-                            f, aux_name = named[key]
-                            named_periods.setdefault(f.name, {}).setdefault(kper, {})[aux_name] = (
-                                arr
-                            )
-                        else:
-                            periods.setdefault(key, {})[kper] = arr
-                kwargs.update(periods)
-                kwargs.update(named_periods)
-
-    # ── Pass 3c: array fields whose own block repeats (utl-tas.tas_array is
-    # the only current DFN example) ──────────────────────────────────────────
-    # The block is the array's control record alone, with no name row and
-    # no `layered` form. Row grouping (by "{block} {header}" prefix, cast
-    # header value) is the same mechanic Pass 3 uses for "period" -- see
-    # _group_repeating_rows -- just with a no-offset header cast to the
-    # field's own dict key type instead of period's int/-1 one.
-    if repeating_array_fields:
-        effective_dims = dims or _self_dims_from_kwargs(kwargs)
-        if (grid := _Grid.of(effective_dims)) is not None and effective_dims.get("nodes"):
-            for fname, f in repeating_array_fields.items():
-                block = f.metadata["block"]
-                key_type = repeating_array_key_type(f.type)
-                series_rows = _group_repeating_rows(raw_lower, {block}, key_type).get(block)
-                if not series_rows:
-                    continue
-                series: dict[Any, np.ndarray] = {}
-                for header, rows in sorted(series_rows.items()):
-                    if not rows:
-                        continue
-                    value, _, _ = _read_array(parts(rows), 0, f, grid, context, layered=False)
-                    if value is not None:
-                        series[header] = value
-                if series:
-                    init_key = f.alias if f.alias else fname
-                    kwargs[init_key] = series
-
-    # ── Pass 4: array blocks (griddata, connectiondata) ──────────────────────
-    # A DimensionProvider (Dis/Disv/Disu) has no external `dims` the first
-    # time it's loaded -- it *is* the dims source. Its own array blocks still
-    # need shapes, derived from the DIMENSIONS block Pass 1 already parsed
-    # into kwargs above. A no-op ({}) for any other class, which just falls
-    # through to the `dims` param threaded from an already-loaded sibling.
-    effective_dims = dims or _self_dims_from_kwargs(kwargs)
-    if effective_dims:
-        for block_name, block_fields in array_fields.items():
-            if rows := raw_lower.get(block_name):
-                kwargs.update(
-                    _parse_array_block(rows, block_fields, effective_dims, context, array_ios)
-                )
-
-    kwargs.update(binding_kwargs)
+    kwargs = load.kwargs
+    if context.workspace and load.bindings:
+        kwargs.update(_resolve_bindings(cls, load.bindings, context))
     if name is not None:
         kwargs["name"] = name
-    if array_ios:
+    if load.array_ios:
         # write the arrays back the way the file wrote them
-        kwargs["write_context"] = WriteContext(arrays=array_ios)
+        kwargs["write_context"] = WriteContext(arrays=load.array_ios)
 
     return cls(**kwargs)

@@ -4664,7 +4664,7 @@ END continuous
 """
     basic = loads(mf6_input)["continuous FILEOUT x.csv"]
     typed = loads(mf6_input, component="utl-obs")["continuous FILEOUT x.csv"]
-    assert basic == typed["stress_period_data"]
+    assert basic == typed["continuous"]
 
 
 _MAPPED_INPUT = """BEGIN options

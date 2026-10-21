@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, A1, A2 and B1 done; A3 and B2 next** (see "Phases"). Written
+Status: **S1, A1, A2, A3 and B1 done; B2 next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -490,7 +490,29 @@ A2. **Value parsers.** Done. `_read_array` reads every grid array
    Pass 3c control-record call. Pull the keyed-row, record and list value
    parsers out of Pass 1 and Pass 2.
 
-A3. **Ingress loop.** Replace Passes 1-4 (2b, 3b and 3c included) with the
+A3. **Ingress loop.** Done. `structure_component` reads the DFN's blocks
+   in order (`_Load`), options and dimensions first (now a test,
+   `test_block_order`). `_occurrences` groups a file's blocks by name and
+   header in one place: a period's IPER (0-based), a TAS time, a solution
+   group's number, or OBS's output record. A row goes to the field of its
+   own block whose key it begins with (`block_keys`, with
+   `following_tags` for OC's `HEAD`, and dynamic keys before tagged ones,
+   as MF6 does). The remaining rows go to the block's untagged field, or
+   for a binding block to `_resolve_bindings`, which now runs last on
+   those rows. A tagged list collects its rows; a grid array is read by
+   A2's reader wherever it is, a TAS reference included. One rule names
+   the `__init__` argument (`_init_key`), and every array read uses the
+   effective dims. Also gone: `_parse_array_block`,
+   `_parse_readarray_period_block`, `_group_repeating_rows`, the
+   block-size inference, and `repeating_array_key_type`.
+   - Unknown words warn the same way in every block. They used to warn
+     only in Pass 1's blocks, but no corpus model hits one elsewhere.
+   - Several solution groups still raise, now as a general rule: a
+     repeating block whose fields hold one value, not one per header.
+   - Over the corpus (261 models), the load warnings and errors are
+     unchanged, and the snapshots for a covering subset pass.
+
+   As planned: replace Passes 1-4 (2b, 3b and 3c included) with the
    loop above, and `solutiongroup` grouping with the header step. Along the
    way, scope key matching to the block, unify the alias rule, and gate on
    effective dims everywhere.

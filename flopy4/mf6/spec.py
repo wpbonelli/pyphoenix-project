@@ -509,26 +509,6 @@ def fields_dict(cls) -> dict[str, Attribute]:
     return {k: v for k, v in fields.items() if "block" in v.metadata}
 
 
-def repeating_array_key_type(field_type) -> type | None:
-    """For ``Optional[dict[K, IntArrayLike | FloatArrayLike]]``, return
-    ``K`` -- the header type of a block that repeats (e.g. utl-tas's "time"
-    block), whose own array field is keyed by header value. Returns
-    ``None`` for anything else, including a plain array and an
-    ``Optional[dict[int, list[ItemClass]]]`` period Item-list (see
-    ``item.item_list_type``) -- structurally distinct shapes, detected from
-    the annotation itself rather than a metadata flag, the same way
-    ``item_list_type`` reads its own dict-wrapped shape. Period array
-    fields (RCHA's recharge) have this shape too, keyed by period; callers
-    tell them apart by their ``fill_forward`` metadata.
-    """
-    args = get_args(field_type)
-    inner = next((a for a in args if a is not type(None)), None)
-    if inner is None or get_origin(inner) is not dict:
-        return None
-    key, val = get_args(inner)
-    return key if val in (IntArrayLike, FloatArrayLike) else None
-
-
 def to_field_type(t: type) -> FieldType:
     match t:
         case builtins.str | np.str_:
