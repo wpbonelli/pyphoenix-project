@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,13 +27,13 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: attributes__block | time__block
+block: attributes__block | time__block | unknown_block
 
 attributes__block: _BEGIN "attributes"i [_remark] _NL attributes__fields _END "attributes"i
 time__block: _BEGIN "time"i double_index [_remark] _NL time__fields _END "time"i [double_index]
 %import typed.block_index -> block_index
 double_index: block_index
-attributes__fields: (time_series_name__rec | interpolation_method__rec | sfac__rec | open_close_redirect _NL)*
+attributes__fields: (time_series_name__rec | interpolation_method__rec | sfac__rec | open_close_redirect _NL | unknown_line)*
 time__fields: (tas_array__val)*
 time_series_name__rec: "name"i time_series_namerecord__time_series_name__arr [_remark] _NL
 time_series_namerecord__time_series_name__arr: word+

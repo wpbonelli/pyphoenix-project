@@ -94,9 +94,24 @@ RECORDS.1: /(?:[ \t,]*+(?!(?i:begin|end|open\/close)(?![^\s,#!]))[a-zA-Z0-9().\/
 // commas, and `_remark: _REMARK+` accepts any number of them.
 _REMARK.-1: /[^\s,]+/
 _remark: _REMARK+
+// An array's name line's remark (`K  # hk`), whose line may be followed by
+// the array's control record. Not `_remark`: LALR would merge their states,
+// so a remark's lexer would take a control record's keywords everywhere,
+// and an option's remark with `constant` in it lexed as CONSTANT. Not
+// `_REMARK+` either, whose rule lark shares with `_remark`'s.
+_name_remark: _REMARK [_name_remark]
 // Without its line ending, which each block's field list takes so the
 // state after it is that block's (see macros.jinja's field_list).
 open_close_redirect: "open/close"i filename [_remark]
+// A line no field of its block takes (an option the DFN doesn't have, or
+// a `developmode` one, which the grammars skip as codegen does), in a
+// block with no list rows and no untagged or auxiliary arrays, whose lines
+// a word could begin: the loader warns of it and skips it, as the basic
+// loader does. Its first word is a BARE_WORD, which the keywords outrank.
+unknown_line: BARE_WORD _token* _NL
+// A block the DFN doesn't have (an old IMS file's XMD), which MF6 ignores:
+// its name and rows, which the loader warns of and skips.
+unknown_block: _BEGIN BARE_WORD _token* _NL record* _END BARE_WORD _token*
 
 // A line ending plus any blank and comment-only lines after it, like
 // NUMBERS' and RECORDS' tails, so two _NLs never come in a row: between

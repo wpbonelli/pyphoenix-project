@@ -56,12 +56,20 @@ def is_dynamically_named_array(field: InputField) -> bool:
     )
 
 
+def scalar_type(field: InputField) -> str:
+    """A scalar's grammar type: a number that may come from a time series
+    takes the series' name instead (LAK's ``1 INFLOW l1inflow``)."""
+    if field.type in ("double", "integer") and getattr(field, "time_series", False):
+        return f"({field.type} | word)"
+    return field.type
+
+
 def record_child_type(field: InputField) -> str:
     """Get the grammar type for a field within a record context."""
     if field.type == "string":
         return "word"  # Use word for strings in records to match single tokens
     if field.type in ("double", "integer"):
-        return field.type
+        return scalar_type(field)
     if isinstance(field, Array):
         return f"{'word' if field.dtype == 'string' else field.dtype}+"
     if isinstance(field, Keyword):

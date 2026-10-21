@@ -35,8 +35,8 @@ FLOPY3_OPTIONS = {"verbosity_level": 0, "lazy_io": False, "verify_data": False, 
 
 LIBRARIES = ("flopy3", "flopy4")
 # flopy4 with the typed loader (see LoadContext.loader), which `load` takes
-# as a library. Not in LIBRARIES while it covers no component: until then
-# it's the basic loader, measured twice.
+# as a library. Not in LIBRARIES yet: comparing the loaders is the
+# converter plan's Phase C, which adds it, and report.py's columns.
 TYPED = "flopy4-typed"
 
 

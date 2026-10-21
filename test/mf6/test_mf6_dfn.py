@@ -72,7 +72,6 @@ def test_block_keys(name):
                 assert all(following) and len(set(following)) == len(following), (block, tag)
 
 
-
 @pytest.mark.parametrize("name", sorted(CLASSES))
 def test_block_order(name):
     """Options, then dimensions, come before every other block, so a load
@@ -81,6 +80,7 @@ def test_block_order(name):
     blocks = list(spec.dfn(CLASSES[name]).blocks or {})
     first = [b for b in ("options", "dimensions") if b in blocks]
     assert blocks[: len(first)] == first
+
 
 def test_attr_names_examples():
     assert spec.attr_names(Oc)[("options", "head_filerecord")] == "head_file"

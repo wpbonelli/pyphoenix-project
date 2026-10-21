@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,11 +27,11 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: dimensions__block | table__block
+block: dimensions__block | table__block | unknown_block
 
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 table__block: _BEGIN "table"i [_remark] _NL table__fields _END "table"i
-dimensions__fields: (nrow__val | ncol__val | open_close_redirect _NL)*
+dimensions__fields: (nrow__val | ncol__val | open_close_redirect _NL | unknown_line)*
 table__fields: (table__rows | open_close_redirect _NL)*
 nrow__val: "nrow"i integer [_remark] _NL
 ncol__val: "ncol"i integer [_remark] _NL

@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,11 +27,11 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | packages__block
+block: options__block | packages__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 packages__block: _BEGIN "packages"i [_remark] _NL packages__fields _END "packages"i
-options__fields: (list___val | print_input__kw | print_flows__kw | save_flows__kw | newtonoptions__rec | netcdf_mesh2d_file__rec | netcdf_structured_file__rec | netcdf_input_file__rec | open_close_redirect _NL)*
+options__fields: (list___val | print_input__kw | print_flows__kw | save_flows__kw | newtonoptions__rec | netcdf_mesh2d_file__rec | netcdf_structured_file__rec | netcdf_input_file__rec | open_close_redirect _NL | unknown_line)*
 packages__fields: (packages__rows | open_close_redirect _NL)*
 list___val: "list"i string
 print_input__kw: "print_input"i  [_remark] _NL

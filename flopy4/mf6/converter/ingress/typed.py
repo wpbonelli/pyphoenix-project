@@ -7,11 +7,7 @@ The typed parse has already sent each line to its field, by the class
 attribute holding it, and read headers, keywords, records and unions. What's
 left reads the class's own fields: shaping arrays to the grid, making items
 and records, fill-forward, and the children a file names, which load as the
-basic loader's do (see `ComponentLoad`).
-
-Components it doesn't cover yet are read by the basic loader instead, so
-a load with ``loader="typed"`` always works, and grows faster as more
-components are covered."""
+basic loader's do (see `ComponentLoad`)."""
 
 import warnings
 from pathlib import Path
@@ -23,6 +19,7 @@ import numpy.typing as npt
 
 from flopy4.mf6._types import TimeArraySeriesRef
 from flopy4.mf6.block import block_list_type
+from flopy4.mf6.codec.reader.transformer.typed import UnknownBlock
 from flopy4.mf6.converter.ingress.structure import (
     ComponentLoad,
     _from_file_index,
@@ -40,29 +37,6 @@ from flopy4.mf6.record import Record, _coerce, _elem_coerce, _nested_class, reco
 from flopy4.mf6.spec import to_field_type
 from flopy4.mf6.write_context import ArrayIO, array_hash
 from flopy4.utils import unwrap_optional
-
-# The components the typed loader reads, by DFN name.
-COVERED: frozenset[str] = frozenset(
-    {
-        "sim-nam",
-        "sim-tdis",
-        "gwf-nam",
-        "gwf-dis",
-        "gwf-npf",
-        "gwf-ic",
-        "gwf-sto",
-        "gwf-chd",
-        "gwf-rcha",
-        "gwf-oc",
-        "utl-obs",
-        "utl-tas",
-    }
-)
-
-
-def covers(cls: type) -> bool:
-    """Whether the typed loader reads ``cls``'s files."""
-    return getattr(cls, "dfn_name", None) in COVERED
 
 
 def _header(block: str, words: list[str]) -> Any:
@@ -84,10 +58,13 @@ def _header(block: str, words: list[str]) -> Any:
 def _occurrences(parsed: dict) -> dict[str, dict[Any, Any]]:
     """The parse's blocks by name, each as ``{None: contents}``, or for a
     repeating block ``{header: contents}`` (see `_header`) in file order.
-    A TAS time's block is keyed by its time."""
+    A TAS time's block is keyed by its time. Unknown blocks are left out
+    (see `structure_typed`)."""
     found: dict[str, dict[Any, Any]] = {}
     for key, contents in parsed.items():
         name, *words = key.split()
+        if isinstance(contents, UnknownBlock):
+            continue
         if (
             not words
             and isinstance(contents, dict)
@@ -398,6 +375,10 @@ def structure_typed(
     kept by header (see `_occurrences`), and the rows naming children
     resolved last, as the basic loader's are."""
     load = _TypedLoad(cls, context)
+    for key, contents in parsed.items():
+        # MF6 ignores a block it doesn't read (an old IMS file's XMD)
+        if isinstance(contents, UnknownBlock) and contents:
+            warnings.warn(f"{cls.__name__}: ignoring unknown block {key.upper()}")
     found = _occurrences(parsed)
     for block in _block_order(cls, found):
         load.read(block, found[block])

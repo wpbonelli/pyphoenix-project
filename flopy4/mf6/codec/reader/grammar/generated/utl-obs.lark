@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,13 +27,13 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | continuous__block
+block: options__block | continuous__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 continuous__block: _BEGIN "continuous"i output__hdr [_remark] _NL continuous__fields _END "continuous"i [output__hdr]
 !output__hdr: "fileout"i word [output__binary__kw]
 output__binary__kw: "binary"i
-options__fields: (digits__val | print_input__kw | open_close_redirect _NL)*
+options__fields: (digits__val | print_input__kw | open_close_redirect _NL | unknown_line)*
 continuous__fields: (continuous__rows | open_close_redirect _NL)*
 digits__val: "digits"i integer [_remark] _NL
 print_input__kw: "print_input"i  [_remark] _NL

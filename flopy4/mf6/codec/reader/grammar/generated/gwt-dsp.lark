@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,19 +27,19 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | griddata__block
+block: options__block | griddata__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 griddata__block: _BEGIN "griddata"i [_remark] _NL griddata__fields _END "griddata"i
-options__fields: (xt3d_off__kw | xt3d_rhs__kw | export_array_ascii__kw | export_array_netcdf__kw | open_close_redirect _NL)*
-griddata__fields: (diffc__val | alh__val | alv__val | ath1__val | ath2__val | atv__val | open_close_redirect _NL)*
+options__fields: (xt3d_off__kw | xt3d_rhs__kw | export_array_ascii__kw | export_array_netcdf__kw | open_close_redirect _NL | unknown_line)*
+griddata__fields: (diffc__val | alh__val | alv__val | ath1__val | ath2__val | atv__val | open_close_redirect _NL | unknown_line)*
 xt3d_off__kw: "xt3d_off"i  [_remark] _NL
 xt3d_rhs__kw: "xt3d_rhs"i  [_remark] _NL
 export_array_ascii__kw: "export_array_ascii"i  [_remark] _NL
 export_array_netcdf__kw: "export_array_netcdf"i  [_remark] _NL
-diffc__val: "diffc"i [_remark] [_NL] array
-alh__val: "alh"i [_remark] [_NL] array
-alv__val: "alv"i [_remark] [_NL] array
-ath1__val: "ath1"i [_remark] [_NL] array
-ath2__val: "ath2"i [_remark] [_NL] array
-atv__val: "atv"i [_remark] [_NL] array
+diffc__val: "diffc"i [_name_remark] [_NL] array
+alh__val: "alh"i [_name_remark] [_NL] array
+alv__val: "alv"i [_name_remark] [_NL] array
+ath1__val: "ath1"i [_name_remark] [_NL] array
+ath2__val: "ath2"i [_name_remark] [_NL] array
+atv__val: "atv"i [_name_remark] [_NL] array

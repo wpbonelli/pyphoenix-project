@@ -31,6 +31,7 @@ def _get_env():
     env.tests["dynamically_named_array"] = filters.is_dynamically_named_array
     env.filters["keyword_literal"] = filters.keyword_literal
     env.filters["record_child_type"] = filters.record_child_type
+    env.filters["scalar_type"] = filters.scalar_type
     env.filters["to_rule_name"] = to_rule_name
     env.globals["rule"] = lambda *path, tags=(): rule_name(*path, tags=tuple(tags))
     env.globals["part_tag"] = filters.part_tag
@@ -81,7 +82,8 @@ def _to_context(
         tagged_valid = set()
 
         for field_name, field in block.fields.items():
-            if field.removed:
+            # as codegen skips them: a line of one is a block's unknown line
+            if field.removed or field.developmode:
                 continue
             if field.tagged and getattr(field, "valid", None):
                 tagged_valid.add(field_name)
@@ -111,6 +113,9 @@ def _to_context(
         bare_array = any(
             isinstance(all_fields[n], Array) and not all_fields[n].tagged for n in standalone_fields
         )
+        named_array = any(
+            filters.is_dynamically_named_array(all_fields[n]) for n in standalone_fields
+        )
         rules = {
             name: rule_name(
                 *paths[name],
@@ -130,6 +135,11 @@ def _to_context(
                 "tagged_valid": tagged_valid,
                 "recarrays": recarrays,
                 "redirect": not bare_array,
+                # a line no field takes, which a block with no list rows and
+                # no untagged or auxiliary arrays, whose lines a word could
+                # begin, can tell from its fields' (see typed.lark's
+                # unknown_line)
+                "unknown_lines": not (recarrays or bare_array or named_array),
             }
         )
 

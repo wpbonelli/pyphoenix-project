@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,10 +27,10 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block
+block: options__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
-options__fields: (scheme__union | ats_percel__val | open_close_redirect _NL)*
+options__fields: (scheme__union | ats_percel__val | open_close_redirect _NL | unknown_line)*
 scheme__union: "scheme"i (scheme__central__kw | scheme__upstream__kw | scheme__tvd__kw) [_remark] _NL
 
 !scheme__central__kw: "central"i

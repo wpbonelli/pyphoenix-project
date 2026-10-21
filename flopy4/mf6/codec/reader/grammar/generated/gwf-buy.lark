@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,18 +27,17 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | dimensions__block | packagedata__block
+block: options__block | dimensions__block | packagedata__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 packagedata__block: _BEGIN "packagedata"i [_remark] _NL packagedata__fields _END "packagedata"i
-options__fields: (hhformulation_rhs__kw | denseref__val | density_file__rec | dev_efh_formulation__kw | open_close_redirect _NL)*
-dimensions__fields: (nrhospecies__val | open_close_redirect _NL)*
+options__fields: (hhformulation_rhs__kw | denseref__val | density_file__rec | open_close_redirect _NL | unknown_line)*
+dimensions__fields: (nrhospecies__val | open_close_redirect _NL | unknown_line)*
 packagedata__fields: (packagedata__rows | open_close_redirect _NL)*
 hhformulation_rhs__kw: "hhformulation_rhs"i  [_remark] _NL
 denseref__val: "denseref"i double [_remark] _NL
 density_file__rec: "density"i density_filerecord__densityfile__val [_remark] _NL
 density_filerecord__densityfile__val: "fileout"i word
-dev_efh_formulation__kw: "dev_efh_formulation"i  [_remark] _NL
 nrhospecies__val: "nrhospecies"i integer [_remark] _NL
 packagedata__rows: record+

@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, A1, A2, A3, B1 and B2 done; B3 next** (see "Phases"). Written
+Status: **S1, A1, A2, A3, B1, B2 and B3 done; B4 next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -406,7 +406,8 @@ None of these block Tracks A or B.
 
 Each phase keeps the round-trip suite, the load snapshots, the
 written-file snapshots, and the touched tests green. A Track B phase keeps
-them green for the typed loader too, for the components it covers.
+them green for the typed loader too (until B3, for the components it
+covered).
 
 ### Shared
 
@@ -416,6 +417,7 @@ S1. **Loader switch and name mapping.** Done:
      `Package`. `read_component` (in `structure.py`) sends a file to
      `converter/ingress/typed.py` when the typed loader covers its
      component (`typed.COVERED`, empty so far), else to the basic one.
+     B3 removed `COVERED`: the typed loader reads every component.
    - The tests take the loader from a `--loader` option rather than a
      parameter, so a typed run keeps the test ids, and with them the
      snapshots. The report header lists the components the typed loader
@@ -595,7 +597,47 @@ B2. **Full typed load for a few components.** Done.
      rule whose key is checked against `auxiliary` afterwards, say).
    Shaping and fill-forward read the class's own fields, so there's no
    DFN at runtime.
-B3. **All components.** Extend B2 to every generated component, until the
+B3. **All components.** Done. The typed loader reads every component,
+   with no fallback to basic (`typed.COVERED` and `covers` are gone): B2's
+   reading by class fields needed nothing new per component. What was
+   left was the grammar's, for what MF6 (and the basic loader) skips:
+   - A block the DFN doesn't have (an old IMS file's XMD, DISU's
+     CELLDATA) parses as `unknown_block` (typed.lark), read as an
+     `UnknownBlock`; the loader warns of it, if it has rows, and skips it,
+     as the basic loader does.
+   - A line no field takes, in a block with no list rows and no untagged
+     or auxiliary arrays, parses as `unknown_line`, keyed by its first word,
+     so the loader's usual "no field takes" warning names it as the basic
+     loader's does. The grammars now skip `developmode` fields as codegen
+     does, so a `DEV_` option (in the DFN or not) is such a line.
+   - The rest of a line where it could end (a second value after an
+     option's, `inner_rclose 0. relative_rclose l2norm_rclose`; a remark
+     word that lexed as a keyword) is skipped, as MF6 reads only the
+     values it needs from a line: `loads_typed` resumes past it (lark's
+     `on_error`), for a one-line token where `_NL` was expected.
+   - An array's name-line remark is its own rule, `_name_remark`: sharing
+     `_remark`'s LALR states let a control record's keywords into every
+     remark's lexer, so `SAVE_FLOWS (save constant head ...)` lexed
+     `constant` as CONSTANT.
+   - A number that may come from a time series takes the series' name
+     (LAK's `1 INFLOW l1inflow`).
+   - A repeated `BEGIN PERIOD 1` keeps its first, as the basic
+     transformer does (it kept the last).
+
+   `KNOWN_TYPED_GAPS` and `KNOWN_TYPED_MODEL_GAPS` are gone: every
+   known-passing model's files parse. Over the corpus (261 models), every
+   model loads the same under both loaders but one, and `test060_gms_ets`
+   fails under both. The one, `test1001_Peterson`, is IMS's
+   `rclose_option`, a string, written `50000.000`: the typed loader keeps
+   the word, the basic loader reads it as the number `50000.0`, the
+   basic loader's bug (its parse reads numbers before the converter knows
+   the field). So with `--loader typed`, the load snapshots pass but
+   Peterson's (257 of 258), and the round-trip suite passes. Still open:
+   an aux named like a field (no corpus file does it) and TAS arrays'
+   `ArrayIO` in both loaders (B2's caveats). The benchmarks' `flopy4-typed`
+   joins `LIBRARIES` in Phase C.
+
+   As planned: Extend B2 to every generated component, until the
    typed loader passes the whole round-trip suite and the load snapshots
    with no fallback to basic.
 B4. **Grammar build cost.** Building the grammars is the typed loader's

@@ -106,7 +106,7 @@
 {%- elif child.type == 'array' -%}
 {{ rule(field_name, child_name, tags=['val']) }}: {% if child.tagged %}"{{ child.name }}"i {% endif %}{{ child|field_type }}
 {%- else -%}
-{{ rule(field_name, child_name, tags=['val']) }}: {% if child.tagged %}"{{ child.name }}"i {% endif %}{{ child.type }}
+{{ rule(field_name, child_name, tags=['val']) }}: {% if child.tagged %}"{{ child.name }}"i {% endif %}{{ child|scalar_type }}
 {%- endif %}
 
 {% endfor -%}
@@ -142,7 +142,7 @@
    often as on the same line as its CONSTANT/INTERNAL/OPEN-CLOSE value
    (e.g. STO's "ss" -- confirmed directly against a real fixture) -- the
    line break between name and value is optional either way. #}
-{{ name }}: "{{ field.name }}"i [_remark] [_NL] {{ field_type }}
+{{ name }}: "{{ field.name }}"i [_name_remark] [_NL] {{ field_type }}
 {%- else -%}
 {{ name }}: {{ field|keyword_literal }} {{ field_type }}
 {%- if field_type != 'string' %} [_remark] _NL{% endif -%}
@@ -152,7 +152,7 @@
 {% macro dynamically_named_array_field(name) -%}
 {# The name isn't known until the file is read (it's one of the AUXILIARY
    variables), so accept any word. The array's own rule ends the line. #}
-{{ name }}: word [_remark] [_NL] array
+{{ name }}: word [_name_remark] [_NL] array
 {%- endmacro %}
 
 {% macro file_field(name, field) -%}
@@ -200,16 +200,15 @@
    Any block's entire content may also be redirected to an external file
    via a bare "OPEN/CLOSE <file>" line in place of its usual fields --
    confirmed against real fixtures for both a PERIOD block (an OC package)
-   and a DIMENSIONS block (a DISV package). Actually reading that file's
-   rows is out of this pass's scope (same as griddata/array-field OPEN/
-   CLOSE), but per the plan's own carve-out, an unknown-but-syntactically-
-   plausible line must not hard-fail the whole block's parse -- so the
-   alternative is accepted structurally here and simply dropped by the
-   transformer (see `__default__`'s tuple-only field collection), same
-   disposition as the AUXILIARY dynamic-name fallback. Its line ending is
-   here, not in the shared open_close_redirect rule, for the same reason
-   as `_NL*`: so the state after it is this block's. #}
-{%- macro field_list(block_name, fields, rules, recarray_name, redirect=true) -%}
+   and a DIMENSIONS block (a DISV package). It reads as the block's
+   "open/close" entry, whose file the loader parses as the block. Its line
+   ending is here, not in the shared open_close_redirect rule, for the
+   same reason as `_NL*`: so the state after it is this block's.
+
+   A block with no list rows and no untagged or auxiliary arrays, whose
+   lines a word could begin, also takes a line no field takes
+   (`unknown_lines`, see typed.lark's unknown_line). #}
+{%- macro field_list(block_name, fields, rules, recarray_name, redirect=true, unknown_lines=false) -%}
 {%- set alts = [] -%}
 {%- for f in fields -%}
 {%- set _ = alts.append(rules[f]) -%}
@@ -219,6 +218,9 @@
 {%- endif -%}
 {%- if redirect -%}
 {%- set _ = alts.append('open_close_redirect _NL') -%}
+{%- endif -%}
+{%- if unknown_lines -%}
+{%- set _ = alts.append('unknown_line') -%}
 {%- endif -%}
 {{ rule(block_name, tags=['fields']) }}: ({{ alts|join(' | ') }})*
 {%- endmacro %}

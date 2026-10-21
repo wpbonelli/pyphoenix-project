@@ -1,13 +1,11 @@
 """Choosing the loader (`LoadContext.loader`): the choice reaches every
-file a load reads, and the typed loader leaves the components it doesn't
-cover to the basic one."""
+file a load reads."""
 
 import attrs
 from modflow_devtools.models import copy_to
 
 from flopy4.mf6 import LoadContext
 from flopy4.mf6.converter.ingress import typed
-from flopy4.mf6.converter.ingress.structure import structure_component
 from flopy4.mf6.gwf import Chd
 from flopy4.mf6.simulation import Simulation
 
@@ -18,49 +16,43 @@ def test_default_is_basic():
     assert LoadContext().loader == "basic"
 
 
+def _record(monkeypatch) -> list:
+    """The classes the typed loader reads, from here on."""
+    read = []
+    structure_typed = typed.structure_typed
+
+    def record(parsed, cls, **kwargs):
+        read.append(cls)
+        return structure_typed(parsed, cls, **kwargs)
+
+    monkeypatch.setattr(typed, "structure_typed", record)
+    return read
+
+
 def test_typed_reaches_children(tmp_path, monkeypatch):
-    """Every component the simulation's files name is offered to the typed
-    loader; the ones it covers are read by it."""
-    asked, read = [], []
-
-    def covers(cls):
-        asked.append(cls.dfn_name)
-        return cls is Chd
-
-    def structure_typed(parsed, cls, *, context, name=None):
-        read.append((cls.dfn_name, list(parsed)))
-        # stand in for the typed loader with the basic one
-        from flopy4.mf6.codec.reader import load
-
-        assert context.loader == "typed"
-        with open(next(tmp_path.rglob("*.chd"))) as fp:
-            return structure_component(load(fp), cls, context=context, name=name)
-
-    monkeypatch.setattr(typed, "covers", covers)
-    monkeypatch.setattr(typed, "structure_typed", structure_typed)
+    """The typed loader reads every file the simulation's files name."""
+    read = _record(monkeypatch)
     workspace = copy_to(tmp_path, MODEL, verbose=False)
     sim = Simulation.load(workspace / "mfsim.nam", loader="typed")
-    assert {"sim-nam", "sim-tdis", "gwf-nam", "gwf-dis", "gwf-chd", "gwf-oc"} <= set(asked)
-    assert [name for name, _ in read] == ["gwf-chd"]
-    assert any(block.startswith("period ") for block in read[0][1])  # the typed parse's
+    assert {"sim-nam", "sim-tdis", "gwf-nam", "gwf-dis", "gwf-chd", "gwf-oc", "sln-ims"} <= {
+        cls.dfn_name for cls in read
+    }
     assert isinstance(sim.models[0].chd[0], Chd)
 
 
-def test_basic_offers_nothing(tmp_path, monkeypatch):
-    asked = []
-    monkeypatch.setattr(typed, "covers", lambda cls: asked.append(cls) or False)
+def test_basic_reads_nothing_typed(tmp_path, monkeypatch):
+    read = _record(monkeypatch)
     workspace = copy_to(tmp_path, MODEL, verbose=False)
     Simulation.load(workspace / "mfsim.nam")
-    assert asked == []
+    assert read == []
 
 
 def test_loader_overrides_context(tmp_path, monkeypatch):
-    asked = []
-    monkeypatch.setattr(typed, "covers", lambda cls: asked.append(cls) or False)
+    read = _record(monkeypatch)
     workspace = copy_to(tmp_path, MODEL, verbose=False)
     context = attrs.evolve(LoadContext(workspace=workspace), loader="basic")
     chd = next(workspace.rglob("*.chd"))
     Chd.load(chd, dims={"nlay": 1, "nrow": 1, "ncol": 3, "nodes": 3}, context=context)
-    assert asked == []
+    assert read == []
     Chd.load(chd, dims={"nlay": 1, "nrow": 1, "ncol": 3, "nodes": 3}, loader="typed")
-    assert asked == [Chd]
+    assert read == [Chd]

@@ -10,8 +10,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -28,18 +31,15 @@
 {% for block in blocks -%}
 {% set ns.alts = ns.alts + [rule(block.name, tags=['block'])] -%}
 {% endfor -%}
+{% set ns.alts = ns.alts + ['unknown_block'] -%}
 {% set block_alts = ns.alts|join(' | ') -%}
-{# A `block:` rule with no alternatives (a component with zero blocks, e.g.
-   exg-gwfgwt.dfn -- confirmed genuinely empty, just a header comment, no
-   input file content of its own) would be nullable, and a nullable rule
-   inside `start`'s own `*` repetition creates a Reduce/Reduce collision at
-   grammar-construction time (the LALR automaton can't tell an empty
-   `block` match apart from `start` simply being done). A plain-text
-   literal that can never occur in real input keeps the rule well-formed
-   but non-nullable (no escape sequences here -- an embedded raw NUL byte
-   from a `\x00`-style escape trips Lark's own literal-eval). #}
+{# A block the DFN doesn't have (an old IMS file's XMD) parses too, so
+   the loader can warn of it and skip it, as MF6 does (see typed.lark's
+   unknown_block). It also keeps `block` from having no alternatives in a
+   component with no blocks (exg-gwfgwt), which would make it nullable: a
+   Reduce/Reduce collision in `start`'s repetition. #}
 start: [_NL] (block [_NL])*
-block: {{ block_alts if blocks else '"NO_BLOCKS_DEFINED_FOR_THIS_COMPONENT"' }}
+block: {{ block_alts }}
 
 {% for block in blocks -%}
 {{ m.block_def(block.name, block.has_index, block.header, block.index_rule) }}
@@ -56,9 +56,9 @@ double_index: block_index
 {% for block in blocks -%}
 {% if block.recarrays -%}
 {% set recarray_name = block.recarrays[0].name -%}
-{{ m.field_list(block.name, block.standalone_fields, block.rules, recarray_name, block.redirect) }}
+{{ m.field_list(block.name, block.standalone_fields, block.rules, recarray_name, block.redirect, block.unknown_lines) }}
 {% else -%}
-{{ m.field_list(block.name, block.standalone_fields, block.rules, none, block.redirect) }}
+{{ m.field_list(block.name, block.standalone_fields, block.rules, none, block.redirect, block.unknown_lines) }}
 {% endif -%}
 {% endfor -%}
 {% set generated_rules = [] -%}

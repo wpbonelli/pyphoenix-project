@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,13 +27,13 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | dimensions__block | gncdata__block
+block: options__block | dimensions__block | gncdata__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 gncdata__block: _BEGIN "gncdata"i [_remark] _NL gncdata__fields _END "gncdata"i
-options__fields: (print_input__kw | print_flows__kw | explicit__kw | open_close_redirect _NL)*
-dimensions__fields: (numgnc__val | numalphaj__val | open_close_redirect _NL)*
+options__fields: (print_input__kw | print_flows__kw | explicit__kw | open_close_redirect _NL | unknown_line)*
+dimensions__fields: (numgnc__val | numalphaj__val | open_close_redirect _NL | unknown_line)*
 gncdata__fields: (gncdata__rows | open_close_redirect _NL)*
 print_input__kw: "print_input"i  [_remark] _NL
 print_flows__kw: "print_flows"i  [_remark] _NL

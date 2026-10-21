@@ -36,10 +36,9 @@ class LoadContext:
 
     loader: Loader = "basic"
     """How files are read: with the basic grammar and the converter
-    (``"basic"``), or with each component's own grammar (``"typed"``),
-    which falls back to the basic loader for components it doesn't
-    cover yet (see ``flopy4.mf6.converter.ingress.typed``). The two are
-    kept side by side to compare them."""
+    (``"basic"``), or with each component's own grammar (``"typed"``,
+    see ``flopy4.mf6.converter.ingress.typed``). The two are kept side by
+    side to compare them."""
 
     def resolve(self, path: str | PathLike) -> Path:
         """A path as written in an input file, resolved against the

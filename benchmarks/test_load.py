@@ -14,9 +14,9 @@ Benchmarks, each parametrized by library:
   import/load/materialize split goes in `extra_info`.
 
 `load` takes ``flopy4-typed`` (`_ops.TYPED`), flopy4 with the typed
-loader, but it isn't in `LIBRARIES` while the typed loader covers no
-component (see `flopy4.mf6.converter.ingress.typed`). Add it there, and to
-`report.py`'s columns, once it does.
+loader (see `flopy4.mf6.converter.ingress.typed`), but it isn't in
+`LIBRARIES` yet: comparing the loaders is the converter plan's Phase C,
+which adds it there, and to `report.py`'s columns.
 """
 
 import json

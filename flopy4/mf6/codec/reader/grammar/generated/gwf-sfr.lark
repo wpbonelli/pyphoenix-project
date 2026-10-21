@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,7 +27,7 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | dimensions__block | packagedata__block | crosssections__block | connectiondata__block | diversions__block | initialstages__block | period__block
+block: options__block | dimensions__block | packagedata__block | crosssections__block | connectiondata__block | diversions__block | initialstages__block | period__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
@@ -35,8 +38,8 @@ diversions__block: _BEGIN "diversions"i [_remark] _NL diversions__fields _END "d
 initialstages__block: _BEGIN "initialstages"i [_remark] _NL initialstages__fields _END "initialstages"i
 period__block: _BEGIN "period"i block_index [_remark] _NL period__fields _END "period"i [block_index]
 %import typed.block_index -> block_index
-options__fields: (storage__kw | ats_courant__val | auxiliary__val | boundnames__kw | print_input__kw | print_stage__kw | print_flows__kw | save_flows__kw | stage_file__rec | budget_file__rec | budgetcsv_file__rec | package_convergence_file__rec | ts__rec__elem | obs__rec | mover__kw | maximum_picard_iterations__val | maximum_iterations__val | maximum_depth_change__val | unit_conversion__val | length_conversion__val | time_conversion__val | dev_storage_weight__val | dev_no_check__kw | dev_no_final_check__kw | open_close_redirect _NL)*
-dimensions__fields: (nreaches__val | open_close_redirect _NL)*
+options__fields: (storage__kw | ats_courant__val | auxiliary__val | boundnames__kw | print_input__kw | print_stage__kw | print_flows__kw | save_flows__kw | stage_file__rec | budget_file__rec | budgetcsv_file__rec | package_convergence_file__rec | ts__rec__elem | obs__rec | mover__kw | maximum_picard_iterations__val | maximum_iterations__val | maximum_depth_change__val | unit_conversion__val | length_conversion__val | time_conversion__val | open_close_redirect _NL | unknown_line)*
+dimensions__fields: (nreaches__val | open_close_redirect _NL | unknown_line)*
 packagedata__fields: (packagedata__rows | open_close_redirect _NL)*
 crosssections__fields: (crosssections__rows | open_close_redirect _NL)*
 connectiondata__fields: (connectiondata__rows | open_close_redirect _NL)*
@@ -70,9 +73,6 @@ maximum_depth_change__val: "maximum_depth_change"i double [_remark] _NL
 unit_conversion__val: "unit_conversion"i double [_remark] _NL
 length_conversion__val: "length_conversion"i double [_remark] _NL
 time_conversion__val: "time_conversion"i double [_remark] _NL
-dev_storage_weight__val: "dev_storage_weight"i double [_remark] _NL
-dev_no_check__kw: "dev_no_check"i  [_remark] _NL
-dev_no_final_check__kw: "dev_no_final_check"i  [_remark] _NL
 nreaches__val: "nreaches"i integer [_remark] _NL
 packagedata__rows: record+
 crosssections__rows: record+

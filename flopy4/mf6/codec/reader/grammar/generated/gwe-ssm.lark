@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,12 +27,12 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | sources__block | fileinput__block
+block: options__block | sources__block | fileinput__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 sources__block: _BEGIN "sources"i [_remark] _NL sources__fields _END "sources"i
 fileinput__block: _BEGIN "fileinput"i [_remark] _NL fileinput__fields _END "fileinput"i
-options__fields: (print_flows__kw | save_flows__kw | open_close_redirect _NL)*
+options__fields: (print_flows__kw | save_flows__kw | open_close_redirect _NL | unknown_line)*
 sources__fields: (sources__rows | open_close_redirect _NL)*
 fileinput__fields: (fileinput__rows | open_close_redirect _NL)*
 print_flows__kw: "print_flows"i  [_remark] _NL

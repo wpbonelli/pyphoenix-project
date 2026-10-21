@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,7 +27,7 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | dimensions__block | griddata__block | connectiondata__block | vertices__block | cell2d__block
+block: options__block | dimensions__block | griddata__block | connectiondata__block | vertices__block | cell2d__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
@@ -32,10 +35,10 @@ griddata__block: _BEGIN "griddata"i [_remark] _NL griddata__fields _END "griddat
 connectiondata__block: _BEGIN "connectiondata"i [_remark] _NL connectiondata__fields _END "connectiondata"i
 vertices__block: _BEGIN "vertices"i [_remark] _NL vertices__fields _END "vertices"i
 cell2d__block: _BEGIN "cell2d"i [_remark] _NL cell2d__fields _END "cell2d"i
-options__fields: (length_units__val | nogrb__kw | grb_file__rec | xorigin__val | yorigin__val | angrot__val | vertical_offset_tolerance__val | export_array_ascii__kw | crs__val | open_close_redirect _NL)*
-dimensions__fields: (nodes__val | nja__val | nvert__val | open_close_redirect _NL)*
-griddata__fields: (top__val | bot__val | area__val | idomain__val | open_close_redirect _NL)*
-connectiondata__fields: (iac__val | ja__val | ihc__val | cl12__val | hwva__val | angldegx__val | open_close_redirect _NL)*
+options__fields: (length_units__val | nogrb__kw | grb_file__rec | xorigin__val | yorigin__val | angrot__val | vertical_offset_tolerance__val | export_array_ascii__kw | crs__val | open_close_redirect _NL | unknown_line)*
+dimensions__fields: (nodes__val | nja__val | nvert__val | open_close_redirect _NL | unknown_line)*
+griddata__fields: (top__val | bot__val | area__val | idomain__val | open_close_redirect _NL | unknown_line)*
+connectiondata__fields: (iac__val | ja__val | ihc__val | cl12__val | hwva__val | angldegx__val | open_close_redirect _NL | unknown_line)*
 vertices__fields: (vertices__rows | open_close_redirect _NL)*
 cell2d__fields: (cell2d__rows | open_close_redirect _NL)*
 length_units__val: "length_units"i string
@@ -51,15 +54,15 @@ crs__val: "crs"i string
 nodes__val: "nodes"i integer [_remark] _NL
 nja__val: "nja"i integer [_remark] _NL
 nvert__val: "nvert"i integer [_remark] _NL
-top__val: "top"i [_remark] [_NL] array
-bot__val: "bot"i [_remark] [_NL] array
-area__val: "area"i [_remark] [_NL] array
-idomain__val: "idomain"i [_remark] [_NL] array
-iac__val: "iac"i [_remark] [_NL] array
-ja__val: "ja"i [_remark] [_NL] array
-ihc__val: "ihc"i [_remark] [_NL] array
-cl12__val: "cl12"i [_remark] [_NL] array
-hwva__val: "hwva"i [_remark] [_NL] array
-angldegx__val: "angldegx"i [_remark] [_NL] array
+top__val: "top"i [_name_remark] [_NL] array
+bot__val: "bot"i [_name_remark] [_NL] array
+area__val: "area"i [_name_remark] [_NL] array
+idomain__val: "idomain"i [_name_remark] [_NL] array
+iac__val: "iac"i [_name_remark] [_NL] array
+ja__val: "ja"i [_name_remark] [_NL] array
+ihc__val: "ihc"i [_name_remark] [_NL] array
+cl12__val: "cl12"i [_name_remark] [_NL] array
+hwva__val: "hwva"i [_name_remark] [_NL] array
+angldegx__val: "angldegx"i [_name_remark] [_NL] array
 vertices__rows: record+
 cell2d__rows: record+

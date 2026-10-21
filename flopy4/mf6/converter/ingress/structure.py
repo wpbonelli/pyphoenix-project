@@ -726,7 +726,7 @@ def read_component(
     from flopy4.mf6.converter.ingress import typed
 
     with open(path) as fp:
-        if context.loader == "typed" and typed.covers(cls):
+        if context.loader == "typed":
             parsed = loads_typed(fp.read(), cls.dfn_name)
             return typed.structure_typed(parsed, cls, context=context, name=name)
         raw = load(fp)

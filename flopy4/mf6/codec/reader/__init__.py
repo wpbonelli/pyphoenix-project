@@ -4,7 +4,7 @@ import os
 import re
 from typing import IO, Any
 
-from lark.exceptions import LarkError
+from lark.exceptions import LarkError, UnexpectedInput, UnexpectedToken
 
 from flopy4.mf6.codec.reader.parser import get_basic_parser, get_typed_parser
 from flopy4.mf6.codec.reader.transformer import BasicTransformer, get_typed_transformer
@@ -126,15 +126,28 @@ def _parse_basic(buffer: bytes | mmap.mmap, encoding: str) -> Any:
         SOURCE.reset(token)
 
 
+def _rest_of_line(error: UnexpectedInput) -> bool:
+    """Whether to skip the token `error` is about: a word or number where
+    its line could end (a remark that lexed as a keyword, a second value
+    after an option's one), which MF6 ignores, reading only the values it
+    needs from a line."""
+    return (
+        isinstance(error, UnexpectedToken)
+        and "_NL" in error.expected
+        and error.token.type not in ("_NL", "$END")
+        and "\n" not in error.token
+    )
+
+
 def loads_typed(data: str, component: str) -> Any:
     """Parse MF6 input file content with ``component``'s typed grammar."""
     parser = get_typed_parser(component)
     transformer = get_typed_transformer()
     try:
-        tree = parser.parse(data)
+        tree = parser.parse(data, on_error=_rest_of_line)
     except LarkError:
         trimmed = _trim_trailing_garbage(data)
         if trimmed == data:
             raise
-        tree = parser.parse(trimmed)
+        tree = parser.parse(trimmed, on_error=_rest_of_line)
     return transformer.transform(tree)

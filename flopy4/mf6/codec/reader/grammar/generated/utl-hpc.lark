@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,12 +27,11 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | partitions__block
+block: options__block | partitions__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 partitions__block: _BEGIN "partitions"i [_remark] _NL partitions__fields _END "partitions"i
-options__fields: (print_table__kw | dev_log_mpi__kw | open_close_redirect _NL)*
+options__fields: (print_table__kw | open_close_redirect _NL | unknown_line)*
 partitions__fields: (partitions__rows | open_close_redirect _NL)*
 print_table__kw: "print_table"i  [_remark] _NL
-dev_log_mpi__kw: "dev_log_mpi"i  [_remark] _NL
 partitions__rows: record+

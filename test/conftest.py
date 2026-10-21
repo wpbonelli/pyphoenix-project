@@ -51,18 +51,12 @@ def pytest_addoption(parser):
         choices=["basic", "typed"],
         default="basic",
         help="How the round-trip and load-all tests read MF6 files (see "
-        "LoadContext.loader). The typed loader reads the components it "
-        "covers and leaves the rest to the basic one. Default: basic.",
+        "LoadContext.loader). Default: basic.",
     )
 
 
 def pytest_report_header(config):
-    loader = config.getoption("--loader")
-    if loader == "typed":
-        from flopy4.mf6.converter.ingress.typed import COVERED
-
-        return f"loader: typed, for {', '.join(sorted(COVERED)) or 'no components yet'}"
-    return f"loader: {loader}"
+    return f"loader: {config.getoption('--loader')}"
 
 
 @pytest.fixture(scope="session")

@@ -19,6 +19,11 @@ class _Rows(tuple):
     """A (name, rows) for some of a list's rows, which collects them."""
 
 
+class UnknownBlock(list):
+    """The rows of a block the component's DFN doesn't have (see typed.lark's
+    unknown_block), which the loader warns of and skips."""
+
+
 def _is_numbers(item: Any) -> bool:
     return isinstance(item, Token) and item.type.rsplit("__", 1)[-1] == "NUMBERS"
 
@@ -105,7 +110,7 @@ class TypedTransformer(Transformer):
 
     def start(self, items: list[Any]) -> dict:
         """Collect and merge blocks, handling indexed blocks specially."""
-        merged = {}
+        merged: dict[str, Any] = {}
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -114,10 +119,11 @@ class TypedTransformer(Transformer):
                 if isinstance(block_data, dict) and all(
                     isinstance(k, int) for k in block_data.keys()
                 ):
-                    # Flatten indexed blocks into separate keys like "period 1", "period 2"
+                    # Flatten indexed blocks into separate keys like "period 1",
+                    # "period 2". A repeated one keeps its first, as the
+                    # basic transformer does (see its `start`).
                     for index, data in block_data.items():
-                        indexed_key = f"{block_name} {index}"
-                        merged[indexed_key] = data
+                        merged.setdefault(f"{block_name} {index}", data)
                 elif block_name not in merged:
                     merged[block_name] = block_data
                 elif isinstance(block_data, dict) and all(
@@ -272,6 +278,24 @@ class TypedTransformer(Transformer):
         """A block's rows in another file (``OPEN/CLOSE <file>``), read
         into the block's contents under "open/close"."""
         return "open/close", items[0]
+
+    def unknown_line(self, items: list[Any]) -> tuple[str, list[Any]]:
+        """A line no field of its block takes, by its first word, for the
+        loader to warn of (see typed.lark)."""
+        first, *rest = items
+        return str(first).lower(), rest
+
+    def unknown_block(self, items: list[Any]) -> dict[str, UnknownBlock]:
+        """A block the DFN doesn't have, by its BEGIN line's words, and its
+        rows, for the loader to warn of (see typed.lark)."""
+        name, *rest = items
+        words = [str(name)]
+        for item in rest:
+            if isinstance(item, (list, NumberRows, Token)):
+                break
+            words.append(str(item))
+        rows = UnknownBlock(item for item in rest if isinstance(item, (list, NumberRows)))
+        return {" ".join(words).lower(): rows}
 
     def block_index(self, items: list[Any]) -> int | float:
         """Extract block index (e.g., period number, or utl-tas's time)."""

@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,12 +27,12 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | griddata__block
+block: options__block | griddata__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 griddata__block: _BEGIN "griddata"i [_remark] _NL griddata__fields _END "griddata"i
-options__fields: (central_in_space__kw | length_conversion__val | time_conversion__val | save_flows__kw | print_flows__kw | save_velocity__kw | obs__rec | export_array_ascii__kw | dev_swr_conductance__kw | open_close_redirect _NL)*
-griddata__fields: (manningsn__val | idcxs__val | open_close_redirect _NL)*
+options__fields: (central_in_space__kw | length_conversion__val | time_conversion__val | save_flows__kw | print_flows__kw | save_velocity__kw | obs__rec | export_array_ascii__kw | open_close_redirect _NL | unknown_line)*
+griddata__fields: (manningsn__val | idcxs__val | open_close_redirect _NL | unknown_line)*
 central_in_space__kw: "central_in_space"i  [_remark] _NL
 length_conversion__val: "length_conversion"i double [_remark] _NL
 time_conversion__val: "time_conversion"i double [_remark] _NL
@@ -39,6 +42,5 @@ save_velocity__kw: "save_velocity"i  [_remark] _NL
 obs__rec: "obs6"i obs_filerecord__obs6_filename__val [_remark] _NL
 obs_filerecord__obs6_filename__val: "filein"i word
 export_array_ascii__kw: "export_array_ascii"i  [_remark] _NL
-dev_swr_conductance__kw: "dev_swr_conductance"i  [_remark] _NL
-manningsn__val: "manningsn"i [_remark] [_NL] array
-idcxs__val: "idcxs"i [_remark] [_NL] array
+manningsn__val: "manningsn"i [_name_remark] [_NL] array
+idcxs__val: "idcxs"i [_name_remark] [_NL] array

@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,14 +27,14 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | nonlinear__block | linear__block
+block: options__block | nonlinear__block | linear__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 nonlinear__block: _BEGIN "nonlinear"i [_remark] _NL nonlinear__fields _END "nonlinear"i
 linear__block: _BEGIN "linear"i [_remark] _NL linear__fields _END "linear"i
-options__fields: (print_option__val | complexity__val | csv_outer_output_file__rec | csv_inner_output_file__rec | no_ptc__rec | ats_outer_maximum_fraction__val | dev_ptc__kw | dev_ptc_output_filerecord__rec | dev_ptc_option__kw | dev_ptc_exponent__val | dev_ptc_del0__val | open_close_redirect _NL)*
-nonlinear__fields: (outer_dvclose__val | outer_maximum__val | under_relaxation__val | under_relaxation_gamma__val | under_relaxation_theta__val | under_relaxation_kappa__val | under_relaxation_momentum__val | backtracking_number__val | backtracking_tolerance__val | backtracking_reduction_factor__val | backtracking_residual_limit__val | open_close_redirect _NL)*
-linear__fields: (inner_maximum__val | inner_dvclose__val | rclose__rec | linear_acceleration__val | relaxation_factor__val | preconditioner_levels__val | preconditioner_drop_tolerance__val | number_orthogonalizations__val | scaling_method__val | reordering_method__val | open_close_redirect _NL)*
+options__fields: (print_option__val | complexity__val | csv_outer_output_file__rec | csv_inner_output_file__rec | no_ptc__rec | ats_outer_maximum_fraction__val | open_close_redirect _NL | unknown_line)*
+nonlinear__fields: (outer_dvclose__val | outer_maximum__val | under_relaxation__val | under_relaxation_gamma__val | under_relaxation_theta__val | under_relaxation_kappa__val | under_relaxation_momentum__val | backtracking_number__val | backtracking_tolerance__val | backtracking_reduction_factor__val | backtracking_residual_limit__val | open_close_redirect _NL | unknown_line)*
+linear__fields: (inner_maximum__val | inner_dvclose__val | rclose__rec | linear_acceleration__val | relaxation_factor__val | preconditioner_levels__val | preconditioner_drop_tolerance__val | number_orthogonalizations__val | scaling_method__val | reordering_method__val | open_close_redirect _NL | unknown_line)*
 print_option__val: "print_option"i string
 complexity__val: "complexity"i string
 csv_outer_output_file__rec: "csv_outer_output"i csv_outer_output_filerecord__outer_csvfile__val [_remark] _NL
@@ -41,12 +44,6 @@ csv_inner_output_filerecord__inner_csvfile__val: "fileout"i word
 no_ptc__rec: "no_ptc"i [no_ptcrecord__no_ptc_option__val] [_remark] _NL
 no_ptcrecord__no_ptc_option__val: word
 ats_outer_maximum_fraction__val: "ats_outer_maximum_fraction"i double [_remark] _NL
-dev_ptc__kw: "dev_ptc"i  [_remark] _NL
-dev_ptc_output_filerecord__rec: "dev_ptc_output"i dev_ptc_output_filerecord__dev_ptcfile__val [_remark] _NL
-dev_ptc_output_filerecord__dev_ptcfile__val: "fileout"i word
-dev_ptc_option__kw: "dev_ptc_option"i  [_remark] _NL
-dev_ptc_exponent__val: "dev_ptc_exponent"i double [_remark] _NL
-dev_ptc_del0__val: "dev_ptc_del0"i double [_remark] _NL
 outer_dvclose__val: "outer_dvclose"i double [_remark] _NL
 outer_maximum__val: "outer_maximum"i integer [_remark] _NL
 under_relaxation__val: "under_relaxation"i string

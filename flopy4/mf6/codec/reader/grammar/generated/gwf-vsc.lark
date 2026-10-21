@@ -9,8 +9,11 @@
 %import typed.record -> record
 %import typed.token_record -> token_record
 %import typed.open_close_redirect -> open_close_redirect
+%import typed.unknown_line -> unknown_line
+%import typed.unknown_block -> unknown_block
 %import typed._NL -> _NL
 %import typed._remark -> _remark
+%import typed._name_remark -> _name_remark
 %import typed._BEGIN -> _BEGIN
 %import typed._END -> _END
 %import typed.COMMA -> COMMA
@@ -24,13 +27,13 @@
 %ignore COMMA
 
 start: [_NL] (block [_NL])*
-block: options__block | dimensions__block | packagedata__block
+block: options__block | dimensions__block | packagedata__block | unknown_block
 
 options__block: _BEGIN "options"i [_remark] _NL options__fields _END "options"i
 dimensions__block: _BEGIN "dimensions"i [_remark] _NL dimensions__fields _END "dimensions"i
 packagedata__block: _BEGIN "packagedata"i [_remark] _NL packagedata__fields _END "packagedata"i
-options__fields: (viscref__val | temperature_species_name__val | thermal_formulation__union | thermal_a2__val | thermal_a3__val | thermal_a4__val | viscosity_file__rec | open_close_redirect _NL)*
-dimensions__fields: (nviscspecies__val | open_close_redirect _NL)*
+options__fields: (viscref__val | temperature_species_name__val | thermal_formulation__union | thermal_a2__val | thermal_a3__val | thermal_a4__val | viscosity_file__rec | open_close_redirect _NL | unknown_line)*
+dimensions__fields: (nviscspecies__val | open_close_redirect _NL | unknown_line)*
 packagedata__fields: (packagedata__rows | open_close_redirect _NL)*
 viscref__val: "viscref"i double [_remark] _NL
 temperature_species_name__val: "temperature_species_name"i string

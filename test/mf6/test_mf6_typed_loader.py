@@ -1,7 +1,8 @@
-"""The typed loader (``flopy4.mf6.converter.ingress.typed``) reads the
-components it covers as the basic loader does: the same values, the same
-record of how the file wrote each array, and the same warnings. One file of
-each block kind it covers, then whole corpus models."""
+"""The typed loader (``flopy4.mf6.converter.ingress.typed``) reads files as
+the basic loader does: the same values, the same record of how the file
+wrote each array, and the same warnings. One file of each block kind, what
+MF6 skips (unknown blocks and options, the rest of a line), then whole
+corpus models."""
 
 import warnings
 from pathlib import Path
@@ -14,8 +15,9 @@ from modflow_devtools.models import copy_to
 from flopy4.mf6 import LoadContext
 from flopy4.mf6.codec.reader import loads, loads_typed
 from flopy4.mf6.converter.ingress.structure import structure_component
-from flopy4.mf6.converter.ingress.typed import COVERED, covers, structure_typed
+from flopy4.mf6.converter.ingress.typed import structure_typed
 from flopy4.mf6.gwf import Chd, Dis, Npf, Oc, Rcha, Sto
+from flopy4.mf6.ims import Ims
 from flopy4.mf6.simulation import Simulation
 from flopy4.mf6.utl import Obs, Tas
 from mf6.test_mf6_load_all_models import _load_digest
@@ -28,10 +30,10 @@ def _arrays(component) -> dict:
     return {} if context is None else dict(context.arrays)
 
 
-def _both(text: str, cls: type, workspace: Path, dims: dict | None = None):
+def _both(text: str, cls: type, workspace: Path, dims: dict | None = None, warned: tuple = ()):
     """``text`` read into a ``cls`` by each loader, which must agree: its
-    values, its arrays' write settings, and its warnings. Returns the
-    typed loader's."""
+    values, its arrays' write settings, and its warnings, which must be
+    `warned`'s, if given. Returns the typed loader's."""
     context = LoadContext(workspace=workspace, dims=DIMS if dims is None else dims)
     with warnings.catch_warnings(record=True) as basic_warnings:
         warnings.simplefilter("always")
@@ -45,13 +47,11 @@ def _both(text: str, cls: type, workspace: Path, dims: dict | None = None):
         )
     assert _load_digest(typed, workspace) == _load_digest(basic, workspace)
     assert _arrays(typed) == _arrays(basic)
-    assert [str(w.message) for w in typed_warnings] == [str(w.message) for w in basic_warnings]
+    messages = [str(w.message) for w in typed_warnings]
+    assert messages == [str(w.message) for w in basic_warnings]
+    if warned:
+        assert messages == list(warned)
     return typed
-
-
-def test_covers():
-    assert covers(Oc) and covers(Simulation)
-    assert {"sim-nam", "gwf-nam", "gwf-dis", "gwf-rcha", "utl-obs", "utl-tas"} <= COVERED
 
 
 def test_griddata(tmp_path):
@@ -276,6 +276,83 @@ def test_fortran_exponent():
     assert loads_typed(npf, "gwf-npf")["options"]["rewet"]["wetfct"] == 0.1
 
 
+def test_unknown(tmp_path):
+    """A block the DFN doesn't have warns and is skipped, unless it's
+    empty; so does an option no field takes (a ``developmode`` one)."""
+    _both(
+        """
+BEGIN OPTIONS
+  PRINT_OPTION summary
+  DEV_PTC_OUTPUT FILEOUT ptc.csv
+END OPTIONS
+BEGIN NONLINEAR
+  OUTER_MAXIMUM 50
+END NONLINEAR
+BEGIN XMD
+  OUTER_HCLOSE 1e-4
+  'quoted' 2
+END XMD
+BEGIN EMPTY
+END EMPTY
+""",
+        Ims,
+        tmp_path,
+        warned=(
+            "Ims: ignoring unknown block XMD",
+            "Ims: no field takes OPTIONS entry DEV_PTC_OUTPUT, skipped",
+        ),
+    )
+
+
+def test_rest_of_line(tmp_path):
+    """MF6 reads the values it needs from a line and ignores the rest: a
+    second value, or a remark with a keyword in it (an array's name line's
+    too)."""
+    _both(
+        """
+BEGIN LINEAR
+  INNER_RCLOSE 0. RELATIVE_RCLOSE L2NORM_RCLOSE
+  PRECONDITIONER_DROP_TOLERANCE 0. 0.1000000e-02
+END LINEAR
+""",
+        Ims,
+        tmp_path,
+    )
+    npf = _both(
+        """
+BEGIN OPTIONS
+  SAVE_FLOWS  (save constant head and flowja terms)
+END OPTIONS
+BEGIN GRIDDATA
+  ICELLTYPE  # internal, by layer
+    CONSTANT 1
+  K
+    CONSTANT 10.0
+END GRIDDATA
+""",
+        Npf,
+        tmp_path,
+    )
+    assert npf.save_flows
+
+
+def test_repeated_period(tmp_path):
+    """A period given twice keeps its first, as the basic loader does."""
+    chd = _both(
+        """
+BEGIN PERIOD 1
+  1 1 1 1.0
+END PERIOD
+BEGIN PERIOD 1
+  1 1 2 2.0
+END PERIOD
+""",
+        Chd,
+        tmp_path,
+    )
+    assert len(chd.stress_period_data[0]) == 1
+
+
 @pytest.mark.parametrize(
     "model_name",
     [
@@ -283,6 +360,9 @@ def test_fortran_exponent():
         "mf6/test/test005_advgw_tidal",  # OBS with OPEN/CLOSE
         "mf6/test/test001e_UZF_spring",  # STO, OBS
         "mf6/test/test006_2models_gnc",  # two models
+        "mf6/test/test045_lake2tr_xsfra_dev",  # LAK, time-series names, DEV_ option
+        "mf6/test/test001a_Tharmonic",  # IMS with XMD
+        "mf6/test/test006_gwf3_tr",  # remarks with keywords
     ],
 )
 def test_models(tmp_path, model_name):
