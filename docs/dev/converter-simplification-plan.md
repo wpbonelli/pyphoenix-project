@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3 and B4 done; C next** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -772,6 +772,66 @@ C. **Compare the loaders.** Done: [`loader-comparison.md`](loader-comparison.md)
    deleting one is decided as its own change. If that change deletes
    Track A, the stored DFNs and A1's accessor go with it, and egress
    reads the classes' fields.
+
+### D: cleanups from the post-C audit
+
+An audit of the branch against `develop` (2026-10-21, at `0c93be8f`)
+counted code lines (no comments or docstrings): `flopy4` grew by 405.
+The basic loader and egress together are about +30 (`structure.py`
+−116, `unstructure.py` −51, `spec.py` +133, the rest about +60); the
+typed loader is about +360 (`ingress/typed.py` +276, the parser cache
+and grammar generation about +85). The goals of "What's wrong today"
+are mostly met: one block loop on ingress, taggedness from the DFN, one
+array reader, one kwarg-name rule (`_init_key`), no `solutiongroup` or
+`maxbound` special cases, one egress path matching on the DFN type, and
+ingress and egress mirroring each other. What's left, each its own
+change, in the order to do them (both loaders stay throughout):
+
+D1. **One child-binding predicate.** "A field naming children in a
+    block" (`child`, has a `block`, not `_keyword`) is written out five
+    times: `ComponentLoad.binding_blocks` (`structure.py:840`),
+    `_resolve_bindings`'s field index, `_Unstructure.binding_blocks`
+    (`unstructure.py:316`), `_Unstructure.bindings` (`unstructure.py:424`)
+    and `_TypedLoad.body` (`typed.py:240`). Make it one
+    `binding_fields(cls)` (by block) in `spec.py`.
+D2. **One header parse for both loaders.** `_header` and `_occurrences`
+    are in both `structure.py:759,775` and `typed.py:42,58`, and they
+    disagree: basic makes a header 0-based by the field name `iper`,
+    typed by the block name `period`; only basic parses a `double`
+    header; only typed keys a TAS time by float. Share the header parse
+    (from the DFN block's header field), so the loaders differ only in
+    what the parse hands them.
+D3. **Rewrite `_resolve_bindings`** (`structure.py:535`, ~140 lines),
+    the one part of ingress left in the old style: its own field index
+    (D1 replaces it), ad hoc matching of a row's ftype token against
+    concrete classes then the registry, and a context rebuilt per child.
+    Keep dims providers first and an exchange's models.
+D4. **Untangle `_Load.body`**: a 70-line `while` loop whose index
+    `array()` advances by returning the next row, with OC's
+    `HEAD FILEOUT` / `HEAD PRINT_FORMAT` direction check inline. Group
+    an array's control records with its name row before the dispatch
+    (as `parts()` does for number rows), so each row is one field's and
+    the loop is a plain `for`; the direction check belongs in
+    `field_of`, which already tells `HEAD` rows apart by the next word.
+D5. **Value kind from the DFN on ingress.** Block structure comes from
+    the DFN, but a value's kind still comes from the annotations
+    (`item_list_type`, `block_list_type`, `_is_grid_array`, `_per_header`,
+    `metadata["_keyword"]`). Egress's `_Unstructure.field` already
+    matches on the DFN type; have ingress dispatch the same way, and
+    drop the annotation helpers it no longer needs.
+D6. **Two sources of truth at runtime**: the generated classes and the
+    stored DFNs, joined by `attr_names`, which builds codegen's spec at
+    first load (cold start). Storing the names at sync time ("Later")
+    removes the runtime join; D5 removes most of the rest of the
+    overlap. Revisit what's left after D5.
+
+Not code, but noted: `structure.py` went from 28 functions to 54
+(smaller, more of them), and this plan is ~850 lines; trim the done
+phases to their results once D is done. The biggest size lever is
+still deleting a loader ("Later"): the typed one is ~360 code lines
+(~1,300 with grammar generation and templates) plus 6,581 lines of
+generated grammars; the basic one ~450, but egress keeps the stored
+DFNs until it reads the classes' fields.
 
 ### Later
 
