@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1–D4 done** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D1–D4 done, D5–D6 skipped for now** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -833,12 +833,18 @@ D5. **Value kind from the DFN on ingress.** Block structure comes from
     (`item_list_type`, `block_list_type`, `_is_grid_array`, `_per_header`,
     `metadata["_keyword"]`). Egress's `_Unstructure.field` already
     matches on the DFN type; have ingress dispatch the same way, and
-    drop the annotation helpers it no longer needs.
+    drop the annotation helpers it no longer needs. *Skipped for now:*
+    while both loaders stay, none of the helpers could go (the typed
+    loader, which reads no DFN, the shared repeating-block code and
+    egress use them, and reading a list still needs the annotation's
+    item class), so this would add a second dispatch to one loader.
+    Revisit with deleting a loader.
 D6. **Two sources of truth at runtime**: the generated classes and the
     stored DFNs, joined by `attr_names`, which builds codegen's spec at
     first load (cold start). Storing the names at sync time ("Later")
     removes the runtime join; D5 removes most of the rest of the
-    overlap. Revisit what's left after D5.
+    overlap. Revisit what's left after D5. *Skipped for now,* with D5;
+    storing the names at sync time stays in "Later".
 
 Not code, but noted: `structure.py` went from 28 functions to 54
 (smaller, more of them), and this plan is ~850 lines; trim the done
