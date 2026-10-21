@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) next** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D (cleanups) under way, D1 done** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -793,7 +793,8 @@ D1. **One child-binding predicate.** "A field naming children in a
     `_resolve_bindings`'s field index, `_Unstructure.binding_blocks`
     (`unstructure.py:316`), `_Unstructure.bindings` (`unstructure.py:424`)
     and `_TypedLoad.body` (`typed.py:240`). Make it one
-    `binding_fields(cls)` (by block) in `spec.py`.
+    `binding_fields(cls)` (by block) in `spec.py`. *Done:* each child
+    field with its kind and candidate classes, by block; all five use it.
 D2. **One header parse for both loaders.** `_header` and `_occurrences`
     are in both `structure.py:759,775` and `typed.py:42,58`, and they
     disagree: basic makes a header 0-based by the field name `iper`,

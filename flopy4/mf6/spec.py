@@ -510,6 +510,24 @@ def fields_dict(cls) -> dict[str, Attribute]:
     return {k: v for k, v in fields.items() if "block" in v.metadata}
 
 
+@cache
+def binding_fields(cls) -> dict[str, list[tuple[Attribute, str, tuple[type, ...]]]]:
+    """The child fields named by a block's rows (a model's packages, the
+    simulation's models, exchanges and solutions), by block, in field
+    order, each with its kind and candidate classes (see
+    `child_field_candidates`). A file record's child (``NCF6 FILEIN
+    <file>``) loads with its record, so isn't one."""
+    from flopy4.attrs_xarray import child_field_candidates
+
+    out: dict[str, list] = {}
+    for f in attrs.fields(cls):
+        if not f.metadata.get("child") or "block" not in f.metadata or f.metadata.get("_keyword"):
+            continue
+        if (spec := child_field_candidates(f)) is not None:
+            out.setdefault(f.metadata["block"], []).append((f, *spec))
+    return out
+
+
 def to_field_type(t: type) -> FieldType:
     match t:
         case builtins.str | np.str_:

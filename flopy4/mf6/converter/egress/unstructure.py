@@ -8,7 +8,6 @@ import numpy as np
 import xarray as xr
 
 from flopy4._imports import isinstance_of
-from flopy4.attrs_xarray import child_field_candidates
 from flopy4.mf6._types import TimeArraySeriesRef
 from flopy4.mf6.block import block_list_type
 from flopy4.mf6.component import Component
@@ -21,7 +20,7 @@ from flopy4.mf6.item_table import ItemTable
 from flopy4.mf6.package import Package
 from flopy4.mf6.period_arrays import is_cleared, is_grid_package
 from flopy4.mf6.record import Record, record_type
-from flopy4.mf6.spec import FileDirection, attr_names, block_keys, dfn
+from flopy4.mf6.spec import FileDirection, attr_names, binding_fields, block_keys, dfn
 from flopy4.mf6.write_context import WriteContext
 from flopy4.spec import is_array
 
@@ -309,12 +308,8 @@ class _Unstructure:
         self._fields = attrs.fields_dict(self.cls)  # type: ignore[arg-type]
         self._names = attr_names(self.cls)
         self.grid = is_grid_package(self.cls)
-        # blocks whose rows name children (see ComponentLoad.binding_blocks)
-        self.binding_blocks = {
-            f.metadata["block"]
-            for f in self._fields.values()
-            if f.metadata.get("child") and "block" in f.metadata and not f.metadata.get("_keyword")
-        }
+        # blocks whose rows name children
+        self.binding_blocks = binding_fields(self.cls)
 
     @cached_property
     def ncelldim(self) -> int | None:
@@ -420,11 +415,7 @@ class _Unstructure:
         <file> <name>``), in field order: the inverse of
         `_resolve_bindings`."""
         rows = []
-        for f in self._fields.values():
-            if f.metadata.get("block") != name or not f.metadata.get("child"):
-                continue
-            if f.metadata.get("_keyword") or child_field_candidates(f) is None:
-                continue
+        for f, *_ in self.binding_blocks.get(name, ()):
             child = getattr(self.value, f.name, None)
             children = child if isinstance(child, list) else [child]
             rows += [Binding.from_component(c).to_tuple() for c in children if c is not None]

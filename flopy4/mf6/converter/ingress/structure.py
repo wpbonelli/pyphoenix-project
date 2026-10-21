@@ -31,7 +31,15 @@ from flopy4.mf6.load_context import LoadContext
 from flopy4.mf6.package import Package
 from flopy4.mf6.period_arrays import is_grid_package
 from flopy4.mf6.record import Record
-from flopy4.mf6.spec import BlockKeys, attr_names, block_keys, dfn, following_tags, to_field_type
+from flopy4.mf6.spec import (
+    BlockKeys,
+    attr_names,
+    binding_fields,
+    block_keys,
+    dfn,
+    following_tags,
+    to_field_type,
+)
 from flopy4.mf6.write_context import ArrayIO, WriteContext, array_hash
 from flopy4.spec import is_array, resolve
 from flopy4.utils import unwrap_optional
@@ -535,10 +543,9 @@ def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> d
     into `structure_component`'s kwargs so children are attached the same
     way manual construction already attaches them (`Gwf(dis=Dis(...))`).
 
-    Child-Component fields are found via `child_field_candidates()`
-    (mirroring `unstructure.py`'s `_make_binding_blocks`, the egress side of
-    this same job), grouped by block name since several fields can share one
-    block (every `Gwf` package field shares `"packages"`). Within a block,
+    The child fields are `binding_fields`', by block, since several
+    fields can share one (every `Gwf` package field shares
+    `"packages"`); egress's `_Unstructure.bindings` is the inverse. Within a block,
     `DimensionProvider` targets (`dis`/`disv`/`disu`) are resolved first so
     their dims can be threaded into the context of that block's other
     children -- `dimensions.py`'s object-graph walk only helps once a child
@@ -546,7 +553,6 @@ def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> d
     exchange's context gets the models it connects, from the models block,
     loaded before the exchanges block (field order).
     """
-    from flopy4.attrs_xarray import child_field_candidates
     from flopy4.mf6.converter.binding import component_ftype
     from flopy4.mf6.exchange import Exchange
     from flopy4.mf6.model import Model
@@ -562,22 +568,8 @@ def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> d
     # a Model's own class name *is* its model prefix by convention.
     model_prefix = cls.__name__.lower() if issubclass(cls, Model) else None
 
-    fields_by_block: dict[str, list] = {}
-    for f in attrs.fields(cls):  # type: ignore[arg-type]
-        spec = child_field_candidates(f) if f.metadata.get("child") else None
-        if spec is None:
-            continue
-        block_name = f.metadata.get("block")
-        if block_name is None or f.metadata.get("_keyword"):
-            continue  # file records' children load with their records
-        kind, candidates = spec
-        fields_by_block.setdefault(block_name, []).append((f.name, kind, candidates))
-
-    if not fields_by_block:
-        return {}
-
     kwargs: dict[str, Any] = {}
-    for block_name, field_specs in fields_by_block.items():
+    for block_name, field_specs in binding_fields(cls).items():
         rows = rows_by_block.get(block_name)
         if not rows:
             continue
@@ -589,7 +581,7 @@ def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> d
             if not row:
                 continue
             token = str(row[0]).lower()
-            for child_name, kind, accepted in field_specs:
+            for child_field, kind, accepted in field_specs:
                 # Concrete candidates first: compare each accepted class's
                 # own ftype directly to the row's token. G/A-variant pairs
                 # (Chd/Chdg, Rch/Rcha, ...) share one namefile ftype (real
@@ -614,7 +606,7 @@ def _resolve_bindings(cls: type, rows_by_block: dict, context: LoadContext) -> d
                         continue
                     target_cls = resolved_cls
 
-                resolved.append((row, target_cls, child_name, kind))
+                resolved.append((row, target_cls, child_field.name, kind))
                 break
             else:
                 # a package flopy4 has no class for yet, say
@@ -827,14 +819,8 @@ class ComponentLoad:
         self._children: dict[Path, Any] = {}
         self._union_arm = _union_arm(context.parent)
         self._union_forms = _union_forms(context.parent)
-        # blocks whose rows name children (a model's packages, the
-        # simulation's models and solutions); a file record's child loads
-        # with its record
-        self.binding_blocks = {
-            f.metadata["block"]
-            for f in attrs.fields(cls)  # type: ignore[arg-type]
-            if f.metadata.get("child") and "block" in f.metadata and not f.metadata.get("_keyword")
-        }
+        # the child fields named by each block's rows
+        self.binding_blocks = binding_fields(cls)
 
     @property
     def dims(self) -> dict:

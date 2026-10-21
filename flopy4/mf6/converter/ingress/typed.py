@@ -237,7 +237,7 @@ class _TypedLoad(ComponentLoad):
         for key, value in contents.items():
             f = fields.get(key)
             if name in self.binding_blocks and (
-                f is None or (f.metadata.get("child") and not f.metadata.get("_keyword"))
+                f is None or any(f is b for b, *_ in self.binding_blocks[name])
             ):
                 self.bindings.setdefault(name, []).extend(value)
                 continue
