@@ -3,7 +3,7 @@
 Cold start: import one library, then load and materialize one model,
 timing each step::
 
-    python benchmarks/_worker.py cold flopy3|flopy4 WS [LOAD_ONLY ...]
+    python benchmarks/_worker.py cold flopy3|flopy4|flopy4-typed WS [LOAD_ONLY ...]
 
 Import memory: what importing one library costs, which a memory benchmark
 can't see in a pytest process that already imported both. Its peak heap

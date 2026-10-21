@@ -35,9 +35,12 @@ FLOPY3_OPTIONS = {"verbosity_level": 0, "lazy_io": False, "verify_data": False, 
 
 LIBRARIES = ("flopy3", "flopy4")
 # flopy4 with the typed loader (see LoadContext.loader), which `load` takes
-# as a library. Not in LIBRARIES yet: comparing the loaders is the
-# converter plan's Phase C, which adds it, and report.py's columns.
+# as a library
 TYPED = "flopy4-typed"
+# what the load benchmarks compare: each library, and flopy4's two loaders.
+# Writing and importing don't depend on the loader, so those benchmarks
+# take LIBRARIES.
+LOADS = (*LIBRARIES, TYPED)
 
 
 def silence() -> None:

@@ -320,5 +320,7 @@ def pytest_terminal_summary(terminalreporter):
         for row in sorted(rows, key=lambda r: (r["op"], r.get("model", ""), r["library"])):
             model = row.get("model", "").rsplit("/", 1)[-1]
             mib = row["peak_memory"] / 2**20
-            terminalreporter.line(f"{row['op']:<17} {model:<32} {row['library']:<7} {mib:9.1f} MiB")
+            terminalreporter.line(
+                f"{row['op']:<17} {model:<32} {row['library']:<12} {mib:9.1f} MiB"
+            )
         terminalreporter.line(f"saved: {out}")

@@ -20,7 +20,9 @@ With no runs given, NEW is the newest run (timing, or memory with
 ``--memory``) and BASE the newest before it on the same tier.
 
 Ratios are flopy3 / flopy4 throughout, so above 1 means flopy4 is faster
-(or smaller); in comparisons, new / base, so below 1 means faster.
+(or smaller), except between flopy4's loaders, typed / basic, so above 1
+means the basic loader is faster; in comparisons, new / base, so below 1
+means faster.
 Times are the minimum over rounds.
 """
 
@@ -37,6 +39,8 @@ from typing import NamedTuple
 STORAGE = Path(__file__).parents[1] / ".benchmarks"
 MEMORY = STORAGE / "memory"
 LIBRARIES = ("flopy3", "flopy4")
+# flopy4's loaders, basic and typed (benchmarks/_ops.py)
+LOADERS = ("flopy4", "flopy4-typed")
 PROFILE = "benchmarks/profile/"
 
 
@@ -212,8 +216,8 @@ def collect(runs: list[Run]) -> Results:
     return res
 
 
-def by_library(d: dict, op: str, model: str) -> tuple:
-    return tuple(d.get((op, model, lib)) for lib in LIBRARIES)
+def by_library(d: dict, op: str, model: str, libraries=LIBRARIES) -> tuple:
+    return tuple(d.get((op, model, lib)) for lib in libraries)
 
 
 def report(runs: list[Run]) -> str:
@@ -308,6 +312,7 @@ def report(runs: list[Run]) -> str:
             out += table(header, rows, right=2)
 
         out += by_tag(res, models)
+        out += loaders(res, models)
 
     if res.imports:
         out += ["", "## Import", ""]
@@ -333,7 +338,7 @@ def report(runs: list[Run]) -> str:
             "",
         ]
         rows = []
-        for lib in LIBRARIES:
+        for lib in (*LIBRARIES, LOADERS[1]):
             if lib in res.cold:
                 t, info = res.cold[lib]
                 parts = [secs(info.get(k)) for k in ("import", "load", "materialize")]
@@ -359,6 +364,57 @@ def report(runs: list[Run]) -> str:
         out.pop()
 
     return "\n".join(out) + "\n"
+
+
+def loaders(res: Results, models: list[str]) -> list[str]:
+    """flopy4's basic and typed loaders side by side, where both ran."""
+    typed = LOADERS[1]
+    ops = ("load", "load-materialize")
+    totals = [
+        (op, tier, libs)
+        for op in ops
+        for tier, libs in res.totals.get(op, {}).items()
+        if typed in libs
+    ]
+    if not totals and not any(k[2] == typed for d in (res.times, res.peaks) for k in d):
+        return []
+    out = ["", "## Loaders, basic vs. typed", ""]
+    out += [
+        "flopy4's two loaders. Ratios are typed / basic: above 1, basic is",
+        "faster or smaller.",
+    ]
+    if totals:
+        rows = []
+        for op, tier, libs in totals:
+            (tb, _), (tt, _) = libs.get(LOADERS[0], (None, {})), libs[typed]
+            rows.append([op, tier, secs(tb), secs(tt), ratio(tt, tb)])
+        out += [""] + table(["benchmark", "models", "basic", "typed", "×"], rows, right=2)
+    rows = []
+    for m in models:
+        lm = by_library(res.times, "load-materialize", m, LOADERS)
+        cells = [
+            short(m),
+            mb(res.models[m]["n_bytes"]),
+            secs(lm[0]),
+            secs(lm[1]),
+            ratio(lm[1], lm[0]),
+        ]
+        for op in ops:
+            p = by_library(res.peaks, op, m, LOADERS)
+            cells += [pair(*map(mib, p)), ratio(p[1], p[0])]
+        if any(cells[2:]):
+            rows.append(cells)
+    if rows:
+        out += [
+            "",
+            "Per model: load + materialize in seconds, and peak memory in MiB,",
+            "basic / typed.",
+            "",
+        ]
+        header = ["model", "input MB", "load+mat basic", "typed", "×"]
+        header += ["load memory", "×", "load+mat memory", "×"]
+        out += table(header, rows, right=1)
+    return out
 
 
 def by_tag(res: Results, models: list[str]) -> list[str]:

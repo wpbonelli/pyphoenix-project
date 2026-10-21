@@ -765,10 +765,31 @@ C. **Pick a loader.** Once A3 and B3 are done, and each has had its own
 
 ### Later
 
+Follow-ups found along the way, each its own change. The phases above
+mention them where they came up; this is the one list.
+
 - **STO period representation** (decision 1) once devtools has the
    rename, and, if it checks out, the `stress_period_data` consolidation
    (decision 2), each as its own change. Both loaders produce the new
    shape if both still exist.
+- **Deleting a loader**, if Phase C's write-up recommends it (see C).
+- **Attribute names at sync time** (Track A cold start): `spec.attr_names`
+   builds codegen's spec of each class on its first load, most of what's
+   left of the 0.26 s first load against the base's 0.21 s ("Rerun after
+   S2"). Sync could store each class's names, as it stores its DFN.
+- **The basic loader reads a string that looks like a number as a
+   number** (B3): IMS's `rclose_option` written `50000.000` loads as
+   `50000.0`, because the basic parse reads numbers before the converter
+   knows the field. It's `test1001_Peterson`'s one difference under
+   `--loader typed`, whose snapshot pins the basic loader's value.
+- **An auxiliary variable named like a field** (B2): the typed grammar
+   parses an aux named RECHARGE as the field, not the aux. No corpus file
+   does it.
+- **A TAS time's array isn't recorded in `ArrayIO`** by either loader
+   (B2), so its read options aren't kept on write.
+- **`test060_gms_ets`** loads under neither loader (B2, B3).
+- **The devtools follow-ups** above, and **developer-mode fields on sync**
+   (under "Related, outside the converter").
 
 ## Related, outside the converter
 

@@ -13,10 +13,10 @@ Benchmarks, each parametrized by library:
   materialize one mid-size model (`COLD_MODEL`). The child's own
   import/load/materialize split goes in `extra_info`.
 
-`load` takes ``flopy4-typed`` (`_ops.TYPED`), flopy4 with the typed
-loader (see `flopy4.mf6.converter.ingress.typed`), but it isn't in
-`LIBRARIES` yet: comparing the loaders is the converter plan's Phase C,
-which adds it there, and to `report.py`'s columns.
+Each also runs ``flopy4-typed`` (`_ops.TYPED`), flopy4 with the typed
+loader (see `flopy4.mf6.converter.ingress.typed`). Its cold start reads
+the typed parsers from the on-disk cache, warm after the first round (see
+`flopy4.mf6.codec.reader.parser`).
 """
 
 import json
@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from _ops import LIBRARIES, load, materialize
+from _ops import LOADS, load, materialize
 
 ROUNDS = 3
 COLD_ROUNDS = 5
@@ -46,7 +46,7 @@ def _load_materialize(library: str, models: list) -> None:
         materialize(library, load(library, m.ws, m.load_only))
 
 
-@pytest.mark.parametrize("library", LIBRARIES)
+@pytest.mark.parametrize("library", LOADS)
 def test_load(benchmark, models, quiet, library):
     """Load only. Not like-for-like: flopy3 defers ``OPEN/CLOSE`` arrays."""
     benchmark.group = "load"
@@ -56,7 +56,7 @@ def test_load(benchmark, models, quiet, library):
     )
 
 
-@pytest.mark.parametrize("library", LIBRARIES)
+@pytest.mark.parametrize("library", LOADS)
 def test_load_materialize(benchmark, models, quiet, library):
     """Load, then fetch and sum every array and list: the fair comparison."""
     benchmark.group = "load-materialize"
@@ -70,7 +70,7 @@ def test_load_materialize(benchmark, models, quiet, library):
     )
 
 
-@pytest.mark.parametrize("library", LIBRARIES)
+@pytest.mark.parametrize("library", LOADS)
 def test_load_materialize_model(benchmark, model, quiet, library):
     """Load + materialize of one model."""
     benchmark.group = f"load-materialize:{model.name.rsplit('/', 1)[-1]}"
@@ -80,7 +80,7 @@ def test_load_materialize_model(benchmark, model, quiet, library):
     )
 
 
-@pytest.mark.parametrize("library", LIBRARIES)
+@pytest.mark.parametrize("library", LOADS)
 def test_cold_start(benchmark, models, library):
     """Wall time of a fresh interpreter that imports `library`, then loads
     and materializes `COLD_MODEL`. The child's own import/load/materialize

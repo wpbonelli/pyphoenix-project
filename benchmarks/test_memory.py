@@ -20,6 +20,9 @@ don't land on whichever test runs first:
 - `test_import` -- importing the library, in a fresh interpreter
   (`_worker.py`), where memray can see it; RSS growth goes alongside.
 
+The load tests also run ``flopy4-typed``, flopy4's typed loader
+(`_ops.LOADS`); writing and importing don't depend on the loader.
+
 Each test's peak, model, tags and input bytes go to a JSON file in
 ``.benchmarks/memory/`` (see `conftest.py`).
 """
@@ -31,7 +34,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from _ops import LIBRARIES, load, materialize, write
+from _ops import LIBRARIES, LOADS, load, materialize, write
 
 WORKER = Path(__file__).parent / "_worker.py"
 
@@ -51,13 +54,13 @@ def warm(quiet, model, request):
     gc.collect()  # so the warm-up's garbage isn't freed while tracking
 
 
-@pytest.mark.parametrize("library", LIBRARIES)
+@pytest.mark.parametrize("library", LOADS)
 def test_load(record_property, warm, model, library):
     _record(record_property, "load", library, model)
     sim = load(library, model.ws, model.load_only)  # noqa: F841 -- held to the end
 
 
-@pytest.mark.parametrize("library", LIBRARIES)
+@pytest.mark.parametrize("library", LOADS)
 def test_load_materialize(record_property, warm, model, library):
     _record(record_property, "load-materialize", library, model)
     sim = load(library, model.ws, model.load_only)
