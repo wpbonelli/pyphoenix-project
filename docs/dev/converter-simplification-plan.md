@@ -864,8 +864,8 @@ D7. **Header kinds from the generated classes**, not block names.
     headers by it, not the field name `iper`. No name fallback was
     needed. The lock now pins devtools 73a0647a, and everything is
     regenerated from the contract's MF6 commit (203d72f0): the classes
-    and grammars are unchanged. Egress's `annotate_arrays` still parses
-    a written `period <n>` label by name.
+    and grammars are unchanged. Egress's `annotate_arrays` takes the
+    class too, so no code names the `period` block any more.
 
 Not code, but noted: `structure.py` went from 28 functions to 54
 (smaller, more of them), and this plan is ~850 lines; trim the done
