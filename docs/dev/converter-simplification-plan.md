@@ -344,7 +344,8 @@ package and component paths become one function.
 
    Sequencing: a devtools PR renaming the field, then a dependency bump,
    then the codegen change and regenerated `*-sto` classes. **Not started**
-   (devtools still says `storage`).
+   (devtools still says `storage`); the steps are in
+   `../modflow-devtools/sto-period-plan.md`.
 2. **`stress_period_data` consolidation in codegen.** Period list blocks
    already have exactly one untagged list field in the DFN, so the
    consolidation may be vestigial apart from the rename/alias. **To
