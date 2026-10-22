@@ -862,10 +862,10 @@ D7. **Header kinds from the generated classes**, not block names.
     *Done:* `Header` is a NamedTuple in `spec.py`, `Component.headers`
     defaults to `{}`, and egress's `occurrences` numbers and labels its
     headers by it, not the field name `iper`. No name fallback was
-    needed. The stored DFNs gained only the 59 `index = true` lines; the
-    dev env's devtools predates the flag, so a sync with it would drop
-    them until the lock is bumped. Egress's `annotate_arrays` still
-    parses a written `period <n>` label by name.
+    needed. The lock now pins devtools 73a0647a, and everything is
+    regenerated from the contract's MF6 commit (203d72f0): the classes
+    and grammars are unchanged. Egress's `annotate_arrays` still parses
+    a written `period <n>` label by name.
 
 Not code, but noted: `structure.py` went from 28 functions to 54
 (smaller, more of them), and this plan is ~850 lines; trim the done
