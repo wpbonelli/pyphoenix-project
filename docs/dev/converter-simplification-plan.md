@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D1–D4 done, D5–D6 skipped for now** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D1–D4 done, D5–D6 skipped for now, D7 next** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -845,6 +845,22 @@ D6. **Two sources of truth at runtime**: the generated classes and the
     removes the runtime join; D5 removes most of the rest of the
     overlap. Revisit what's left after D5. *Skipped for now,* with D5;
     storing the names at sync time stays in "Later".
+
+D7. **Header kinds from the generated classes**, not block names.
+    `structure._header` (D2) recognizes `"period"` (IPER, 0-based) and
+    `"time"` (a number) by name. Instead, codegen writes each component's
+    repeating blocks' header kinds from the DFN's `block.header`, e.g.
+    `headers: ClassVar[dict[str, Header]] = {"period": Header("integer",
+    index=True)}`, TAS `{"time": Header("double")}`, OBS
+    `{"continuous": Header("record")}`, the simulation's
+    `{"solutiongroup": Header("integer")}`. `_header(cls, block, words)`
+    then matches on the kind (integer, less 1 if `index`; double; else
+    the words). Both loaders' `_occurrences` pass `cls`, and egress's
+    `occurrences` can use the same `headers`. The typed loader still
+    reads no DFN. The DFNs don't mark IPER `index = true` yet
+    (`../modflow-devtools/iper-index-plan.md`), so codegen takes `index`
+    from `header.field.index` or, until then, the field's name `iper`.
+    Drop that fallback once the DFNs are synced with the flag.
 
 Not code, but noted: `structure.py` went from 28 functions to 54
 (smaller, more of them), and this plan is ~850 lines; trim the done
