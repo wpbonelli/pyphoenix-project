@@ -1123,8 +1123,9 @@ class _Load(ComponentLoad):
 
     def untagged(self, f: Any, rows: list) -> Any:
         """The value of a block's untagged field from its rows: a list's
-        elements (an OBS output file's, for a list of blocks), or a TAS
-        time's array, a control record with no name row."""
+        elements (an OBS output file's, for a list of blocks), a TAS
+        time's array, a control record with no name row, or a word (STO's
+        steady-state or transient), its first row's first, as MF6 reads it."""
         if (item_cls := item_list_type(f.type)) is not None:
             return self.parse_list(rows, item_cls, item_list_words(f.type))
         if (blocks := block_list_type(f.type)) is not None:
@@ -1132,6 +1133,8 @@ class _Load(ComponentLoad):
         if _is_grid_array(f) and (grid := _Grid.of(self.dims)) is not None:
             value, _, _ = _read_array(parts(rows), 0, f, grid, self.context, layered=False)
             return value
+        if f.metadata.get("type") == "string" and rows and rows[0]:
+            return str(rows[0][0])
         return None
 
 

@@ -172,11 +172,11 @@
     "END GRIDDATA",
     "",
     "BEGIN PERIOD 1",
-    " transient",
+    "  TRANSIENT",
     "END PERIOD 1",
     "",
     "BEGIN PERIOD 2",
-    " TRANSIENT",
+    "  TRANSIENT",
     "END PERIOD 2"
   ],
   "test001e_UZF_3lay.uzf": [

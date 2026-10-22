@@ -132,11 +132,11 @@
     "END GRIDDATA",
     "",
     "BEGIN PERIOD 1",
-    " steady-state",
+    "  STEADY-STATE",
     "END PERIOD 1",
     "",
     "BEGIN PERIOD 2",
-    " transient",
+    "  TRANSIENT",
     "END PERIOD 2"
   ],
   "model_left.chd": [

@@ -168,18 +168,18 @@ def test_dumps_sto():
 
     sto = Sto(
         stress_period_data={
-            0: [("TRANSIENT",)],
-            1: [("STEADY-STATE",)],
-            2: [("TRANSIENT",)],
+            0: "transient",
+            1: "steady-state",
+            2: "transient",
         }
     )
 
     dumped = dumps(COMPONENT_CONVERTER.unstructure(sto))
     print("STO dump:")
     print(dumped)
-    assert "BEGIN PERIOD 1\n TRANSIENT" in dumped
-    assert "BEGIN PERIOD 2\n STEADY-STATE" in dumped
-    assert "BEGIN PERIOD 3\n TRANSIENT" in dumped
+    assert "BEGIN PERIOD 1\n  TRANSIENT" in dumped
+    assert "BEGIN PERIOD 2\n  STEADY-STATE" in dumped
+    assert "BEGIN PERIOD 3\n  TRANSIENT" in dumped
     assert dumped
 
     loaded = loads(dumped)

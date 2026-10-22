@@ -180,6 +180,21 @@ def _ts_converter(kwargs: FieldKwargs, converter) -> None:
         kwargs.setdefault("converter", converter)
 
 
+def _to_valid(valid: tuple[str, ...]):
+    """A converter spelling a string as the one of ``valid`` it matches
+    ignoring case (MF6 reads words so), and each of a per-period dict's."""
+    spelled = {v.lower(): v for v in valid}
+
+    def convert(value):
+        if isinstance(value, str):
+            return spelled.get(value.lower(), value)
+        if isinstance(value, dict):
+            return {k: convert(v) for k, v in value.items()}
+        return value
+
+    return convert
+
+
 def keyword(**kwargs: Unpack[FieldKwargs]) -> Any:
     """A keyword: a flag, present or not."""
     kwargs["tagged"] = True
@@ -192,16 +207,31 @@ def string(
     pk: bool = False,
     fk: str | None = None,
     empty_is_none: bool = False,
+    fill_forward: bool = False,
+    valid: tuple[str, ...] = (),
     **kwargs: Unpack[FieldKwargs],
 ) -> Any:
     """A string. A time series one may name a time series instead. It can't
-    be empty, unless ``empty_is_none``, when an empty string is no value."""
+    be empty, unless ``empty_is_none``, when an empty string is no value.
+    A ``fill_forward`` one is given per period (STO's steady-state or
+    transient), a period without one keeping the last's. One of ``valid``
+    is kept as ``valid`` spells it, whatever its case."""
+    if valid:
+        _convert_first(kwargs, _to_valid(valid))
     if time_series:
         _ts_converter(kwargs, to_ts_value)
     if empty_is_none:
         _convert_first(kwargs, _empty_to_none)
     _validate(kwargs, _not_empty)
-    return _field("string", kwargs, time_series=time_series, pk=pk, fk=fk)
+    return _field(
+        "string",
+        kwargs,
+        time_series=time_series,
+        pk=pk,
+        fk=fk,
+        fill_forward=fill_forward,
+        valid=valid,
+    )
 
 
 def integer(

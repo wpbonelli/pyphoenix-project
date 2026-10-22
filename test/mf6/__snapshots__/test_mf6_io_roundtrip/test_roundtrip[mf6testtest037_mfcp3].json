@@ -168,15 +168,15 @@
     "END GRIDDATA",
     "",
     "BEGIN PERIOD 1",
-    " STEADY-STATE",
+    "  STEADY-STATE",
     "END PERIOD 1",
     "",
     "BEGIN PERIOD 2",
-    " TRANSIENT",
+    "  TRANSIENT",
     "END PERIOD 2",
     "",
     "BEGIN PERIOD 3",
-    " STEADY-STATE",
+    "  STEADY-STATE",
     "END PERIOD 3"
   ],
   "test037.tdis": [

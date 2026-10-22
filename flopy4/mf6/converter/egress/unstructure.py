@@ -476,6 +476,11 @@ class _Unstructure:
                 key = f.name if f.tagged else ""
                 for time, arr in value.items():
                     found.setdefault(time, {})[key] = _wrap_array(arr)
+            elif meta.get("type") == "string":
+                # a word per period (STO's steady-state or transient), untagged,
+                # written uppercase as keywords are
+                for kper, word in value.items():
+                    found.setdefault(kper, {})[""] = word.upper()
             else:
                 # a list per period: {kper: list[Item]}
                 for kper, row_list in value.items():

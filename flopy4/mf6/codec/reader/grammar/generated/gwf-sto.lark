@@ -46,7 +46,7 @@ export_array_netcdf__kw: "export_array_netcdf"i  [_remark] _NL
 iconvert__val: "iconvert"i [_name_remark] [_NL] array
 ss__val: "ss"i [_name_remark] [_NL] array
 sy__val: "sy"i [_name_remark] [_NL] array
-stress_period_data__union: (storage__steady_state__kw | storage__transient__kw) [_remark] _NL
+stress_period_data__union: (stress_period_data__steady_state__kw | stress_period_data__transient__kw) [_remark] _NL
 
-!storage__steady_state__kw: "steady-state"i
-!storage__transient__kw: "transient"i
+!stress_period_data__steady_state__kw: "steady-state"i
+!stress_period_data__transient__kw: "transient"i

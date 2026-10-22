@@ -1654,22 +1654,30 @@ def build_component_spec(
             _readarray_period_fields.append(f)
             continue
 
-        # STO-family (chf/gwf/olf-sto): a bare scalar directly in the period
-        # block ("storage", valid=["steady-state","transient"]) -- not a List,
-        # but still needs the same per-period, fill-forward dict[int, ...]
-        # treatment as any other period field (the whole point of a period
-        # block is that its contents can differ/repeat across BEGIN PERIOD
-        # blocks). One column, since there's nothing else in the block.
+        # STO-family (chf/gwf/olf-sto): one string per period, directly in
+        # the period block (the DFN's stress_period_data, valid steady-state
+        # or transient), as a value per period, filled forward.
         if block_name in _fill_forward_blocks and filters.is_scalar(f):
-            item_classes.append(
-                ItemClassSpec(
-                    class_name="StressPeriodData",
-                    keyword="",
-                    schema=[filters.attr_column(f.name, "str", "string", {}, optional=False)],
+            valid = tuple(getattr(f, "valid", None) or ())
+            words = ", ".join(repr(v) for v in valid)
+            period_specs.append(
+                FieldSpec(
+                    dfn_name=f.name,
+                    py_name=filters.safe_name(f.name),
+                    type_annotation=(
+                        f"Optional[dict[int, Literal[{words}]]]"
+                        if words
+                        else "Optional[dict[int, str]]"
+                    ),
+                    spec_call=_ml_field(
+                        "string",
+                        metadata={"block": block_name, "fill_forward": True, "valid": valid},
+                    ),
+                    generatable=True,
                 )
             )
-            _period_item = "StressPeriodData"
-            _attr_names[(block_name, f.name)] = "_stress_period_data"
+            generatable_field_objects.append((block_name, f))
+            _attr_names[(block_name, f.name)] = period_specs[-1].py_name
             continue
 
         # maxbound: emitted as a computed property (see computed_field_specs
@@ -2046,7 +2054,8 @@ def build_component_spec(
             fs.spec_call.startswith("child(") and "Union[" in fs.type_annotation
             for fs in field_specs
         ),
-        has_literal=any(u.words for u in item_unions),
+        has_literal=any(u.words for u in item_unions)
+        or any("Literal[" in fs.type_annotation for fs in field_specs),
         extra_imports=[
             *extra_imports,
             *(["from flopy4.mf6.block import Block"] if block_classes else []),
