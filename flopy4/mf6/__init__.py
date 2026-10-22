@@ -174,7 +174,7 @@ def _write_mf6(component: Component, context=None, **kwargs) -> None:
 
     # settle the arrays' files before opening (and emptying) the
     # component's, which a strict write may refuse
-    data = annotate_arrays(unstructure(component), ctx)
+    data = annotate_arrays(unstructure(component), type(component), ctx)
     data = write_external_arrays(
         data,
         component.root,

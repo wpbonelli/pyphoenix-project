@@ -229,20 +229,22 @@ def _grid_array(component: Component, value: Any, meta: Mapping) -> xr.DataArray
     return _mark_netcdf(_wrap_array(value), meta)
 
 
-def annotate_arrays(data: dict[str, Any], context: WriteContext) -> dict[str, Any]:
+def annotate_arrays(data: dict[str, Any], cls: type, context: WriteContext) -> dict[str, Any]:
     """Copy each array's settings from `context.arrays` (see `ArrayKey`) onto
     the DataArray `data` holds for it, as attrs the writer reads: `iprn`,
     and `layer_iprn` for layers of a layered array whose IPRN differs from
     the whole array's; `path`, `format`, `hash` and `layered`, and
     `layer_path`, `layer_format` and `layer_hash` for layers given their
-    own (see `write_external_arrays` and `array_how`). A period block's
-    arrays are keyed by period."""
+    own (see `write_external_arrays` and `array_how`). A block whose
+    header is an index (a period's IPER, see `cls.headers`) has its
+    arrays keyed by it, 0-based."""
     if not context.arrays:
         return data
     out: dict[str, Any] = {}
     for block_name, block in data.items():
         name, _, header = block_name.partition(" ")
-        kper = int(header) - 1 if name == "period" and header.isdigit() else None
+        kind = cls.headers.get(name)
+        kper = int(header) - 1 if kind is not None and kind.index and header.isdigit() else None
         if not isinstance(block, dict):
             out[block_name] = block
             continue
