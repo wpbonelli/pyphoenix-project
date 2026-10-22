@@ -183,8 +183,8 @@ def test_make_grammar_with_tagged_list(tmp_path):
     make_grammar(dfn, tmp_path)
     content = (tmp_path / "gwf-test.lark").read_text()
     assert (
-        "options__fields: (print_input__kw | ts_filerecord__rec__elem | open_close_redirect _NL)*"
-        in content
+        "options__fields: (print_input__kw | ts_filerecord__rec__elem | "
+        "open_close_redirect _NL | unknown_line)*" in content
     )
     assert 'ts_filerecord__rec__elem: "ts6"i "filein"i ts_filerecord__ts6_filename__val' in content
     assert "ts_filerecord__ts6_filename__val: word" in content
@@ -356,7 +356,7 @@ def test_make_grammar_with_untagged_array(tmp_path):
     assert "vals__val: array\n" in content
     assert "time__fields: (vals__val)*" in content
     assert 'strt__val: "strt"i' in content
-    assert "griddata__fields: (strt__val | open_close_redirect _NL)*" in content
+    assert "griddata__fields: (strt__val | open_close_redirect _NL | unknown_line)*" in content
 
 
 def test_make_grammar_with_file_fields(tmp_path):
@@ -398,14 +398,14 @@ def test_make_grammar_with_dynamically_named_arrays(tmp_path):
                 header=BlockHeader(field=Integer(name="iper")),
                 fields={
                     "recharge": Array(name="recharge", dtype="double", shape=["ncpl"]),
-                    "aux": List(name="aux", tagged=True, item=item, shape=["<=auxiliary"]),
+                    "aux": List(name="aux", item=item, shape=["<=auxiliary"]),
                 },
             ),
         },
     )
     make_grammar(dfn, tmp_path)
     content = (tmp_path / "test-named-arrays.lark").read_text()
-    assert "aux__val__elem: word [_remark] [_NL] array" in content
+    assert "aux__val__elem: word [_name_remark] [_NL] array" in content
     assert "period__fields: (recharge__val | aux__val__elem | open_close_redirect _NL)*" in content
 
 
@@ -520,7 +520,10 @@ def test_make_grammar_names_rules_by_attribute(tmp_path):
     }
     make_grammar(dfn, tmp_path, names)
     content = (tmp_path / "gwf-test.lark").read_text()
-    assert "options__fields: (continue___kw | head_file__rec | open_close_redirect _NL)*" in content
+    assert (
+        "options__fields: (continue___kw | head_file__rec | "
+        "open_close_redirect _NL | unknown_line)*" in content
+    )
     assert 'head_file__rec: "head"i head_filerecord__headfile__val' in content
     assert "stress_period_data__saverecord__rec__elem:" in content
 
