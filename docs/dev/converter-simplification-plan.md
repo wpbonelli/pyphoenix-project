@@ -1,6 +1,6 @@
 # Converter simplification plan (structure / unstructure)
 
-Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D1–D4 done, D5–D6 skipped for now, D7 next** (see "Phases"). Written
+Status: **S1, S2, A1, A2, A3, B1, B2, B3, B4 and C done; D1–D4 and D7 done, D5–D6 skipped for now** (see "Phases"). Written
 2026-09-22 against `fe5423c`, then revised on 2026-10-19/20 after rebasing
 onto `develop` (`916c2f8b`). On 2026-10-20 the plan became two loaders
 built in parallel and compared (see "Two loaders"). Done on attrs,
@@ -857,10 +857,15 @@ D7. **Header kinds from the generated classes**, not block names.
     then matches on the kind (integer, less 1 if `index`; double; else
     the words). Both loaders' `_occurrences` pass `cls`, and egress's
     `occurrences` can use the same `headers`. The typed loader still
-    reads no DFN. The DFNs don't mark IPER `index = true` yet
-    (`../modflow-devtools/iper-index-plan.md`), so codegen takes `index`
-    from `header.field.index` or, until then, the field's name `iper`.
-    Drop that fallback once the DFNs are synced with the flag.
+    reads no DFN. Codegen takes `index` from `header.field.index`:
+    devtools now marks IPER `index = true` (dd9bd848).
+    *Done:* `Header` is a NamedTuple in `spec.py`, `Component.headers`
+    defaults to `{}`, and egress's `occurrences` numbers and labels its
+    headers by it, not the field name `iper`. No name fallback was
+    needed. The stored DFNs gained only the 59 `index = true` lines; the
+    dev env's devtools predates the flag, so a sync with it would drop
+    them until the lock is bumped. Egress's `annotate_arrays` still
+    parses a written `period <n>` label by name.
 
 Not code, but noted: `structure.py` went from 28 functions to 54
 (smaller, more of them), and this plan is ~850 lines; trim the done

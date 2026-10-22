@@ -13,7 +13,7 @@ from flopy4.dimensions import DimensionResolverMixin
 from flopy4.mf6.constants import MF6
 from flopy4.mf6.external import in_write_session, write_session
 from flopy4.mf6.legacy import Legacy, LegacyKwargs
-from flopy4.mf6.spec import fields_dict
+from flopy4.mf6.spec import Header, fields_dict
 from flopy4.mf6.write_context import WriteContext
 from flopy4.spec import is_reference, reference_names, referenced, resolve, retarget
 from flopy4.uio import IO, Loader, Writer
@@ -250,6 +250,9 @@ class Component(DimensionResolverMixin, ABC, MutableMapping, metaclass=LegacyKwa
     legacy_kwargs: ClassVar[dict[str, Legacy]] = {}
     """flopy3's constructor keywords the class also takes, deprecated, by
     name (see `flopy4.mf6.legacy`)."""
+    headers: ClassVar[dict[str, Header]] = {}
+    """The header of each of the component's repeating blocks, by block
+    name, set by codegen from the DFN (see `Header`)."""
 
     _load = IO(Loader)  # type: ignore
     _write = IO(Writer)  # type: ignore

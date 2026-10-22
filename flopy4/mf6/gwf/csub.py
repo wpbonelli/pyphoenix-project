@@ -7,7 +7,18 @@ import attrs
 from flopy4.mf6._types import FloatArrayLike, TimeSeriesRef
 from flopy4.mf6.item import Item
 from flopy4.mf6.package import Package
-from flopy4.mf6.spec import array, cellid_, child, double, file, integer, keyword, list_, string
+from flopy4.mf6.spec import (
+    Header,
+    array,
+    cellid_,
+    child,
+    double,
+    file,
+    integer,
+    keyword,
+    list_,
+    string,
+)
 from flopy4.mf6.utl.obs import Obs
 from flopy4.mf6.utl.ts import Ts
 
@@ -15,6 +26,10 @@ from flopy4.mf6.utl.ts import Ts
 @attrs.define(kw_only=True, slots=False)
 class Csub(Package):
     dfn_name: ClassVar[str] = "gwf-csub"
+
+    headers: ClassVar[dict[str, Header]] = {
+        "period": Header("integer", index=True),
+    }
 
     observations: ClassVar[dict[str, tuple[tuple[str, ...], ...]]] = {
         "coarse-compaction": (("cellid",),),

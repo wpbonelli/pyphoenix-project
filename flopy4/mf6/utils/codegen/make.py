@@ -186,6 +186,8 @@ class ComponentSpec:
     # Dims counting item columns that aren't fields, name -> DFN expression
     # Observation types the component's OBS file takes, name -> id forms
     observations: dict[str, tuple[tuple[str, ...], ...]] = dc_field(default_factory=dict)
+    # The repeating blocks' headers, block name -> Header(...) source
+    headers: dict[str, str] = dc_field(default_factory=dict)
     has_griddata: bool = False
     has_readarray_period: bool = False
     # A model subpackage's __all__: the model and its packages
@@ -2018,6 +2020,9 @@ def build_component_spec(
             f"from flopy4.mf6.legacy import {convert or 'Legacy'}"
             for convert in {None, *(c for _, c in _LEGACY_PERIOD_KWARGS[component.name])}
         )
+    _headers = filters.headers(component)
+    if _headers:
+        _spec_functions.add("Header")
     imports = _generated_imports(
         generatable_field_objects,
         base_class=base,
@@ -2086,6 +2091,7 @@ def build_component_spec(
         computed_fields=computed_field_specs,
         derived_dims=_derived_dims,
         shared_dims=shared_dims,
+        headers=_headers,
         observations={
             name: tuple(_obs_forms(f)) for name, f in sorted((component.observations or {}).items())
         },

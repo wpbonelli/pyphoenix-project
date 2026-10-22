@@ -5,9 +5,8 @@ import attrs
 
 from flopy4.mf6._types import TimeSeriesRef
 from flopy4.mf6.item import Item
-from flopy4.mf6.legacy import Legacy
 from flopy4.mf6.package import Package
-from flopy4.mf6.spec import cellid_, child, double, keyword, list_, union
+from flopy4.mf6.spec import Header, cellid_, child, double, keyword, list_, union
 from flopy4.mf6.utl.ts import Ts
 
 
@@ -15,8 +14,8 @@ from flopy4.mf6.utl.ts import Ts
 class Tvk(Package):
     dfn_name: ClassVar[str] = "utl-tvk"
 
-    legacy_kwargs: ClassVar[dict[str, Legacy]] = {
-        "perioddata": Legacy("stress_period_data"),
+    headers: ClassVar[dict[str, Header]] = {
+        "period": Header("integer", index=True),
     }
 
     @attrs.define

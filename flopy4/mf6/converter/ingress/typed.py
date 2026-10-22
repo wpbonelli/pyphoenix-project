@@ -40,7 +40,7 @@ from flopy4.mf6.write_context import ArrayIO, array_hash
 from flopy4.utils import unwrap_optional
 
 
-def _occurrences(parsed: dict) -> dict[str, dict[Any, Any]]:
+def _occurrences(parsed: dict, cls: type) -> dict[str, dict[Any, Any]]:
     """The parse's blocks by name, each as ``{None: contents}``, or for a
     repeating block ``{header: contents}`` (see `structure._header`) in
     file order. A TAS time's block is keyed by its time. Unknown blocks
@@ -58,7 +58,7 @@ def _occurrences(parsed: dict) -> dict[str, dict[Any, Any]]:
         ):
             found.setdefault(name, {}).update(contents)
             continue
-        found.setdefault(name, {})[_header(name, words) if words else None] = contents
+        found.setdefault(name, {})[_header(cls, name, words) if words else None] = contents
     return found
 
 
@@ -364,7 +364,7 @@ def structure_typed(
         # MF6 ignores a block it doesn't read (an old IMS file's XMD)
         if isinstance(contents, UnknownBlock) and contents:
             warnings.warn(f"{cls.__name__}: ignoring unknown block {key.upper()}")
-    found = _occurrences(parsed)
+    found = _occurrences(parsed, cls)
     for block in _block_order(cls, found):
         load.read(block, found[block])
     return load.finish(name)

@@ -11,6 +11,7 @@ from flopy4.mf6.item import Item
 from flopy4.mf6.legacy import Legacy
 from flopy4.mf6.package import Package
 from flopy4.mf6.spec import (
+    Header,
     array,
     cellid_,
     child,
@@ -32,6 +33,10 @@ class Lak(Package):
     dfn_name: ClassVar[str] = "gwf-lak"
 
     multi_package: ClassVar[bool] = True
+
+    headers: ClassVar[dict[str, Header]] = {
+        "period": Header("integer", index=True),
+    }
 
     observations: ClassVar[dict[str, tuple[tuple[str, ...], ...]]] = {
         "conductance": (("index", "index"), ("index", "string"), ("string",)),

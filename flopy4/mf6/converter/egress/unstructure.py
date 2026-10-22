@@ -428,8 +428,8 @@ class _Unstructure:
         holding one value, not one per header (the simulation's MXITER),
         is the first occurrence's (``SOLUTIONGROUP 1``). A period's
         cleared grid array (None) is written as DNODATA."""
-        header = block.header
-        numbered = header.field.type in ("integer", "double")
+        header = self.cls.headers[name]
+        numbered = header.kind != "record"
         found: dict[Any, dict[str, Any]] = {}
         # per period, the (non-aux) arrays given, and those all DNODATA
         given: dict[Any, set[str]] = {}
@@ -486,7 +486,7 @@ class _Unstructure:
         out: dict[str, tuple[dict[str, Any], bool]] = {}
         for h in sorted(found) if numbered else found:
             body = found[h]
-            label = h + 1 if header.field.name == "iper" else h
+            label = h + 1 if header.index else h
             if self.grid and given.get(h) and cleared.get(h) == given[h]:
                 # every stress array DNODATA clears every boundary: an empty block
                 out[str(label)] = ({}, True)

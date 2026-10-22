@@ -646,6 +646,17 @@ def _load_dfn(name: str) -> "Component":
     return component
 
 
+class Header(NamedTuple):
+    """A repeating block's header kind, as codegen records it in a
+    component class's ``headers``: ``integer`` (a period's IPER,
+    SOLUTIONGROUP's number), ``double`` (a TAS time) or ``record`` (OBS's
+    ``FILEOUT <name>``), and whether an integer is an index, 1-based in the
+    file and 0-based in memory (IPER is, the DFN's ``index``)."""
+
+    kind: str
+    index: bool = False
+
+
 class DfnHeader(NamedTuple):
     """A stored DFN's top-level keys: all codegen reads of the components
     a link may target (see ``make._headers``), without loading them."""

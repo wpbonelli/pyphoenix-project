@@ -5,7 +5,7 @@ import attrs
 
 from flopy4.mf6._types import FloatArrayLike, TimeArraySeriesRef
 from flopy4.mf6.package import Package
-from flopy4.mf6.spec import array, child, keyword
+from flopy4.mf6.spec import Header, array, child, keyword
 from flopy4.mf6.utl.tas import Tas
 
 
@@ -14,6 +14,10 @@ class Spca(Package):
     dfn_name: ClassVar[str] = "utl-spca"
 
     multi_package: ClassVar[bool] = True
+
+    headers: ClassVar[dict[str, Header]] = {
+        "period": Header("integer", index=True),
+    }
 
     readasarrays: bool = keyword(
         default=True,

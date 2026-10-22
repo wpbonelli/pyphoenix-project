@@ -6,7 +6,7 @@ import attrs
 from flopy4.mf6._types import FloatArrayLike
 from flopy4.mf6.package import Package
 from flopy4.mf6.record import Record
-from flopy4.mf6.spec import array, record, string
+from flopy4.mf6.spec import Header, array, record, string
 
 
 @attrs.define(kw_only=True, slots=False)
@@ -14,6 +14,10 @@ class Tas(Package):
     dfn_name: ClassVar[str] = "utl-tas"
 
     multi_package: ClassVar[bool] = True
+
+    headers: ClassVar[dict[str, Header]] = {
+        "time": Header("double"),
+    }
 
     @attrs.define
     class TimeSeriesName(Record):
