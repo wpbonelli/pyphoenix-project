@@ -121,10 +121,10 @@ def test_block_order(name):
 def test_attr_names_examples():
     assert spec.attr_names(Oc)[("options", "head_filerecord")] == "head_file"
     assert spec.attr_names(Oc)[("options", "headprintrecord")] == "headprint"
-    assert spec.attr_names(Oc)[("period", "output")] == "_stress_period_data"
+    assert spec.attr_names(Oc)[("period", "stress_period_data")] == "_stress_period_data"
     assert spec.attr_names(Chd)[("options", "ts_filerecord")] == "ts"
     assert spec.attr_names(Chd)[("dimensions", "maxbound")] == "maxbound"
-    assert spec.attr_names(Sto)[("period", "storage")] == "_stress_period_data"
+    assert spec.attr_names(Sto)[("period", "stress_period_data")] == "stress_period_data"
     assert spec.attr_names(Rcha)[("period", "aux")] == "aux"
     assert spec.attr_names(Tas)[("time", "tas_array")] == "tas_array"
     assert spec.attr_names(Simulation)[("solutiongroup", "solutiongroup")] == "solutiongroup"
