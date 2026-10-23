@@ -3,6 +3,7 @@ from typing import ClassVar, Literal, Optional
 
 import attrs
 
+from flopy4.mf6.legacy import Legacy, sto_period_data
 from flopy4.mf6.package import Package
 from flopy4.mf6.spec import Header, keyword, string
 
@@ -13,6 +14,11 @@ class Sto(Package):
 
     headers: ClassVar[dict[str, Header]] = {
         "period": Header("integer", index=True),
+    }
+
+    legacy_kwargs: ClassVar[dict[str, Legacy]] = {
+        "steady_state": Legacy("stress_period_data", sto_period_data),
+        "transient": Legacy("stress_period_data", sto_period_data),
     }
 
     save_flows: bool = keyword(

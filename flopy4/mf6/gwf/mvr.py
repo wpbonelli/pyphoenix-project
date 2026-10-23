@@ -5,6 +5,7 @@ from typing import ClassVar, Optional
 import attrs
 
 from flopy4.mf6.item import Item
+from flopy4.mf6.legacy import Legacy
 from flopy4.mf6.package import Package
 from flopy4.mf6.spec import Header, double, file, integer, keyword, list_, string
 
@@ -15,6 +16,10 @@ class Mvr(Package):
 
     headers: ClassVar[dict[str, Header]] = {
         "period": Header("integer", index=True),
+    }
+
+    legacy_kwargs: ClassVar[dict[str, Legacy]] = {
+        "perioddata": Legacy("stress_period_data"),
     }
 
     @attrs.define

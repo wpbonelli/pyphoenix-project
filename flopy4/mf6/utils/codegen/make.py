@@ -2022,8 +2022,9 @@ def build_component_spec(
     )
     legacy_kwargs = _legacy_kwargs(component)
     if legacy_kwargs:
-        if _period_item is None:
-            raise ValueError(f"{component.name}: legacy period keywords, but no period list")
+        # a period list, or STO's word per period
+        if not {"_stress_period_data", "stress_period_data"} & set(_attr_names.values()):
+            raise ValueError(f"{component.name}: legacy period keywords, but no period data")
         extra_imports.extend(
             f"from flopy4.mf6.legacy import {convert or 'Legacy'}"
             for convert in {None, *(c for _, c in _LEGACY_PERIOD_KWARGS[component.name])}
