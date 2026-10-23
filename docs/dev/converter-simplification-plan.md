@@ -5,7 +5,9 @@ follow-ups under "Later". Written 2026-09-22 against `fe5423c` and revised
 2026-10-19/20 after rebasing onto `develop` (`916c2f8b`). From 2026-10-20
 the plan was two loaders built side by side, then compared. Trimmed
 2026-10-22 to the results; the full plan, with each phase as planned, is
-in this file's git history (before this trim, `d8e0da1a`).
+in this file's git history (before this trim, `65af7491`). Rebased
+2026-10-23 onto `develop` at `d14e5fb2` (#503, flopy3's period-data
+keywords), with devtools at `07d1273a`.
 
 The work is a refactor on the current attrs object model, independent of
 the `pydantic-plan` migration. The round-trip suite
@@ -61,11 +63,11 @@ green, under both loaders from B3 on.
 
 ### Shared
 
-- **S1. Loader switch and name mapping** (`2590cbc2`).
+- **S1. Loader switch and name mapping** (`971db3f6`).
   `LoadContext.loader`, inherited by children's contexts. Codegen records
   the attribute it names for each DFN field (`make.attr_names`), so
   there's one naming rule.
-- **S2. Egress mirror** (`f62e1fff`). One path for every component.
+- **S2. Egress mirror** (`0995bc85`). One path for every component.
   - `maxbound` is read from the class's property, and the `solutiongroup
     1` hack is gone: a field holding one value is the first occurrence's.
   - The rows naming children come from `bindings`, the inverse of
@@ -75,18 +77,18 @@ green, under both loaders from B3 on.
 
 ### Track A: the basic loader
 
-- **A1. Stored DFNs** (`f32f9e96`, lazy loading `3da330ce`). Sync stores
+- **A1. Stored DFNs** (`ac0e06ee`, lazy loading `58fd00e0`). Sync stores
   the DFNs again (`_store_dfns`, dropped in #455). `spec.dfn`,
   `block_keys` and `following_tags` wrap the devtools helpers in one
   place.
   - A first attempt emitted a `BlockSpec` per class and was dropped: it
     restated the DFN in a vocabulary of its own.
-- **A2. Value parsers** (`ae1605de`). `_read_array` reads every grid
+- **A2. Value parsers** (`aa840941`). `_read_array` reads every grid
   array (griddata, G/A period, TAS time), its length from the field's DFN
   shape. `_tagged_value` and `parse_list` serve every block.
   - `FACTOR` is applied on load and not kept (`write-options-plan.md`, in
     the archive).
-- **A3. Ingress loop** (`3dcfd642`). `structure_component` reads the
+- **A3. Ingress loop** (`ed1185e2`). `structure_component` reads the
   DFN's blocks in order, options and dimensions first.
   - `_occurrences` groups blocks by name and header.
   - A row goes to the field of its own block whose key it begins with;
@@ -96,12 +98,12 @@ green, under both loaders from B3 on.
 
 ### Track B: the typed loader
 
-- **B1. Grammar rules named after class attributes** (`8da0c7c4`).
-- **B2. Typed load for a few components** (`65fd2e15`), by the classes'
+- **B1. Grammar rules named after class attributes** (`85cb2cab`).
+- **B2. Typed load for a few components** (`2b7199bb`), by the classes'
   fields alone. The shared base `ComponentLoad` came out of this.
   - A G/A `aux` row is read by a generic `<word> <array>` rule, checked
     against `auxiliary` afterwards.
-- **B3. All components** (`4869c3fc`), with no fallback to basic. The
+- **B3. All components** (`f45d53f7`), with no fallback to basic. The
   grammars skip what MF6 skips:
   - unknown blocks (`unknown_block`) and unknown lines (`unknown_line`);
   - `DEV_` options;
@@ -109,7 +111,7 @@ green, under both loaders from B3 on.
   - an array's name-row remark (`_name_remark`).
   - Every corpus model loads the same under both loaders but
     `test1001_Peterson` (see "Later").
-- **B4. Grammar build cost** (`ec69b8d1`). Built parsers are cached on
+- **B4. Grammar build cost** (`6c61e90b`). Built parsers are cached on
   disk in the user's cache directory (`FLOPY4_CACHE_DIR` overrides it).
   Each is keyed by its grammar's text and by lark's and Python's versions,
   and written atomically. All 129 grammars load in 0.74 s warm, against
@@ -117,7 +119,7 @@ green, under both loaders from B3 on.
 
 ### C: compare (keeps both loaders)
 
-- **C. Compare the loaders** (`0c93be8f`): see
+- **C. Compare the loaders** (`0fb2ef70`): see
   [`loader-comparison.md`](loader-comparison.md).
   - Speed: typed loads 1.25× slower over the standard tier (6–70% per
     model).
@@ -131,17 +133,17 @@ green, under both loaders from B3 on.
 
 ### D: cleanups from the post-C audit
 
-The audit (2026-10-21, at `0c93be8f`) counted +405 code lines on the
+The audit (2026-10-21, at `0fb2ef70`) counted +405 code lines on the
 branch. The basic loader and egress were about +30 together; the typed
 loader about +360.
 
-- **D1. One child-binding predicate** (`32385b6d`): `spec.binding_fields`,
+- **D1. One child-binding predicate** (`f68645ef`): `spec.binding_fields`,
   used in all five places that had their own.
-- **D2. One header parse for both loaders** (`a475b652`).
-- **D3. `_resolve_bindings` rewritten** (`146605d6`). `_binding_target`
+- **D2. One header parse for both loaders** (`835f7d4c`).
+- **D3. `_resolve_bindings` rewritten** (`7aa6139c`). `_binding_target`
   makes one ftype comparison over each field's classes, and one context
   is carried through a block, gaining dims as providers load.
-- **D4. `_Load.body` untangled** (`be47c32e`). `_groups` puts each row
+- **D4. `_Load.body` untangled** (`b3cbd503`). `_groups` puts each row
   with the records after it, so the loop is a plain `for`. OC's `HEAD`
   direction check moved to `field_of`, for file records only (``XT3D
   [RHS]`` has an optional second keyword).
@@ -153,8 +155,8 @@ loader about +360.
 - **D6. Two sources of truth at runtime** (the classes and the stored
   DFNs, joined by `attr_names`). *Skipped for now,* with D5. Storing the
   names at sync time stays in "Later".
-- **D7. Header kinds from the generated classes** (`e30bfa6e`,
-  `bee10fbd`).
+- **D7. Header kinds from the generated classes** (`bf264dda`,
+  `00051dee`).
   - Codegen writes `headers: ClassVar[dict[str, Header]]` from the DFN's
     `block.header`:
     - the 59 period blocks: `Header("integer", index=True)`;
@@ -167,7 +169,7 @@ loader about +360.
 
 ## Representation decisions
 
-1. **STO period: done** (`db914f66`). devtools now names the merged
+1. **STO period: done** (`d3e9feb4`). devtools now names the merged
    field `stress_period_data`.
    - Codegen emits it as one word per period:
      `stress_period_data: Optional[dict[int, Literal["steady-state",
@@ -177,11 +179,15 @@ loader about +360.
    - Egress writes it uppercase, as keywords are.
    - `stress_period_data={0: [("STEADY-STATE",)]}` is now
      `stress_period_data={0: "steady-state"}`.
-2. **`stress_period_data` consolidation in codegen: checked, still
-   needed.** The DFNs name a period block's list `stress_period_data`
-   (CHD, ...), `perioddata` (LAK, MVR, PRP, SPC, ...) or `output` (OC).
-   Codegen gives them all one name. Keep it, unless devtools unifies the
-   names.
+   - flopy3's `steady_state=` / `transient=` (#503) convert to this form
+     (`flopy4.mf6.legacy.sto_period_data`).
+2. **`stress_period_data` naming: done upstream.** devtools #399 names
+   every fill-forward period list `stress_period_data` in the DFNs, as
+   codegen already named the attribute, so the generated classes didn't
+   change. What's left in codegen isn't about the DFN's name: the list is
+   the private `_stress_period_data`, aliased `stress_period_data`, for
+   `Package`'s DataFrame setter. flopy3's old names (`perioddata`, ...)
+   are #503's `_LEGACY_PERIOD_KWARGS`.
 
 G/A period arrays are sparse per-period dicts on `develop`
 (`flopy4.mf6.period_arrays`), the same `{header: value}` shape as every
